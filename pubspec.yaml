@@ -1,0 +1,22 @@
+name: krezio_ai
+description: "Krezio.ai - O futuro das suas finanças, guiado por dados."
+publish_to: 'none'
+version: 0.3.2+3
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - models/on_device/krezio_nlp_model.json
