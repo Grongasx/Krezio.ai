@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/ml/local_nlp_engine.dart';
 import 'core/theme/krezio_theme.dart';
-import 'features/chat/presentation/screens/chat_screen.dart';
+import 'core/repositories/financial_repository.dart';
+import 'features/navigation/main_navigation_wrapper.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,7 @@ class KrezioApp extends StatefulWidget {
 class _KrezioAppState extends State<KrezioApp> {
   ThemeMode _themeMode = ThemeMode.dark;
   LocalFinancialNlpEngine? _engine;
+  final FinancialRepository _repository = FinancialRepository();
   String? _errorMessage;
 
   @override
@@ -109,10 +111,11 @@ class _KrezioAppState extends State<KrezioApp> {
       );
     }
 
-    return ChatScreen(
+    return MainNavigationWrapper(
       engine: _engine!,
-      isDarkMode: _themeMode == ThemeMode.dark,
+      repository: _repository,
       onToggleTheme: _toggleTheme,
+      isDark: _themeMode == ThemeMode.dark,
     );
   }
 }

@@ -1,30 +1,51 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:krezio_ai/main.dart';
+import 'package:flutter/material.dart';
+import 'package:krezio_ai/core/models/financial_transaction.dart';
+import 'package:krezio_ai/core/models/budget_category.dart';
+import 'package:krezio_ai/core/repositories/financial_repository.dart';
+import 'package:krezio_ai/features/dashboard/presentation/widgets/metric_summary_card.dart';
+import 'package:krezio_ai/features/dashboard/presentation/widgets/ai_insight_card.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('MetricSummaryCard renders amount and title properly', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: MetricSummaryCard(
+            title: 'Saldo Geral',
+            amount: 2500.50,
+            icon: Icons.account_balance_wallet_outlined,
+            iconColor: Colors.green,
+            isDark: true,
+            isLarge: true,
+          ),
+        ),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Saldo Geral'), findsOneWidget);
+    expect(find.text('R\$ 2500,50'), findsOneWidget);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('AiInsightCard renders insight and button', (WidgetTester tester) async {
+    bool asked = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AiInsightCard(
+            insightText: 'Você economizou 40% este mês.',
+            isDark: false,
+            onAskAi: () => asked = true,
+          ),
+        ),
+      ),
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Insight do Krezio.ai'), findsOneWidget);
+    expect(find.text('Você economizou 40% este mês.'), findsOneWidget);
+    expect(find.text('Conversar com a IA'), findsOneWidget);
+
+    await tester.tap(find.text('Conversar com a IA'));
+    expect(asked, true);
   });
 }
