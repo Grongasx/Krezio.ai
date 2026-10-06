@@ -16,3 +16,13 @@
 - App Flutter: esta pasta (testes: `flutter test`; histórico completo em `docs/SESSION_HANDOFF.md`).
 - Treino do modelo on-device do César: `scripts/ml/training/` (scikit-learn/ONNX).
   Ex.: `python scripts/ml/training/train_nlp_model.py > training_logs.txt 2>&1`
+
+## Repositórios e backup
+
+- **Público** `Grongasx/Krezio.ai`: app, testes e documentos da raiz. O `.gitignore` exclui `docs/`, `data/`, `scripts/` e `.agents/`.
+- **Privado** `Grongasx/Krezio.ai-private`: só `docs/`, `data/`, `scripts/` e `.agents/`, com git próprio em
+  `C:\Projects\.krezio-private.git` (usa esta pasta como área de trabalho). Nunca mova essas pastas para o repositório público.
+- Atualizar o backup privado: `bash scripts/backup_private.sh ["mensagem"]` (só faz commit se algo mudou). Rode ao fim de
+  sessões que alterarem `docs/`, `data/` ou `scripts/`.
+- Backlog no GitHub (issues + Project #8): `python scripts/github/create_backlog.py` sincroniza o `BACKLOG.md`;
+  `python scripts/github/project_mothers.py --project 8` deixa no Project só os épicos de fase.
