@@ -1,0 +1,17 @@
+{
+  "active_model": "faber-medium",
+  "model_name": "pt_BR-faber-medium",
+  "description": "Voz masculina madura, natural e profissional de consultor financeiro (Recomendado)",
+  "architecture": "Piper VITS (ONNX)",
+  "language": "pt-BR",
+  "sample_rate": 22050,
+  "files": {
+    "model": "pt_BR-faber-medium.onnx",
+    "config": "pt_BR-faber-medium.onnx.json",
+    "tokens": "tokens.txt"
+  },
+  "character": "César",
+  "persona": "Consultor Financeiro Empático, Maduro e Seguro",
+  "calibrated_pitch": 0.92,
+  "calibrated_rate": 0.5
+}

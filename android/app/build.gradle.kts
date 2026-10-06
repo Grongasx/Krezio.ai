@@ -8,7 +8,8 @@ plugins {
 android {
     namespace = "com.krezio.ai"
     compileSdk = flutter.compileSdkVersion
-
+    // speech_to_text requires NDK 28; NDKs are backward compatible.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

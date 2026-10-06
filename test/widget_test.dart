@@ -1,10 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
-import 'package:krezio_ai/core/models/financial_transaction.dart';
-import 'package:krezio_ai/core/models/budget_category.dart';
-import 'package:krezio_ai/core/repositories/financial_repository.dart';
-import 'package:krezio_ai/features/dashboard/presentation/widgets/metric_summary_card.dart';
-import 'package:krezio_ai/features/dashboard/presentation/widgets/ai_insight_card.dart';
+import 'package:krezio_ai/frontend/features/dashboard/presentation/widgets/metric_summary_card.dart';
+import 'package:krezio_ai/frontend/features/dashboard/presentation/widgets/ai_insight_card.dart';
 
 void main() {
   testWidgets('MetricSummaryCard renders amount and title properly', (WidgetTester tester) async {

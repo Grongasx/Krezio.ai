@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'core/ml/local_nlp_engine.dart';
-import 'core/theme/krezio_theme.dart';
-import 'core/repositories/financial_repository.dart';
-import 'features/navigation/main_navigation_wrapper.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'firebase_options.dart';
+import 'ai/local_nlp_engine.dart';
+import 'frontend/theme/krezio_theme.dart';
+import 'backend/repositories/financial_repository.dart';
+import 'backend/services/auth_service.dart';
+import 'backend/services/cloud_sync_service.dart';
+import 'frontend/features/navigation/main_navigation_wrapper.dart';
+import 'frontend/features/auth/presentation/screens/login_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,12 +28,23 @@ class _KrezioAppState extends State<KrezioApp> {
   ThemeMode _themeMode = ThemeMode.dark;
   LocalFinancialNlpEngine? _engine;
   final FinancialRepository _repository = FinancialRepository();
+  bool _isRepositoryReady = false;
   String? _errorMessage;
+
+  // Login is only required once Firebase has real credentials (see
+  // firebase_options.dart). Until `flutterfire configure` has run, the app
+  // falls back to working exactly as it did before — 100% local, no account.
+  bool _firebaseReady = false;
+  AuthService? _authService;
+  User? _currentUser;
+  CloudSyncService? _cloudSync;
 
   @override
   void initState() {
     super.initState();
     _loadNlpEngine();
+    _loadRepository();
+    _initFirebase();
   }
 
   Future<void> _loadNlpEngine() async {
@@ -43,10 +61,70 @@ class _KrezioAppState extends State<KrezioApp> {
     }
   }
 
+  Future<void> _loadRepository() async {
+    // Restores transactions, reminders, budgets, goals and category memory from
+    // the last session; on the very first run it just persists the seed data.
+    await _repository.initialize();
+    if (mounted) {
+      setState(() {
+        _isRepositoryReady = true;
+      });
+    }
+  }
+
+  Future<void> _initFirebase() async {
+    if (!DefaultFirebaseOptions.isConfigured) {
+      // Placeholder credentials — `flutterfire configure` hasn't run yet.
+      debugPrint('[Firebase] firebase_options.dart still has placeholder values; running local-only.');
+      return;
+    }
+    try {
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      // Firestore keeps working offline and queues writes to sync automatically
+      // once connectivity returns — this is the "sincroniza quando possível"
+      // half of the requirement; Krezio.ai's own on-device cache covers the rest.
+      FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+      _authService = AuthService();
+      _authService!.authStateChanges.listen(_onAuthChanged);
+      if (mounted) setState(() => _firebaseReady = true);
+    } catch (e) {
+      debugPrint('[Firebase] Initialization failed, running local-only: $e');
+    }
+  }
+
+  Future<void> _onAuthChanged(User? user) async {
+    await _cloudSync?.pushToCloud();
+    _cloudSync?.dispose();
+    _cloudSync = null;
+
+    if (user != null) {
+      final sync = CloudSyncService(repository: _repository, uid: user.uid);
+      try {
+        await sync.pullFromCloud();
+      } catch (e) {
+        debugPrint('[CloudSync] Initial pull failed, continuing with local data: $e');
+      }
+      sync.startAutoSync();
+      _cloudSync = sync;
+    }
+
+    if (mounted) setState(() => _currentUser = user);
+  }
+
+  Future<void> _signOut() async {
+    await _authService?.signOut();
+  }
+
   void _toggleTheme() {
     setState(() {
       _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
     });
+  }
+
+  @override
+  void dispose() {
+    _cloudSync?.dispose();
+    super.dispose();
   }
 
   @override
@@ -80,7 +158,7 @@ class _KrezioAppState extends State<KrezioApp> {
       );
     }
 
-    if (_engine == null) {
+    if (_engine == null || !_isRepositoryReady) {
       return Scaffold(
         body: Center(
           child: Column(
@@ -111,11 +189,18 @@ class _KrezioAppState extends State<KrezioApp> {
       );
     }
 
+    // Login is only enforced once Firebase is actually configured and reachable.
+    if (_firebaseReady && _currentUser == null) {
+      return LoginScreen(authService: _authService!, isDark: _themeMode == ThemeMode.dark);
+    }
+
     return MainNavigationWrapper(
       engine: _engine!,
       repository: _repository,
       onToggleTheme: _toggleTheme,
       isDark: _themeMode == ThemeMode.dark,
+      userEmail: _currentUser?.email,
+      onSignOut: (_firebaseReady && _currentUser != null) ? _signOut : null,
     );
   }
 }
