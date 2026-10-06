@@ -26,3 +26,6 @@
   sessões que alterarem `docs/`, `data/` ou `scripts/`.
 - Backlog no GitHub (issues + Project #8): `python scripts/github/create_backlog.py` sincroniza o `BACKLOG.md`;
   `python scripts/github/project_mothers.py --project 8` deixa no Project só os épicos de fase.
+- **Decisões vão para o card:** toda tarefa que exige uma decisão ganha um comentário na issue do card
+  (`gh issue comment <nº>`), com o título `### ✅ Decisão tomada …` (o que foi decidido e por quê) ou
+  `### ⏳ Decisão pendente …` (as opções, para o usuário responder ali).
