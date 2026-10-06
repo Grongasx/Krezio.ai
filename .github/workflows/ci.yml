@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Análise e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # Vários testes usam datas relativas ("ontem", "segunda", "mês passado"):
+      # rodar no fuso do Brasil evita falhas perto da meia-noite UTC.
+      TZ: America/Sao_Paulo
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.38.5
+          channel: stable
+          cache: true
+
+      - name: Dependências
+        run: flutter pub get
+
+      # Falha só com erro: os avisos e infos antigos são tratados aos poucos.
+      - name: Análise estática
+        run: flutter analyze lib --no-fatal-infos --no-fatal-warnings
+
+      # Só os testes de regressão. As baterias de test/_qa só medem e imprimem
+      # (levam ~15 min); rode-as localmente com `flutter test test/_qa/`.
+      - name: Testes
+        run: flutter test --reporter expanded test/*_test.dart
