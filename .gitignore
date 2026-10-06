@@ -36,3 +36,12 @@ scripts/
 
 # Code Review Graph
 .code-review-graph/
+
+# Heavy ONNX voice models (downloaded via scripts/download_voice_model.py)
+models/voice/*.onnx
+
+
+# Modelo de voz Piper (terceiros, ~139 MB; baixar de novo em models/voice/) e áudios temporários
+models/voice/**/*.onnx
+models/voice/vits-piper-*/espeak-ng-data/
+models/voice/*.wav

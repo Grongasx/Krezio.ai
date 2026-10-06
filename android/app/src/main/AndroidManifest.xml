@@ -1,11 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Voz: o César ouve o usuário pelo reconhecimento de fala do sistema (speech_to_text). -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Firebase (login/sincronização) quando configurado. -->
     <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.BLUETOOTH"/>
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+    <!-- Fone Bluetooth como microfone. As duas primeiras só existem até o Android 11. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30"/>
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
+
     <application
-        android:label="krezio_ai"
+        android:label="Krezio.ai"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -36,15 +40,17 @@
             android:name="flutterEmbedding"
             android:value="2" />
     </application>
-    <!-- Required to query activities that can process text, see:
-         https://developer.android.com/training/package-visibility and
-         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
-
-         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <!-- Package visibility (Android 11+): https://developer.android.com/training/package-visibility -->
     <queries>
+        <!-- Used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- speech_to_text: sem isto, no Android 11+ o app não enxerga o serviço de
+             reconhecimento de fala do sistema e o microfone do chat fica "indisponível". -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
         </intent>
     </queries>
 </manifest>
