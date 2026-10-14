@@ -27,11 +27,11 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 0.1 Configurar o projeto
 `20 pts` · 🔴 **Alta** · `DevOps` `Produto`
-- [ ] `DevOps` Criar o projeto Flutter (Android, iOS, Web, Windows; package `krezio_ai`, `minSdk` 23 → `flutter run` abre a tela inicial nas 4 plataformas) — ⚠️ parcial: sem a plataforma iOS (só Android, Web e Windows)
+- [ ] `DevOps` Criar o projeto Flutter (Android, iOS, Web, Windows; package `krezio_ai`, `minSdk` 23 → `flutter run` abre a tela inicial nas 4 plataformas) — ⚠️ parcial: pasta ios/ criada (bundle com.krezio.ai, permissões de microfone e fala); falta testar num Mac
 - [x] `DevOps` Definir a estrutura de pastas (`lib/ai` motor do César, `lib/backend` dados e serviços, `lib/frontend` telas e tema → nenhum import de `frontend` dentro de `ai`)
 - [x] `DevOps` Configurar lints e análise estática (`flutter_lints` + regras do projeto em `analysis_options.yaml` → `flutter analyze` com 0 erros)
-- [ ] `DevOps` Configurar o repositório git (`.gitignore` para `build/`, `.dart_tool/`, chaves e `google-services`; branch `main` protegida → nenhum segredo versionado) — ⚠️ parcial: branch main sem proteção; trabalho atual em feat/cesar-v0.5 sem commit
-- [ ] `Produto` Escrever o `README.md` (o que é o app, como rodar em web e Android, como rodar os testes, onde fica cada pasta → alguém novo roda o app só lendo o README) — ⚠️ parcial: o README ainda é o modelo padrão do Flutter
+- [x] `DevOps` Configurar o repositório git (`.gitignore` para `build/`, `.dart_tool/`, chaves e `google-services`; branch `main` protegida → nenhum segredo versionado)
+- [x] `Produto` Escrever o `README.md` (o que é o app, como rodar em web e Android, como rodar os testes, onde fica cada pasta → alguém novo roda o app só lendo o README)
 - [x] `DevOps` Garantir que o projeto fique num caminho sem acento (ex.: `C:\Projects\Krezio.ai`; o Android falha em "Área de Trabalho" → `flutter build apk` funciona)
 
 ### 0.2 Definir a arquitetura
@@ -39,14 +39,14 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Escolher o gerenciamento de estado (`ChangeNotifier` num repositório central, injetado nas telas → toda tela lê os dados da mesma fonte)
 - [x] `Backend` Separar as camadas (IA em Dart puro, sem Flutter; backend com modelos, repositório e serviços; frontend só com telas e widgets → a IA roda em teste sem `WidgetTester`)
 - [x] `Backend` Definir a regra de onde fica a lógica (toda regra de negócio em classe Dart pura testável, nunca dentro de widget → as telas só chamam métodos)
-- [ ] `Produto` Documentar as decisões de arquitetura (`docs/architecture`, com o porquê de cada escolha: sem LLM, local-first, Firebase opcional → uma página por decisão) — ⚠️ parcial: há 4 ADRs em docs/architecture/adr; faltam local-first e Firebase opcional
+- [x] `Produto` Documentar as decisões de arquitetura (`docs/architecture`, com o porquê de cada escolha: sem LLM, local-first, Firebase opcional → uma página por decisão)
 
 ### 0.3 Montar a infraestrutura de qualidade
 `30 pts` · 🔴 **Alta** · `DevOps` `QA` `Produto`
 - [x] `QA` Configurar `flutter test` e a estrutura de `test/` (um arquivo por classe, mais `test/_qa/` para baterias que só medem → `flutter test` roda tudo verde)
-- [ ] `DevOps` Configurar CI no GitHub Actions (analyze + test a cada push e PR, com cache do Flutter → PR com teste vermelho não pode ser mesclado)
-- [ ] `DevOps` Definir o fluxo de branch, commit e changelog (branch por feature `feat/…`, commits convencionais, versão semântica `MAJOR.MINOR.PATCH` → toda versão tem tag)
-- [ ] `Produto` Criar o `CHANGELOG.md` (formato Keep a Changelog, seções Added/Changed/Fixed por versão → toda release tem entrada) — ⚠️ parcial: CHANGELOG parado na v0.3.2-alpha
+- [x] `DevOps` Configurar CI no GitHub Actions (analyze + test a cada push e PR, com cache do Flutter → PR com teste vermelho não pode ser mesclado)
+- [x] `DevOps` Definir o fluxo de branch, commit e changelog (branch por feature `feat/…`, commits convencionais, versão semântica `MAJOR.MINOR.PATCH` → toda versão tem tag)
+- [x] `Produto` Criar o `CHANGELOG.md` (formato Keep a Changelog, seções Added/Changed/Fixed por versão → toda release tem entrada)
 
 ---
 
@@ -55,17 +55,17 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 1.1 Montar o design system
 `40 pts` · 🔴 **Alta** · `Design` `Frontend`
 - [x] `Design` Definir a paleta de cores (primária, superfícies, texto, sucesso para receita, erro para despesa, aviso; versões clara e escura → contraste AA em todo texto)
-- [ ] `Design` Definir a tipografia e os espaçamentos (escala de 4 pt; título, subtítulo, corpo, legenda e valor monetário em destaque → nenhum tamanho fora da escala nas telas)
+- [x] `Design` Definir a tipografia e os espaçamentos (escala de 4 pt; título, subtítulo, corpo, legenda e valor monetário em destaque → nenhum tamanho fora da escala nas telas)
 - [x] `Frontend` Criar o tema global `krezio_theme` (`ThemeData` claro e escuro, cores e textos vindos dos tokens → trocar o tema muda o app inteiro sem cor fixa em widget)
-- [ ] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado)
+- [ ] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado) — ⚠️ parcial: componentes criados e usados nos diálogos e estados vazios; botões, campos e cards das telas antigas ainda não migrados
 - [x] `Design` Definir os ícones e as cores de cada categoria (mercado, transporte, moradia, lazer, saúde, educação, salário, outros… → cada categoria tem um par fixo ícone + cor)
 
 ### 1.2 Criar a navegação
 `30 pts` · 🔴 **Alta** · `Frontend` `Design`
 - [x] `Frontend` Criar a barra de navegação principal (Dashboard, Extrato, Orçamentos, Chat do César, Configurações → a aba ativa fica destacada e o estado de cada aba é mantido ao trocar)
-- [ ] `Frontend` Criar o wrapper de navegação e as rotas (rotas nomeadas, botão voltar do Android respeitado, deep link para o chat → voltar nunca fecha o app no meio de um fluxo)
-- [ ] `Design` Criar a splash screen (logo e cor da marca, sem texto pequeno → aparece enquanto os dados carregam e some em menos de 2 s)
-- [ ] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados) — ⚠️ parcial: estados vazios em algumas telas; sem skeleton nem padrão único
+- [x] `Frontend` Criar o wrapper de navegação e as rotas (rotas nomeadas, botão voltar do Android respeitado, deep link para o chat → voltar nunca fecha o app no meio de um fluxo)
+- [x] `Design` Criar a splash screen (logo e cor da marca, sem texto pequeno → aparece enquanto os dados carregam e some em menos de 2 s)
+- [ ] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados) — ⚠️ parcial: vazio e erro padronizados (KrezioEmptyState/KrezioErrorState); listas carregam da memória, então o skeleton ainda não é usado
 
 ---
 
@@ -86,7 +86,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Criar o repositório central (fonte única da verdade com lançamentos, categorias, orçamentos, metas, lembretes; avisa as telas a cada mudança → nenhuma tela guarda cópia própria dos dados)
 - [x] `Backend` Criar uma fila de gravação sequencial (cada gravação espera a anterior terminar → limpar dados e logo depois lançar algo nunca faz os dados de demonstração voltarem)
 - [x] `Backend` Carregar os dados ao abrir o app e salvar a cada mudança (carregamento antes da primeira tela, gravações agrupadas → fechar o app logo após lançar não perde o lançamento)
-- [ ] `Backend` Criar "Limpar dados" e os dados de demonstração (demonstração só no primeiro uso e sempre com datas no passado → nenhum lançamento de demonstração com data futura) — ⚠️ parcial: os dados de demonstração criam lançamento com data futura (dia 10 do mês)
+- [x] `Backend` Criar "Limpar dados" e os dados de demonstração (demonstração só no primeiro uso e sempre com datas no passado → nenhum lançamento de demonstração com data futura)
 - [x] `QA` Testar a persistência sobrevivendo a reload e restart (lançar, recarregar, conferir; limpar, lançar, recarregar → o que está na memória é igual ao que está no disco)
 
 ### 2.3 Criar a autenticação de usuário
@@ -94,10 +94,10 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [ ] `DevOps` Criar o projeto no Firebase e rodar `flutterfire configure` (plataformas web, Android e Windows → `lib/firebase_options.dart` sem `REPLACE_ME`)
 - [ ] `DevOps` Ativar o login por e-mail e senha no console do Firebase (Authentication → Métodos de login → E-mail/senha → cadastro de teste funciona no console)
 - [x] `Frontend` Criar a tela de login (e-mail + senha, mostrar/ocultar senha, botão desabilitado até os campos serem válidos, carregando durante o envio → erro em PT, ex.: "E-mail ou senha incorretos")
-- [ ] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos) — ⚠️ parcial: login e cadastro na mesma tela; sem aceite de termos
+- [ ] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos) — ⚠️ parcial: nome, e-mail, senha e confirmação prontos; falta o aceite dos termos, que depende dos documentos do card 7.3
 - [x] `Frontend` Criar o fluxo "esqueci minha senha" (pede o e-mail e envia o link do Firebase → sempre mostra "Se o e-mail existir, enviamos um link", sem revelar se a conta existe)
 - [x] `Backend` Criar a lógica de login e as validações (e-mail com formato válido, senha não vazia, códigos do Firebase traduzidos: usuário não encontrado, senha errada, muitas tentativas, sem internet → nenhuma mensagem em inglês)
-- [ ] `Backend` Criar a lógica de cadastro e as validações (senha com 8+ caracteres, com letra e número; e-mail já usado → "Esse e-mail já tem conta. Quer entrar?") — ⚠️ parcial: validação de senha forte não confirmada
+- [x] `Backend` Criar a lógica de cadastro e as validações (senha com 8+ caracteres, com letra e número; e-mail já usado → "Esse e-mail já tem conta. Quer entrar?")
 - [x] `Frontend` Criar o botão "Sair" e a troca de sessão (confirmação antes de sair; ao trocar de usuário, os dados do anterior somem da tela → um usuário nunca vê dados de outro)
 - [x] `Backend` Criar o modo local sem conta (sem Firebase configurado, o app abre direto e guarda tudo no aparelho → nenhuma tela de login quebra o uso offline)
 
@@ -108,8 +108,8 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Ativar a persistência offline do Firestore (`persistenceEnabled: true` → sem internet o app continua funcionando e envia ao reconectar)
 - [x] `Backend` Criar o serviço de sincronização (local-first: grava local na hora e envia à nuvem com debounce de 2 s → a tela nunca espera a rede)
 - [x] `Backend` Aplicar o snapshot que vem da nuvem no repositório (ao logar em outro aparelho, baixa tudo e substitui o local → os dois aparelhos mostram o mesmo saldo)
-- [ ] `Backend` Tratar duas abas ou dois aparelhos editando ao mesmo tempo (merge por lançamento com data de atualização, não o documento inteiro → uma edição não apaga a outra)
-- [ ] `QA` Testar a sincronização com mocks (offline → online, conflito entre aparelhos, logout no meio do envio → nenhum lançamento perdido ou duplicado)
+- [x] `Backend` Tratar duas abas ou dois aparelhos editando ao mesmo tempo (merge por lançamento com data de atualização, não o documento inteiro → uma edição não apaga a outra)
+- [x] `QA` Testar a sincronização com mocks (offline → online, conflito entre aparelhos, logout no meio do envio → nenhum lançamento perdido ou duplicado)
 
 ---
 

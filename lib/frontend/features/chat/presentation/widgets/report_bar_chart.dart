@@ -37,7 +37,7 @@ class ReportBarChart extends StatelessWidget {
       children: [
         for (int i = 0; i < data.length; i++)
           Padding(
-            padding: EdgeInsets.only(bottom: i == data.length - 1 ? 0 : 10),
+            padding: EdgeInsets.only(bottom: i == data.length - 1 ? 0 : KrezioSpace.md),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -48,17 +48,17 @@ class ReportBarChart extends StatelessWidget {
                       child: Text(
                         data[i].key,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textColor),
+                        style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600, color: textColor),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     Text(
                       'R\$ ${_formatMoney(data[i].value)}',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _palette[i % _palette.length]),
+                      style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w700, color: _palette[i % _palette.length]),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: KrezioSpace.xs),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final ratio = maxValue == 0 ? 0.0 : (data[i].value.abs() / maxValue);

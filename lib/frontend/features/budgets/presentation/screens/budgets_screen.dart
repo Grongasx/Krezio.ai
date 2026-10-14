@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/models/budget_category.dart';
 import '../../../../../backend/models/financial_goal.dart';
@@ -37,7 +38,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
             elevation: 0,
             title: Text(
               'Metas & Orçamentos',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryTextColor),
+              style: TextStyle(fontSize: KrezioFont.title, fontWeight: FontWeight.bold, color: primaryTextColor),
             ),
           ),
           floatingActionButton: FloatingActionButton(
@@ -63,9 +64,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final secondaryTextColor = isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.fromLTRB(KrezioSpace.lg, KrezioSpace.sm, KrezioSpace.lg, KrezioSpace.xs),
       child: Container(
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(KrezioSpace.xs),
         decoration: BoxDecoration(
           color: bgSurface,
           borderRadius: BorderRadius.circular(12),
@@ -85,7 +86,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     return GestureDetector(
       onTap: () => setState(() => _tabIndex = index),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: const EdgeInsets.symmetric(vertical: KrezioSpace.md),
         decoration: BoxDecoration(
           color: selected ? KrezioColors.aiPurple : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
@@ -94,7 +95,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         child: Text(
           label,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: KrezioFont.small,
             fontWeight: FontWeight.bold,
             color: selected ? Colors.white : unselectedColor,
           ),
@@ -117,11 +118,11 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final secondaryTextColor = isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       children: [
         // Overall Monthly Budget Hero Card
         Container(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(KrezioSpace.lg),
           decoration: BoxDecoration(
             color: bgSurface,
             borderRadius: KrezioTheme.borderRadius,
@@ -135,28 +136,28 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                 children: [
                   Text(
                     'Teto de Gastos Mensal',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: secondaryTextColor),
+                    style: TextStyle(fontSize: KrezioFont.bodySmall, fontWeight: FontWeight.w600, color: secondaryTextColor),
                   ),
                   Text(
                     '${(overallProgress * 100).toStringAsFixed(0)}% Utilizado',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: KrezioColors.aiPurple),
+                    style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: KrezioColors.aiPurple),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: KrezioSpace.md),
               Row(
                 children: [
                   Text(
                     'R\$ ${totalSpent.toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: primaryTextColor),
+                    style: TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold, color: primaryTextColor),
                   ),
                   Text(
                     ' / R\$ ${totalBudget.toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: TextStyle(fontSize: 14, color: secondaryTextColor),
+                    style: TextStyle(fontSize: KrezioFont.body, color: secondaryTextColor),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: KrezioSpace.md),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: LinearProgressIndicator(
@@ -171,13 +172,13 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
             ],
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: KrezioSpace.xl),
 
         Text(
           'Limites por Categoria',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryTextColor),
+          style: TextStyle(fontSize: KrezioFont.bodyLarge, fontWeight: FontWeight.bold, color: primaryTextColor),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: KrezioSpace.md),
 
         ...budgets.map((b) => _buildBudgetCard(context, b, bgSurface, borderColor, primaryTextColor, secondaryTextColor)),
       ],
@@ -198,8 +199,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         : (b.isNearLimit ? KrezioColors.friendlyOrange : b.color);
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: KrezioSpace.md),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       decoration: BoxDecoration(
         color: bgSurface,
         borderRadius: KrezioTheme.borderRadius,
@@ -211,25 +212,25 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(
                   color: b.color.withOpacity(0.12),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(b.icon, color: b.color, size: 16),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: KrezioSpace.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       b.name,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryTextColor),
+                      style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                     ),
                     Text(
                       'R\$ ${b.currentSpent.toStringAsFixed(2).replaceAll('.', ',')} de R\$ ${b.monthlyLimit.toStringAsFixed(2).replaceAll('.', ',')}',
-                      style: TextStyle(fontSize: 11, color: secondaryTextColor),
+                      style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
                     ),
                   ],
                 ),
@@ -248,7 +249,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: KrezioSpace.md),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
@@ -259,16 +260,16 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
             ),
           ),
           if (b.isOverBudget) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: KrezioSpace.sm),
             Text(
               '⚠️ Limite mensal ultrapassado em R\$ ${(b.currentSpent - b.monthlyLimit).toStringAsFixed(2).replaceAll('.', ',')}',
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: KrezioColors.friendlyOrange),
+              style: const TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: KrezioColors.friendlyOrange),
             ),
           ] else if (b.isNearLimit) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: KrezioSpace.sm),
             Text(
               '💡 Restam R\$ ${b.remaining.toStringAsFixed(2).replaceAll('.', ',')} para atingir o teto.',
-              style: TextStyle(fontSize: 11, color: secondaryTextColor),
+              style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
             ),
           ],
         ],
@@ -279,63 +280,36 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   void _showEditBudgetDialog(BuildContext context, BudgetCategory b) {
     final controller = TextEditingController(text: b.monthlyLimit.toStringAsFixed(0));
     final nameController = TextEditingController(text: b.name);
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-          title: Text(b.isCustom ? 'Editar Categoria' : 'Ajustar Meta: ${b.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Only custom categories can be renamed — built-in names are
-              // referenced by fixed labels elsewhere (transaction list, reports).
-              if (b.isCustom) ...[
-                TextField(
-                  controller: nameController,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Nome da categoria'),
-                ),
-                const SizedBox(height: 12),
-              ],
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Novo Limite Mensal (R\$)',
-                  prefixText: 'R\$ ',
-                ),
-              ),
-            ],
+    showKrezioFormDialog(
+      context,
+      title: b.isCustom ? 'Editar Categoria' : 'Ajustar Meta: ${b.name}',
+      fields: [
+        // Only custom categories can be renamed — built-in names are
+        // referenced by fixed labels elsewhere (transaction list, reports).
+        if (b.isCustom)
+          KrezioTextField(
+            controller: nameController,
+            label: 'Nome da categoria',
+            textCapitalization: TextCapitalization.sentences,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Cancelar'),
+        KrezioMoneyField(controller: controller, label: 'Novo Limite Mensal'),
+      ],
+      onConfirm: () {
+        final val = KrezioMoneyField.parse(controller.text);
+        if (val == null) return false;
+        final newName = nameController.text.trim();
+        if (b.isCustom && newName != b.name && !repository.renameBudgetCategory(b.category, newName)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(newName.isEmpty
+                  ? 'O nome da categoria não pode ficar vazio.'
+                  : 'Já existe uma categoria chamada "$newName".'),
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: KrezioColors.aiPurple),
-              onPressed: () {
-                final val = double.tryParse(controller.text);
-                if (val == null || val <= 0) return;
-                final newName = nameController.text.trim();
-                if (b.isCustom && newName != b.name && !repository.renameBudgetCategory(b.category, newName)) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(newName.isEmpty
-                          ? 'O nome da categoria não pode ficar vazio.'
-                          : 'Já existe uma categoria chamada "$newName".'),
-                    ),
-                  );
-                  return;
-                }
-                repository.setBudgetLimit(b.category, val);
-                Navigator.of(ctx).pop();
-              },
-              child: const Text('Salvar', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
+          );
+          return false;
+        }
+        repository.setBudgetLimit(b.category, val);
+        return true;
       },
     );
   }
@@ -348,27 +322,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final secondaryTextColor = isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
 
     if (goals.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.flag_outlined, size: 48, color: secondaryTextColor),
-              const SizedBox(height: 16),
-              Text(
-                'Nenhuma meta ainda',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: primaryTextColor),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Toque no + ou diga ao César algo como\n"quero juntar 5000 para uma viagem até dezembro"',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: secondaryTextColor),
-              ),
-            ],
-          ),
-        ),
+      return const KrezioEmptyState(
+        icon: Icons.flag_outlined,
+        title: 'Nenhuma meta ainda',
+        message: 'Toque no + ou diga ao César algo como\n"quero juntar 5000 para uma viagem até dezembro"',
       );
     }
 
@@ -376,7 +333,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final borderColor = isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder;
 
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       itemCount: goals.length,
       itemBuilder: (context, index) {
         final goal = goals[index];
@@ -395,8 +352,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     Color secondaryTextColor,
   ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: KrezioSpace.md),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       decoration: BoxDecoration(
         color: bgSurface,
         borderRadius: KrezioTheme.borderRadius,
@@ -408,15 +365,15 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
                 child: Icon(goal.isCompleted ? Icons.check_circle : Icons.flag_outlined, color: color, size: 16),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: KrezioSpace.md),
               Expanded(
                 child: Text(
                   goal.title,
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryTextColor),
+                  style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                 ),
               ),
               IconButton(
@@ -432,12 +389,12 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: KrezioSpace.md),
           Text(
             'R\$ ${goal.savedAmount.toStringAsFixed(2).replaceAll('.', ',')} de R\$ ${goal.targetAmount.toStringAsFixed(2).replaceAll('.', ',')}',
-            style: TextStyle(fontSize: 12, color: secondaryTextColor),
+            style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: KrezioSpace.sm),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
@@ -448,13 +405,13 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
             ),
           ),
           if (goal.isCompleted) ...[
-            const SizedBox(height: 8),
-            const Text('🎉 Meta concluída!', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: KrezioColors.emeraldGreen)),
+            const SizedBox(height: KrezioSpace.sm),
+            const Text('🎉 Meta concluída!', style: TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: KrezioColors.emeraldGreen)),
           ] else if (goal.suggestedMonthlyContribution != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: KrezioSpace.sm),
             Text(
               '💡 Guarde R\$ ${goal.suggestedMonthlyContribution!.toStringAsFixed(2).replaceAll('.', ',')}/mês para chegar a tempo.',
-              style: TextStyle(fontSize: 11, color: secondaryTextColor),
+              style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
             ),
           ],
         ],
@@ -464,33 +421,16 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
 
   void _showContributeDialog(BuildContext context, FinancialGoal goal) {
     final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-          title: Text('Guardar para: ${goal.title}'),
-          content: TextField(
-            controller: controller,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            autofocus: true,
-            decoration: const InputDecoration(labelText: 'Valor guardado', prefixText: 'R\$ '),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: KrezioColors.aiPurple),
-              onPressed: () {
-                final val = double.tryParse(controller.text.replaceAll(',', '.'));
-                if (val != null && val > 0) {
-                  repository.contributeToGoal(goal.id, val);
-                  Navigator.of(ctx).pop();
-                }
-              },
-              child: const Text('Guardar', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
+    showKrezioFormDialog(
+      context,
+      title: 'Guardar para: ${goal.title}',
+      confirmLabel: 'Guardar',
+      fields: [KrezioMoneyField(controller: controller, label: 'Valor guardado', autofocus: true)],
+      onConfirm: () {
+        final val = KrezioMoneyField.parse(controller.text);
+        if (val == null) return false;
+        repository.contributeToGoal(goal.id, val);
+        return true;
       },
     );
   }
@@ -498,44 +438,20 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   void _showAddCategoryDialog(BuildContext context) {
     final nameController = TextEditingController();
     final limitController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-          title: const Text('Nova Categoria'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Nome (ex: Pets, Presentes)'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: limitController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Limite mensal', prefixText: 'R\$ '),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: KrezioColors.aiPurple),
-              onPressed: () {
-                final name = nameController.text.trim();
-                final limit = double.tryParse(limitController.text.replaceAll(',', '.'));
-                if (name.isNotEmpty && limit != null && limit > 0) {
-                  repository.addBudgetCategory(name, limit);
-                  Navigator.of(ctx).pop();
-                }
-              },
-              child: const Text('Criar', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
+    showKrezioFormDialog(
+      context,
+      title: 'Nova Categoria',
+      confirmLabel: 'Criar',
+      fields: [
+        KrezioTextField(controller: nameController, label: 'Nome (ex: Pets, Presentes)', autofocus: true),
+        KrezioMoneyField(controller: limitController, label: 'Limite mensal'),
+      ],
+      onConfirm: () {
+        final name = nameController.text.trim();
+        final limit = KrezioMoneyField.parse(limitController.text);
+        if (name.isEmpty || limit == null) return false;
+        repository.addBudgetCategory(name, limit);
+        return true;
       },
     );
   }
@@ -543,48 +459,24 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   void _showAddGoalDialog(BuildContext context) {
     final titleController = TextEditingController();
     final amountController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-          title: const Text('Nova Meta de Economia'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: titleController,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Título (ex: Viagem, Notebook)'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: amountController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Valor alvo', prefixText: 'R\$ '),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: KrezioColors.aiPurple),
-              onPressed: () {
-                final title = titleController.text.trim();
-                final amount = double.tryParse(amountController.text.replaceAll(',', '.'));
-                if (title.isNotEmpty && amount != null && amount > 0) {
-                  repository.addGoal(FinancialGoal(
-                    id: 'goal-${DateTime.now().millisecondsSinceEpoch}',
-                    title: title,
-                    targetAmount: amount,
-                  ));
-                  Navigator.of(ctx).pop();
-                }
-              },
-              child: const Text('Criar', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
+    showKrezioFormDialog(
+      context,
+      title: 'Nova Meta de Economia',
+      confirmLabel: 'Criar',
+      fields: [
+        KrezioTextField(controller: titleController, label: 'Título (ex: Viagem, Notebook)', autofocus: true),
+        KrezioMoneyField(controller: amountController, label: 'Valor alvo'),
+      ],
+      onConfirm: () {
+        final title = titleController.text.trim();
+        final amount = KrezioMoneyField.parse(amountController.text);
+        if (title.isEmpty || amount == null) return false;
+        repository.addGoal(FinancialGoal(
+          id: 'goal-${DateTime.now().millisecondsSinceEpoch}',
+          title: title,
+          targetAmount: amount,
+        ));
+        return true;
       },
     );
   }
