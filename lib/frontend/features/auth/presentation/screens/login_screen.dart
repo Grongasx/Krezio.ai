@@ -96,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(KrezioSpace.xxl),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
               child: Form(
@@ -105,35 +105,35 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(KrezioSpace.lg),
                       decoration: BoxDecoration(
                         color: KrezioColors.aiPurple.withOpacity(0.15),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 36),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: KrezioSpace.lg),
                     Center(
                       child: Text(
                         'Krezio.ai',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: primaryText),
+                        style: TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold, color: primaryText),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: KrezioSpace.xs),
                     Center(
                       child: Text(
                         _isSignUp ? 'Crie sua conta para sincronizar seus dados' : 'Entre para continuar',
-                        style: TextStyle(fontSize: 13, color: secondaryText),
+                        style: TextStyle(fontSize: KrezioFont.bodySmall, color: secondaryText),
                       ),
                     ),
-                    const SizedBox(height: 32),
+                    const SizedBox(height: KrezioSpace.xxxl),
                     if (_isSignUp) ...[
                       TextFormField(
                         controller: _nameController,
                         style: TextStyle(color: primaryText),
                         decoration: _inputDecoration('Nome', Icons.person_outline, surfaceColor, borderColor, secondaryText),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: KrezioSpace.md),
                     ],
                     TextFormField(
                       controller: _emailController,
@@ -146,7 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         return null;
                       },
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: KrezioSpace.md),
                     TextFormField(
                       controller: _passwordController,
                       style: TextStyle(color: primaryText),
@@ -159,18 +159,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
                     if (_errorMessage != null) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: KrezioSpace.md),
                       Text(
                         _errorMessage!,
-                        style: const TextStyle(color: KrezioColors.friendlyOrange, fontSize: 13),
+                        style: const TextStyle(color: KrezioColors.friendlyOrange, fontSize: KrezioFont.bodySmall),
                       ),
                     ],
-                    const SizedBox(height: 24),
+                    const SizedBox(height: KrezioSpace.xxl),
                     ElevatedButton(
                       onPressed: _isLoading ? null : _submit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: KrezioColors.aiPurple,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: KrezioSpace.lg),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       child: _isLoading
@@ -184,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: KrezioSpace.md),
                     if (!_isSignUp)
                       TextButton(
                         onPressed: _isLoading ? null : _forgotPassword,

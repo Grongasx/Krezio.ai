@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../navigation/krezio_routes.dart';
 import '../../theme/krezio_theme.dart';
 import '../../../backend/repositories/financial_repository.dart';
 import '../../../ai/local_nlp_engine.dart';
@@ -16,6 +18,9 @@ class MainNavigationWrapper extends StatefulWidget {
   final String? userEmail;
   final Future<void> Function()? onSignOut;
 
+  /// Tab to open first (from the deep link / initial route).
+  final int initialIndex;
+
   const MainNavigationWrapper({
     super.key,
     required this.engine,
@@ -24,6 +29,7 @@ class MainNavigationWrapper extends StatefulWidget {
     required this.isDark,
     this.userEmail,
     this.onSignOut,
+    this.initialIndex = 0,
   });
 
   @override
@@ -31,7 +37,14 @@ class MainNavigationWrapper extends StatefulWidget {
 }
 
 class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
-  int _currentIndex = 0;
+  late int _currentIndex = widget.initialIndex;
+
+  void _goTo(int index) {
+    if (index == _currentIndex) return;
+    setState(() => _currentIndex = index);
+    // Keeps the browser URL in step with the tab (no-op off the web).
+    SystemNavigator.routeInformationUpdated(uri: Uri.parse(KrezioRoutes.tabs[index]));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,8 +55,8 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
       DashboardScreen(
         repository: widget.repository,
         isDark: widget.isDark,
-        onNavigateToChat: () => setState(() => _currentIndex = 2),
-        onNavigateToTransactions: () => setState(() => _currentIndex = 1),
+        onNavigateToChat: () => _goTo(2),
+        onNavigateToTransactions: () => _goTo(1),
       ),
       TransactionsScreen(
         repository: widget.repository,
@@ -69,58 +82,66 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
       ),
     ];
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: pages,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: bgNav,
-          border: Border(
-            top: BorderSide(
-              color: widget.isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder,
-              width: 1,
+    // Android back on any tab other than Início goes to Início instead of
+    // closing the app; on Início it behaves normally (leaves the app).
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _goTo(0);
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: pages,
+        ),
+        bottomNavigationBar: Container(
+          decoration: BoxDecoration(
+            color: bgNav,
+            border: Border(
+              top: BorderSide(
+                color: widget.isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder,
+                width: 1,
+              ),
             ),
           ),
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _currentIndex,
-          onTap: (index) => setState(() => _currentIndex = index),
-          backgroundColor: bgNav,
-          elevation: 0,
-          type: BottomNavigationBarType.fixed,
-          selectedItemColor: KrezioColors.aiPurple,
-          unselectedItemColor: unselectedColor,
-          selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-          unselectedLabelStyle: const TextStyle(fontSize: 11),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.dashboard_outlined),
-              activeIcon: Icon(Icons.dashboard),
-              label: 'Início',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_outlined),
-              activeIcon: Icon(Icons.receipt_long),
-              label: 'Extrato',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.auto_awesome_outlined),
-              activeIcon: Icon(Icons.auto_awesome),
-              label: 'IA Chat',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.pie_chart_outline),
-              activeIcon: Icon(Icons.pie_chart),
-              label: 'Metas',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.settings_outlined),
-              activeIcon: Icon(Icons.settings),
-              label: 'Ajustes',
-            ),
-          ],
+          child: BottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: _goTo,
+            backgroundColor: bgNav,
+            elevation: 0,
+            type: BottomNavigationBarType.fixed,
+            selectedItemColor: KrezioColors.aiPurple,
+            unselectedItemColor: unselectedColor,
+            selectedLabelStyle: const TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.bold),
+            unselectedLabelStyle: const TextStyle(fontSize: KrezioFont.caption),
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.dashboard_outlined),
+                activeIcon: Icon(Icons.dashboard),
+                label: 'Início',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.receipt_long_outlined),
+                activeIcon: Icon(Icons.receipt_long),
+                label: 'Extrato',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.auto_awesome_outlined),
+                activeIcon: Icon(Icons.auto_awesome),
+                label: 'IA Chat',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.pie_chart_outline),
+                activeIcon: Icon(Icons.pie_chart),
+                label: 'Metas',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.settings_outlined),
+                activeIcon: Icon(Icons.settings),
+                label: 'Ajustes',
+              ),
+            ],
+          ),
         ),
       ),
     );

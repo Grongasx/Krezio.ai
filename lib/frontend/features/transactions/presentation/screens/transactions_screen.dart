@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 import '../widgets/transaction_list_tile.dart';
@@ -63,7 +64,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             elevation: 0,
             title: Text(
               'Extrato de Transações',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryTextColor),
+              style: TextStyle(fontSize: KrezioFont.title, fontWeight: FontWeight.bold, color: primaryTextColor),
             ),
             actions: [
               IconButton(
@@ -76,13 +77,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             children: [
               // Search Bar
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
                 child: TextField(
                   controller: _searchController,
                   onChanged: (val) => setState(() => _searchQuery = val.trim()),
                   decoration: InputDecoration(
                     hintText: 'Buscar por nome, categoria ou banco...',
-                    hintStyle: TextStyle(fontSize: 13, color: secondaryTextColor),
+                    hintStyle: TextStyle(fontSize: KrezioFont.bodySmall, color: secondaryTextColor),
                     prefixIcon: const Icon(Icons.search, size: 20),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
@@ -95,7 +96,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         : null,
                     filled: true,
                     fillColor: bgSurface,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
                     border: OutlineInputBorder(borderRadius: KrezioTheme.borderRadius, borderSide: BorderSide.none),
                   ),
                 ),
@@ -104,41 +105,35 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               // Filter Chips Carousel
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.xs),
                 child: Row(
                   children: [
                     _buildFilterChip('all', 'Todos (${allTxs.length})'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     _buildFilterChip('expense', '💸 Despesas'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     _buildFilterChip('income', '✨ Receitas'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     _buildFilterChip('installments', '💳 Parceladas'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     _buildFilterChip('recurrent', '🔁 Recorrentes'),
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: KrezioSpace.sm),
 
               // Transactions List View
               Expanded(
                 child: filtered.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.search_off, size: 48, color: secondaryTextColor.withOpacity(0.5)),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Nenhum lançamento encontrado.',
-                              style: TextStyle(color: secondaryTextColor, fontSize: 14),
-                            ),
-                          ],
-                        ),
+                    ? KrezioEmptyState(
+                        icon: _searchQuery.isEmpty ? Icons.receipt_long_outlined : Icons.search_off,
+                        title: _searchQuery.isEmpty ? 'Nenhum lançamento ainda' : 'Nenhum lançamento encontrado',
+                        message: _searchQuery.isEmpty
+                            ? 'Fale com o César: "gastei 50 no mercado no pix"'
+                            : 'Tente outra palavra ou limpe a busca.',
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
                         itemCount: filtered.length,
                         itemBuilder: (context, index) {
                           final tx = filtered[index];
@@ -161,7 +156,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Widget _buildFilterChip(String key, String label) {
     final isSelected = _selectedFilter == key;
     return ChoiceChip(
-      label: Text(label, style: const TextStyle(fontSize: 12)),
+      label: Text(label, style: const TextStyle(fontSize: KrezioFont.small)),
       selected: isSelected,
       selectedColor: KrezioColors.aiPurple,
       onSelected: (val) {

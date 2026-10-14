@@ -11,6 +11,8 @@ import 'backend/services/auth_service.dart';
 import 'backend/services/cloud_sync_service.dart';
 import 'frontend/features/navigation/main_navigation_wrapper.dart';
 import 'frontend/features/auth/presentation/screens/login_screen.dart';
+import 'frontend/navigation/krezio_routes.dart';
+import 'frontend/widgets/krezio_components.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +32,9 @@ class _KrezioAppState extends State<KrezioApp> {
   final FinancialRepository _repository = FinancialRepository();
   bool _isRepositoryReady = false;
   String? _errorMessage;
+
+  // Deep link: the route the app was opened at (web `/#/chat`, Android intent).
+  final int _initialTab = KrezioRoutes.tabFor(WidgetsBinding.instance.platformDispatcher.defaultRouteName);
 
   // Login is only required once Firebase has real credentials (see
   // firebase_options.dart). Until `flutterfire configure` has run, the app
@@ -142,51 +147,18 @@ class _KrezioAppState extends State<KrezioApp> {
   Widget _buildHome() {
     if (_errorMessage != null) {
       return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, color: KrezioColors.friendlyOrange, size: 48),
-                const SizedBox(height: 16),
-                Text(_errorMessage!, textAlign: TextAlign.center),
-              ],
-            ),
-          ),
+        body: KrezioErrorState(
+          message: _errorMessage!,
+          onRetry: () {
+            setState(() => _errorMessage = null);
+            _loadNlpEngine();
+          },
         ),
       );
     }
 
     if (_engine == null || !_isRepositoryReady) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: KrezioColors.aiPurple.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.auto_awesome,
-                  color: KrezioColors.aiPurple,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const CircularProgressIndicator(color: KrezioColors.aiPurple),
-              const SizedBox(height: 16),
-              const Text(
-                'Carregando Engine Local On-Device...',
-                style: TextStyle(fontSize: 14, color: KrezioColors.aiPurple),
-              ),
-            ],
-          ),
-        ),
-      );
+      return const KrezioSplash();
     }
 
     // Login is only enforced once Firebase is actually configured and reachable.
@@ -201,6 +173,7 @@ class _KrezioAppState extends State<KrezioApp> {
       isDark: _themeMode == ThemeMode.dark,
       userEmail: _currentUser?.email,
       onSignOut: (_firebaseReady && _currentUser != null) ? _signOut : null,
+      initialIndex: _initialTab,
     );
   }
 }

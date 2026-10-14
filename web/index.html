@@ -18,12 +18,12 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Krezio.ai — finanças pessoais com o César, assistente que entende o que você fala.">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="krezio_ai">
+  <meta name="apple-mobile-web-app-title" content="Krezio.ai">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
@@ -31,8 +31,23 @@
 
   <title>Krezio.ai</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    /* Abertura da web: fundo do app + anel roxo da marca até o primeiro quadro do Flutter. */
+    html, body { margin: 0; height: 100%; background: #121212; }
+    #krezio-splash { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+    #krezio-splash div { width: 48px; height: 48px; border-radius: 50%;
+      border: 3px solid rgba(139, 92, 246, 0.25); border-top-color: #8B5CF6; animation: krezio-spin 0.9s linear infinite; }
+    @keyframes krezio-spin { to { transform: rotate(360deg); } }
+  </style>
 </head>
 <body>
+  <div id="krezio-splash" aria-label="Carregando Krezio.ai"><div></div></div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('krezio-splash');
+      if (el) el.remove();
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

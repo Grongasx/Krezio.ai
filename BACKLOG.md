@@ -27,11 +27,11 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 0.1 Configurar o projeto
 `20 pts` · 🔴 **Alta** · `DevOps` `Produto`
-- [ ] `DevOps` Criar o projeto Flutter (Android, iOS, Web, Windows; package `krezio_ai`, `minSdk` 23 → `flutter run` abre a tela inicial nas 4 plataformas) — ⚠️ parcial: sem a plataforma iOS (só Android, Web e Windows)
+- [ ] `DevOps` Criar o projeto Flutter (Android, iOS, Web, Windows; package `krezio_ai`, `minSdk` 23 → `flutter run` abre a tela inicial nas 4 plataformas) — ⚠️ parcial: pasta ios/ criada (bundle com.krezio.ai, permissões de microfone e fala); falta testar num Mac
 - [x] `DevOps` Definir a estrutura de pastas (`lib/ai` motor do César, `lib/backend` dados e serviços, `lib/frontend` telas e tema → nenhum import de `frontend` dentro de `ai`)
 - [x] `DevOps` Configurar lints e análise estática (`flutter_lints` + regras do projeto em `analysis_options.yaml` → `flutter analyze` com 0 erros)
-- [ ] `DevOps` Configurar o repositório git (`.gitignore` para `build/`, `.dart_tool/`, chaves e `google-services`; branch `main` protegida → nenhum segredo versionado) — ⚠️ parcial: branch main sem proteção; trabalho atual em feat/cesar-v0.5 sem commit
-- [ ] `Produto` Escrever o `README.md` (o que é o app, como rodar em web e Android, como rodar os testes, onde fica cada pasta → alguém novo roda o app só lendo o README) — ⚠️ parcial: o README ainda é o modelo padrão do Flutter
+- [x] `DevOps` Configurar o repositório git (`.gitignore` para `build/`, `.dart_tool/`, chaves e `google-services`; branch `main` protegida → nenhum segredo versionado)
+- [x] `Produto` Escrever o `README.md` (o que é o app, como rodar em web e Android, como rodar os testes, onde fica cada pasta → alguém novo roda o app só lendo o README)
 - [x] `DevOps` Garantir que o projeto fique num caminho sem acento (ex.: `C:\Projects\Krezio.ai`; o Android falha em "Área de Trabalho" → `flutter build apk` funciona)
 
 ### 0.2 Definir a arquitetura
@@ -39,14 +39,14 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Escolher o gerenciamento de estado (`ChangeNotifier` num repositório central, injetado nas telas → toda tela lê os dados da mesma fonte)
 - [x] `Backend` Separar as camadas (IA em Dart puro, sem Flutter; backend com modelos, repositório e serviços; frontend só com telas e widgets → a IA roda em teste sem `WidgetTester`)
 - [x] `Backend` Definir a regra de onde fica a lógica (toda regra de negócio em classe Dart pura testável, nunca dentro de widget → as telas só chamam métodos)
-- [ ] `Produto` Documentar as decisões de arquitetura (`docs/architecture`, com o porquê de cada escolha: sem LLM, local-first, Firebase opcional → uma página por decisão) — ⚠️ parcial: há 4 ADRs em docs/architecture/adr; faltam local-first e Firebase opcional
+- [x] `Produto` Documentar as decisões de arquitetura (`docs/architecture`, com o porquê de cada escolha: sem LLM, local-first, Firebase opcional → uma página por decisão)
 
 ### 0.3 Montar a infraestrutura de qualidade
 `30 pts` · 🔴 **Alta** · `DevOps` `QA` `Produto`
 - [x] `QA` Configurar `flutter test` e a estrutura de `test/` (um arquivo por classe, mais `test/_qa/` para baterias que só medem → `flutter test` roda tudo verde)
-- [ ] `DevOps` Configurar CI no GitHub Actions (analyze + test a cada push e PR, com cache do Flutter → PR com teste vermelho não pode ser mesclado)
-- [ ] `DevOps` Definir o fluxo de branch, commit e changelog (branch por feature `feat/…`, commits convencionais, versão semântica `MAJOR.MINOR.PATCH` → toda versão tem tag)
-- [ ] `Produto` Criar o `CHANGELOG.md` (formato Keep a Changelog, seções Added/Changed/Fixed por versão → toda release tem entrada) — ⚠️ parcial: CHANGELOG parado na v0.3.2-alpha
+- [x] `DevOps` Configurar CI no GitHub Actions (analyze + test a cada push e PR, com cache do Flutter → PR com teste vermelho não pode ser mesclado)
+- [x] `DevOps` Definir o fluxo de branch, commit e changelog (branch por feature `feat/…`, commits convencionais, versão semântica `MAJOR.MINOR.PATCH` → toda versão tem tag)
+- [x] `Produto` Criar o `CHANGELOG.md` (formato Keep a Changelog, seções Added/Changed/Fixed por versão → toda release tem entrada)
 
 ---
 
@@ -55,17 +55,17 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 1.1 Montar o design system
 `40 pts` · 🔴 **Alta** · `Design` `Frontend`
 - [x] `Design` Definir a paleta de cores (primária, superfícies, texto, sucesso para receita, erro para despesa, aviso; versões clara e escura → contraste AA em todo texto)
-- [ ] `Design` Definir a tipografia e os espaçamentos (escala de 4 pt; título, subtítulo, corpo, legenda e valor monetário em destaque → nenhum tamanho fora da escala nas telas)
+- [x] `Design` Definir a tipografia e os espaçamentos (escala de 4 pt; título, subtítulo, corpo, legenda e valor monetário em destaque → nenhum tamanho fora da escala nas telas)
 - [x] `Frontend` Criar o tema global `krezio_theme` (`ThemeData` claro e escuro, cores e textos vindos dos tokens → trocar o tema muda o app inteiro sem cor fixa em widget)
-- [ ] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado)
+- [ ] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado) — ⚠️ parcial: componentes criados e usados nos diálogos e estados vazios; botões, campos e cards das telas antigas ainda não migrados
 - [x] `Design` Definir os ícones e as cores de cada categoria (mercado, transporte, moradia, lazer, saúde, educação, salário, outros… → cada categoria tem um par fixo ícone + cor)
 
 ### 1.2 Criar a navegação
 `30 pts` · 🔴 **Alta** · `Frontend` `Design`
 - [x] `Frontend` Criar a barra de navegação principal (Dashboard, Extrato, Orçamentos, Chat do César, Configurações → a aba ativa fica destacada e o estado de cada aba é mantido ao trocar)
-- [ ] `Frontend` Criar o wrapper de navegação e as rotas (rotas nomeadas, botão voltar do Android respeitado, deep link para o chat → voltar nunca fecha o app no meio de um fluxo)
-- [ ] `Design` Criar a splash screen (logo e cor da marca, sem texto pequeno → aparece enquanto os dados carregam e some em menos de 2 s)
-- [ ] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados) — ⚠️ parcial: estados vazios em algumas telas; sem skeleton nem padrão único
+- [x] `Frontend` Criar o wrapper de navegação e as rotas (rotas nomeadas, botão voltar do Android respeitado, deep link para o chat → voltar nunca fecha o app no meio de um fluxo)
+- [x] `Design` Criar a splash screen (logo e cor da marca, sem texto pequeno → aparece enquanto os dados carregam e some em menos de 2 s)
+- [ ] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados) — ⚠️ parcial: vazio e erro padronizados (KrezioEmptyState/KrezioErrorState); listas carregam da memória, então o skeleton ainda não é usado
 
 ---
 
