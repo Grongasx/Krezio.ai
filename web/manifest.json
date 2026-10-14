@@ -1,6 +1,6 @@
 {
-    "name": "krezio_ai",
-    "short_name": "krezio_ai",
+    "name": "Krezio.ai",
+    "short_name": "Krezio",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

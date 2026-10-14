@@ -1,7 +1,7 @@
 name: krezio_ai
 description: "Krezio.ai - O futuro das suas finanças, guiado por dados."
 publish_to: 'none'
-version: 0.3.2+3
+version: 0.4.0+4
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

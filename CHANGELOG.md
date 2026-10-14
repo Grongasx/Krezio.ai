@@ -6,6 +6,36 @@ O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
 
 ---
 
+## [Unreleased]
+
+### Added
+- Plataforma iOS (`ios/`, bundle `com.krezio.ai`), com as permissões de microfone e de reconhecimento de fala.
+- CI no GitHub Actions (`.github/workflows/ci.yml`): análise estática e testes de regressão em todo PR e push no `main`.
+- `CONTRIBUTING.md` com o fluxo de branches, commits convencionais, versões e tags.
+- `README.md` do projeto: o que é, como rodar, como testar, estrutura de pastas.
+- César: portão único antes de gravar (`EntrySafetyGate`), pergunta "Registro assim?" quando a certeza é baixa
+  (`EntryCertainty`), separação entre resposta e assunto novo (`PendingReplyCheck`), detecção de planos e
+  não-eventos (`HypothesisDetector`), datas faladas, vários lançamentos numa frase, edição, exclusão e desfazer por conversa.
+- Firebase Auth + Firestore codificados (login, cadastro, sincronização local-first), ainda sem configurar.
+- Backlog do produto (`BACKLOG.md`) sincronizado com as issues e o GitHub Project.
+
+### Changed
+- `lib/` reorganizado em `ai/`, `backend/` e `frontend/` (antes `core/` e `features/`).
+- Nome do app padronizado como "Krezio.ai" no iOS e na web.
+- `.gitignore` passa a excluir o modelo de voz Piper (~139 MB) e os áudios temporários.
+
+## [v0.4.0] - 2026-09-03
+
+### Added
+- Telas do app: dashboard (resumo, gráfico por categoria, insight do César), extrato, orçamentos, configurações e
+  navegação principal.
+- Formulário de novo lançamento e card de lançamento do extrato.
+- Plataforma Windows.
+
+### Changed
+- Motor de linguagem, modelos e repositório financeiro ampliados; modelo on-device retreinado.
+- Configuração do Android ajustada (NDK exigido pelo `speech_to_text` e `RecognitionService` em `<queries>`).
+
 ## [v0.3.2-alpha] - 2026-08-21
 
 ### Added
