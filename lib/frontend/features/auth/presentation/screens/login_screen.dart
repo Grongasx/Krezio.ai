@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/services/auth_service.dart';
+import '../../../../../backend/services/auth_validators.dart';
 
 /// Email/password sign-in and sign-up. Krezio.ai's financial data stays
 /// on-device either way — this screen only decides *whose* device data it is,
@@ -19,19 +20,38 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _nameController = TextEditingController();
+  final _confirmController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
 
   bool _isSignUp = false;
   bool _isLoading = false;
+  bool _showPassword = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    // The submit button only turns on once every field is valid.
+    for (final c in [_emailController, _passwordController, _confirmController]) {
+      c.addListener(() => setState(() {}));
+    }
+  }
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     _nameController.dispose();
+    _confirmController.dispose();
     super.dispose();
   }
+
+  String? _passwordRule(String? v) => _isSignUp ? AuthValidators.newPassword(v) : AuthValidators.loginPassword(v);
+
+  bool get _canSubmit =>
+      AuthValidators.email(_emailController.text) == null &&
+      _passwordRule(_passwordController.text) == null &&
+      (!_isSignUp || AuthValidators.confirmPassword(_confirmController.text, _passwordController.text) == null);
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -66,15 +86,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _forgotPassword() async {
     final email = _emailController.text.trim();
-    if (email.isEmpty) {
+    final invalid = AuthValidators.email(email);
+    if (invalid != null) {
       setState(() => _errorMessage = 'Digite seu e-mail acima primeiro.');
       return;
     }
     try {
       await widget.authService.sendPasswordResetEmail(email);
       if (mounted) {
+        // Same answer whether or not the account exists (see AuthService).
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enviamos um link de redefinição de senha para o seu e-mail.')),
+          const SnackBar(content: Text('Se o e-mail tiver conta, enviamos um link para redefinir a senha.')),
         );
       }
     } on AuthFailure catch (e) {
@@ -140,24 +162,33 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: TextStyle(color: primaryText),
                       keyboardType: TextInputType.emailAddress,
                       decoration: _inputDecoration('E-mail', Icons.email_outlined, surfaceColor, borderColor, secondaryText),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return 'Digite seu e-mail';
-                        if (!v.contains('@') || !v.contains('.')) return 'E-mail inválido';
-                        return null;
-                      },
+                      validator: AuthValidators.email,
                     ),
                     const SizedBox(height: KrezioSpace.md),
                     TextFormField(
                       controller: _passwordController,
                       style: TextStyle(color: primaryText),
-                      obscureText: true,
-                      decoration: _inputDecoration('Senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Digite sua senha';
-                        if (v.length < 6) return 'A senha precisa ter pelo menos 6 caracteres';
-                        return null;
-                      },
+                      obscureText: !_showPassword,
+                      decoration: _inputDecoration('Senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText).copyWith(
+                        helperText: _isSignUp ? 'Pelo menos 8 caracteres, com letras e números' : null,
+                        suffixIcon: IconButton(
+                          tooltip: _showPassword ? 'Ocultar senha' : 'Mostrar senha',
+                          icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: secondaryText),
+                          onPressed: () => setState(() => _showPassword = !_showPassword),
+                        ),
+                      ),
+                      validator: _passwordRule,
                     ),
+                    if (_isSignUp) ...[
+                      const SizedBox(height: KrezioSpace.md),
+                      TextFormField(
+                        controller: _confirmController,
+                        style: TextStyle(color: primaryText),
+                        obscureText: !_showPassword,
+                        decoration: _inputDecoration('Repita a senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText),
+                        validator: (v) => AuthValidators.confirmPassword(v, _passwordController.text),
+                      ),
+                    ],
                     if (_errorMessage != null) ...[
                       const SizedBox(height: KrezioSpace.md),
                       Text(
@@ -167,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ],
                     const SizedBox(height: KrezioSpace.xxl),
                     ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
+                      onPressed: (_isLoading || !_canSubmit) ? null : _submit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: KrezioColors.aiPurple,
                         padding: const EdgeInsets.symmetric(vertical: KrezioSpace.lg),
@@ -196,6 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           : () => setState(() {
                                 _isSignUp = !_isSignUp;
                                 _errorMessage = null;
+                                _confirmController.clear();
                               }),
                       child: Text(
                         _isSignUp ? 'Já tenho uma conta — Entrar' : 'Não tenho conta — Criar uma',

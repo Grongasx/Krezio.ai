@@ -263,7 +263,14 @@ class SettingsScreen extends StatelessWidget {
                     onTap: onSignOut == null
                         ? null
                         : () async {
-                            await onSignOut!();
+                            final ok = await showKrezioConfirmDialog(
+                              context,
+                              title: 'Sair da conta?',
+                              message: 'Seus dados continuam salvos na nuvem. Para vê-los de novo, é só entrar com o mesmo e-mail.',
+                              confirmLabel: 'Sair',
+                              danger: true,
+                            );
+                            if (ok) await onSignOut!();
                           },
                   ),
                 ],
