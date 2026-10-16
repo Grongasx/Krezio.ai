@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 import '../widgets/metric_summary_card.dart';
@@ -7,6 +8,7 @@ import '../widgets/ai_insight_card.dart';
 import '../widgets/category_donut_chart.dart';
 import '../../../transactions/presentation/widgets/transaction_list_tile.dart';
 import '../../../transactions/presentation/widgets/add_transaction_modal.dart';
+import '../../../reminders/presentation/screens/open_items_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final FinancialRepository repository;
@@ -53,21 +55,21 @@ class DashboardScreen extends StatelessWidget {
                 title: Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.all(KrezioSpace.sm),
                       decoration: BoxDecoration(
                         color: KrezioColors.aiPurple.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 20),
                     ),
-                    const SizedBox(width: 10),
+                    const SizedBox(width: KrezioSpace.md),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Krezio.ai',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: KrezioFont.bodyLarge,
                             fontWeight: FontWeight.bold,
                             color: primaryTextColor,
                           ),
@@ -75,7 +77,7 @@ class DashboardScreen extends StatelessWidget {
                         Text(
                           'Gestão Inteligente On-Device',
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: KrezioFont.micro,
                             color: secondaryTextColor,
                           ),
                         ),
@@ -94,7 +96,7 @@ class DashboardScreen extends StatelessWidget {
 
               // Body Content
               SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     // 1. Total Balance Hero Card
@@ -106,7 +108,7 @@ class DashboardScreen extends StatelessWidget {
                       isDark: isDark,
                       isLarge: true,
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: KrezioSpace.md),
 
                     // 2. Month Income & Month Expense Split
                     Row(
@@ -120,7 +122,7 @@ class DashboardScreen extends StatelessWidget {
                             isDark: isDark,
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: KrezioSpace.md),
                         Expanded(
                           child: MetricSummaryCard(
                             title: 'Saídas (Mês)',
@@ -132,17 +134,17 @@ class DashboardScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: KrezioSpace.lg),
 
                     // 3. Proactive Alerts (César speaks up on its own — budgets near/over
                     // limit, bills due within days, overdue debts) — shown before the
                     // passive insight card since these are actionable, time-sensitive.
                     if (proactiveAlerts.isNotEmpty) ...[
                       ...proactiveAlerts.map((alert) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.only(bottom: KrezioSpace.md),
                             child: _buildProactiveAlertCard(alert, bgSurface, borderColor),
                           )),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: KrezioSpace.sm),
                     ],
 
                     // 3.5 AI Proactive Insight Card
@@ -151,11 +153,11 @@ class DashboardScreen extends StatelessWidget {
                       isDark: isDark,
                       onAskAi: onNavigateToChat,
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: KrezioSpace.xl),
 
                     // 4. Category Spending Donut Chart Card
                     Container(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(KrezioSpace.lg),
                       decoration: BoxDecoration(
                         color: bgSurface,
                         borderRadius: KrezioTheme.borderRadius,
@@ -170,7 +172,7 @@ class DashboardScreen extends StatelessWidget {
                               Text(
                                 'Gastos por Categoria',
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: KrezioFont.body,
                                   fontWeight: FontWeight.bold,
                                   color: primaryTextColor,
                                 ),
@@ -178,13 +180,13 @@ class DashboardScreen extends StatelessWidget {
                               Text(
                                 'Este Mês',
                                 style: TextStyle(
-                                  fontSize: 11,
+                                  fontSize: KrezioFont.caption,
                                   color: secondaryTextColor,
                                 ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: KrezioSpace.lg),
                           CategoryDonutChart(
                             categoryData: categoryExpenses,
                             isDark: isDark,
@@ -193,12 +195,12 @@ class DashboardScreen extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: KrezioSpace.xl),
 
                     // 5. Upcoming Recurring Bills Alert
                     if (upcomingBills.isNotEmpty) ...[
                       Container(
-                        padding: const EdgeInsets.all(14),
+                        padding: const EdgeInsets.all(KrezioSpace.lg),
                         decoration: BoxDecoration(
                           color: bgSurface,
                           borderRadius: KrezioTheme.borderRadius,
@@ -210,31 +212,31 @@ class DashboardScreen extends StatelessWidget {
                             Row(
                               children: [
                                 const Icon(Icons.event_repeat, size: 16, color: KrezioColors.aiPurple),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: KrezioSpace.sm),
                                 Text(
                                   'Contas Fixas & Recorrências',
                                   style: TextStyle(
-                                    fontSize: 13,
+                                    fontSize: KrezioFont.bodySmall,
                                     fontWeight: FontWeight.bold,
                                     color: primaryTextColor,
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: KrezioSpace.md),
                             ...upcomingBills.map((b) {
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(vertical: KrezioSpace.xs),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
                                     Text(
                                       '${b.title} (${b.dueLabel})',
-                                      style: TextStyle(fontSize: 12, color: primaryTextColor),
+                                      style: TextStyle(fontSize: KrezioFont.small, color: primaryTextColor),
                                     ),
                                     Text(
                                       'R\$ ${b.amount.toStringAsFixed(2).replaceAll('.', ',')}',
-                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primaryTextColor),
+                                      style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: primaryTextColor),
                                     ),
                                   ],
                                 ),
@@ -243,13 +245,13 @@ class DashboardScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: KrezioSpace.xl),
                     ],
 
                     // 5.5 Reminders & Receivables Section
                     if (repository.reminders.isNotEmpty) ...[
                       Container(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(KrezioSpace.lg),
                         decoration: BoxDecoration(
                           color: bgSurface,
                           borderRadius: BorderRadius.circular(16),
@@ -264,31 +266,39 @@ class DashboardScreen extends StatelessWidget {
                                 Row(
                                   children: [
                                     const Icon(Icons.notifications_active_outlined, size: 16, color: KrezioColors.friendlyOrange),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: KrezioSpace.sm),
                                     Text(
                                       'Lembretes & Contas a Receber',
                                       style: TextStyle(
-                                        fontSize: 13,
+                                        fontSize: KrezioFont.bodySmall,
                                         fontWeight: FontWeight.bold,
                                         color: primaryTextColor,
                                       ),
                                     ),
                                   ],
                                 ),
+                                const Spacer(),
+                                TextButton(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => OpenItemsScreen(repository: repository, isDark: isDark)),
+                                  ),
+                                  child: const Text('Ver tudo', style: TextStyle(fontSize: KrezioFont.small)),
+                                ),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
                                   decoration: BoxDecoration(
                                     color: KrezioColors.friendlyOrange.withOpacity(0.15),
                                     borderRadius: BorderRadius.circular(6),
                                   ),
                                   child: Text(
                                     '${repository.reminders.where((r) => !r.isCompleted).length} ativos',
-                                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: KrezioColors.friendlyOrange),
+                                    style: const TextStyle(fontSize: KrezioFont.micro, fontWeight: FontWeight.bold, color: KrezioColors.friendlyOrange),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: KrezioSpace.md),
                             ...repository.reminders.map((r) {
                               final dayStr = r.targetDate.day.toString().padLeft(2, '0');
                               final monthStr = r.targetDate.month.toString().padLeft(2, '0');
@@ -297,7 +307,7 @@ class DashboardScreen extends StatelessWidget {
                                   : '';
 
                               return Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 4),
+                                padding: const EdgeInsets.symmetric(vertical: KrezioSpace.xs),
                                 child: Row(
                                   children: [
                                     InkWell(
@@ -309,7 +319,7 @@ class DashboardScreen extends StatelessWidget {
                                         color: r.isCompleted ? KrezioColors.emeraldGreen : secondaryTextColor,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
+                                    const SizedBox(width: KrezioSpace.sm),
                                     Expanded(
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,7 +327,7 @@ class DashboardScreen extends StatelessWidget {
                                           Text(
                                             r.title,
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: KrezioFont.small,
                                               fontWeight: FontWeight.w600,
                                               color: r.isCompleted ? secondaryTextColor : primaryTextColor,
                                               decoration: r.isCompleted ? TextDecoration.lineThrough : null,
@@ -326,7 +336,7 @@ class DashboardScreen extends StatelessWidget {
                                           if (r.notes != null)
                                             Text(
                                               r.notes!,
-                                              style: TextStyle(fontSize: 10, color: secondaryTextColor),
+                                              style: TextStyle(fontSize: KrezioFont.micro, color: secondaryTextColor),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
@@ -340,14 +350,14 @@ class DashboardScreen extends StatelessWidget {
                                           Text(
                                             amountStr,
                                             style: TextStyle(
-                                              fontSize: 12,
+                                              fontSize: KrezioFont.small,
                                               fontWeight: FontWeight.bold,
                                               color: r.isCompleted ? secondaryTextColor : KrezioColors.friendlyOrange,
                                             ),
                                           ),
                                         Text(
                                           '$dayStr/$monthStr',
-                                          style: TextStyle(fontSize: 10, color: secondaryTextColor),
+                                          style: TextStyle(fontSize: KrezioFont.micro, color: secondaryTextColor),
                                         ),
                                       ],
                                     ),
@@ -358,7 +368,7 @@ class DashboardScreen extends StatelessWidget {
                           ],
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: KrezioSpace.xl),
                     ],
 
                     // 6. Recent Activity Section
@@ -368,7 +378,7 @@ class DashboardScreen extends StatelessWidget {
                         Text(
                           'Últimos Lançamentos',
                           style: TextStyle(
-                            fontSize: 14,
+                            fontSize: KrezioFont.body,
                             fontWeight: FontWeight.bold,
                             color: primaryTextColor,
                           ),
@@ -377,21 +387,18 @@ class DashboardScreen extends StatelessWidget {
                           onPressed: onNavigateToTransactions,
                           child: const Text(
                             'Ver Extrato',
-                            style: TextStyle(fontSize: 12, color: KrezioColors.aiPurple, fontWeight: FontWeight.bold),
+                            style: TextStyle(fontSize: KrezioFont.small, color: KrezioColors.aiPurple, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: KrezioSpace.xs),
                     if (recentTxs.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Center(
-                          child: Text(
-                            'Nenhum lançamento registrado.',
-                            style: TextStyle(color: secondaryTextColor, fontSize: 13),
-                          ),
-                        ),
+                      const KrezioEmptyState(
+                        icon: Icons.receipt_long_outlined,
+                        title: 'Nenhum lançamento ainda',
+                        message: 'Fale com o César: "gastei 50 no mercado no pix"',
+                        compact: true,
                       )
                     else
                       ...recentTxs.map((tx) {
@@ -432,7 +439,7 @@ class DashboardScreen extends StatelessWidget {
     }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(KrezioSpace.md),
       decoration: BoxDecoration(
         color: bgSurface,
         borderRadius: KrezioTheme.borderRadius,
@@ -442,11 +449,11 @@ class DashboardScreen extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 18, color: accent),
-          const SizedBox(width: 10),
+          const SizedBox(width: KrezioSpace.md),
           Expanded(
             child: Text(
               alert.message,
-              style: TextStyle(fontSize: 12, color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText),
+              style: TextStyle(fontSize: KrezioFont.small, color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText),
             ),
           ),
         ],
@@ -463,6 +470,7 @@ class DashboardScreen extends StatelessWidget {
         isDark: isDark,
         onAdd: (tx) => repository.addTransaction(tx),
         customCategories: repository.budgets.where((b) => b.isCustom).toList(),
+        accounts: repository.activeAccounts,
       ),
     );
   }
@@ -477,6 +485,7 @@ class DashboardScreen extends StatelessWidget {
         initialTransaction: tx,
         onAdd: (updated) => repository.updateTransaction(updated),
         customCategories: repository.budgets.where((b) => b.isCustom).toList(),
+        accounts: repository.activeAccounts,
       ),
     );
   }

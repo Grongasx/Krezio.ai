@@ -5,6 +5,7 @@ import '../models/financial_transaction.dart';
 import '../models/budget_category.dart';
 import '../models/financial_reminder.dart';
 import '../models/financial_goal.dart';
+import '../models/financial_account.dart';
 import '../services/persistence_service.dart';
 import '../../ai/local_nlp_engine.dart';
 import '../../ai/category_name_matcher.dart';
@@ -58,6 +59,7 @@ class FinancialRepository extends ChangeNotifier {
   final List<FinancialReminder> _reminders = [];
   final List<FinancialGoal> _goals = [];
   final Map<String, String> _categoryOverrides = {};
+  final List<FinancialAccount> _accounts = [FinancialAccount.main];
   final PersistenceService _persistence;
   bool _isInitialized = false;
 
@@ -134,6 +136,7 @@ class FinancialRepository extends ChangeNotifier {
         _persistence.loadBudgets(),
         _persistence.loadGoals(),
         _persistence.loadCategoryOverrides(),
+        _persistence.loadAccounts(),
       ]);
 
       // A cloud snapshot or a "Limpar Histórico" landed while we were reading
@@ -169,6 +172,7 @@ class FinancialRepository extends ChangeNotifier {
       _categoryOverrides
         ..clear()
         ..addAll(results[4] as Map<String, String>);
+      _setAccounts(results[5] as List<FinancialAccount>);
 
       _recalculateBudgets();
       loaded.complete();
@@ -201,6 +205,7 @@ class FinancialRepository extends ChangeNotifier {
           _persistence.saveBudgets(_budgets),
           _persistence.saveGoals(_goals),
           _persistence.saveCategoryOverrides(_categoryOverrides),
+          _persistence.saveAccounts(_accounts),
         ]);
         // Any real save — including the first one after clearAllData() wiped
         // the "seeded" flag — means there's now real data on disk. Without
@@ -230,6 +235,104 @@ class FinancialRepository extends ChangeNotifier {
   List<FinancialGoal> get goals => List.unmodifiable(_goals);
   Map<String, String> get categoryOverrides => Map.unmodifiable(_categoryOverrides);
 
+  // ── ACCOUNTS AND WALLETS ──
+
+  /// Every account, archived ones included (their history stays).
+  List<FinancialAccount> get accounts => List.unmodifiable(_accounts);
+
+  /// Accounts offered in pickers.
+  List<FinancialAccount> get activeAccounts => _accounts.where((a) => !a.archived).toList();
+
+  FinancialAccount? accountById(String id) {
+    for (final a in _accounts) {
+      if (a.id == id) return a;
+    }
+    return null;
+  }
+
+  /// The main account always exists, first.
+  void _setAccounts(List<FinancialAccount> loaded) {
+    final main = loaded.firstWhere((a) => a.id == FinancialAccount.mainId, orElse: () => FinancialAccount.main);
+    _accounts
+      ..clear()
+      ..add(main)
+      ..addAll(loaded.where((a) => a.id != FinancialAccount.mainId));
+  }
+
+  bool _accountNameTaken(String name, {String? except}) {
+    final target = _foldAccents(name.trim().toLowerCase());
+    return _accounts.any((a) => a.id != except && _foldAccents(a.name.trim().toLowerCase()) == target);
+  }
+
+  /// Creates an account ("Nubank", "Carteira"). Returns null — and creates
+  /// nothing — for an empty name, a name already in use, or a credit card
+  /// without its closing and due days.
+  FinancialAccount? addAccount(String name, {AccountKind kind = AccountKind.checking, int? closingDay, int? dueDay}) {
+    final n = name.trim();
+    if (n.isEmpty || _accountNameTaken(n)) return null;
+    if (kind == AccountKind.creditCard && (closingDay == null || dueDay == null)) return null;
+    final account = FinancialAccount(id: _newId('acc-'), name: n, kind: kind, closingDay: closingDay, dueDay: dueDay);
+    _accounts.add(account);
+    _persistAll();
+    notifyListeners();
+    return account;
+  }
+
+  /// Renames an account; false for an empty name or one already in use.
+  bool renameAccount(String id, String name) {
+    final idx = _accounts.indexWhere((a) => a.id == id);
+    final n = name.trim();
+    if (idx == -1 || n.isEmpty || _accountNameTaken(n, except: id)) return false;
+    _accounts[idx] = _accounts[idx].copyWith(name: n);
+    _persistAll();
+    notifyListeners();
+    return true;
+  }
+
+  /// Archives (or brings back) an account. The main account can't be archived.
+  bool archiveAccount(String id, {bool archived = true}) {
+    final idx = _accounts.indexWhere((a) => a.id == id);
+    if (idx == -1 || id == FinancialAccount.mainId) return false;
+    _accounts[idx] = _accounts[idx].copyWith(archived: archived);
+    _persistAll();
+    notifyListeners();
+    return true;
+  }
+
+  /// Balance of one account: income in, expenses out, transfers moved.
+  double balanceOf(String accountId) {
+    var sum = 0.0;
+    for (final t in _transactions) {
+      if (t.account == accountId) {
+        if (t.type == TransactionType.income) sum += t.amount;
+        if (t.type == TransactionType.expense || t.type == TransactionType.transfer) sum -= t.amount;
+      }
+      if (t.isInternalTransfer && t.toAccountId == accountId) sum += t.amount;
+    }
+    return sum;
+  }
+
+  /// Moves money between two own accounts: it leaves one and enters the
+  /// other, and the total balance doesn't change.
+  FinancialTransaction? transferBetweenAccounts({required String from, required String to, required double amount, DateTime? date}) {
+    if (from == to || !_isMoneyAmount(amount) || accountById(from) == null || accountById(to) == null) return null;
+    final tx = FinancialTransaction(
+      id: _newId('transfer-'),
+      title: 'Transferência para ${accountById(to)!.name}',
+      amount: amount,
+      type: TransactionType.transfer,
+      category: 'transfer',
+      paymentMethod: 'pix',
+      date: date ?? DateTime.now(),
+      accountId: from,
+      toAccountId: to,
+    );
+    _transactions.insert(0, tx);
+    _persistAll();
+    notifyListeners();
+    return tx;
+  }
+
   void _initializeDefaultBudgets() {
     _budgets.addAll([
       BudgetCategory(category: 'supermarket', name: 'Supermercado', monthlyLimit: 1200.0, currentSpent: 0.0, icon: BudgetCategory.getIconForCategory('supermarket'), color: BudgetCategory.getColorForCategory('supermarket')),
@@ -239,6 +342,19 @@ class FinancialRepository extends ChangeNotifier {
       BudgetCategory(category: 'health', name: 'Saúde & Farmácia', monthlyLimit: 300.0, currentSpent: 0.0, icon: BudgetCategory.getIconForCategory('health'), color: BudgetCategory.getColorForCategory('health')),
       BudgetCategory(category: 'education', name: 'Educação & Cursos', monthlyLimit: 400.0, currentSpent: 0.0, icon: BudgetCategory.getIconForCategory('education'), color: BudgetCategory.getColorForCategory('education')),
     ]);
+  }
+
+  /// Date of a demo entry that happens on [day] of the month: this month when
+  /// that day has already come, otherwise the same day of the previous month.
+  /// Before this, on the 1st–13th of a month the seed created entries dated in
+  /// the future (e.g. "Carrefour" on the 10th seen on the 1st — issue #30),
+  /// and César even offered them as candidates to edit.
+  @visibleForTesting
+  static DateTime seedDate(DateTime now, int day) {
+    if (day <= now.day) return DateTime(now.year, now.month, day);
+    final prev = DateTime(now.year, now.month - 1, 1);
+    final lastDayPrev = DateTime(prev.year, prev.month + 1, 0).day;
+    return DateTime(prev.year, prev.month, day > lastDayPrev ? lastDayPrev : day);
   }
 
   void _seedInitialData() {
@@ -251,7 +367,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.income,
         category: 'salary',
         paymentMethod: 'pix',
-        date: DateTime(now.year, now.month, 5),
+        date: seedDate(now, 5),
         bankSource: 'Banco Inter',
       ),
       FinancialTransaction(
@@ -261,7 +377,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'supermarket',
         paymentMethod: 'debit_card',
-        date: DateTime(now.year, now.month, 10),
+        date: seedDate(now, 10),
       ),
       FinancialTransaction(
         id: 'init-3',
@@ -270,7 +386,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'housing',
         paymentMethod: 'bank_slip',
-        date: DateTime(now.year, now.month, 8),
+        date: seedDate(now, 8),
         isRecurrent: true,
         dueDay: 8,
       ),
@@ -281,7 +397,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'health',
         paymentMethod: 'credit_card',
-        date: DateTime(now.year, now.month, 12),
+        date: seedDate(now, 12),
         isRecurrent: true,
         dueDay: 12,
       ),
@@ -292,7 +408,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'transport',
         paymentMethod: 'pix',
-        date: DateTime(now.year, now.month, 14),
+        date: seedDate(now, 14),
       ),
     ]);
 
@@ -348,6 +464,45 @@ class FinancialRepository extends ChangeNotifier {
       _persistAll();
       notifyListeners();
     }
+  }
+
+  /// Open bills (bill reminders not paid yet), the most urgent first —
+  /// overdue ones included.
+  List<FinancialReminder> get openBills => _reminders
+      .where((r) => r.type == ReminderType.billPayment && !r.isCompleted)
+      .toList()
+    ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+
+  /// Whether [r] is past its date and still open.
+  static bool isOverdue(FinancialReminder r, DateTime now) =>
+      !r.isCompleted && r.targetDate.isBefore(DateTime(now.year, now.month, now.day));
+
+  /// Marks a bill as paid and records what was paid as an expense, so the
+  /// balance follows. Without a value, only the bill is closed. Returns the
+  /// expense created, if any.
+  FinancialTransaction? payBill(String reminderId, {double? amount, String paymentMethod = 'pix', DateTime? date}) {
+    final idx = _reminders.indexWhere((r) => r.id == reminderId);
+    if (idx == -1 || _reminders[idx].isCompleted) return null;
+    final bill = _reminders[idx];
+    _reminders[idx] = bill.copyWith(isCompleted: true);
+    final paid = amount ?? bill.amount;
+    FinancialTransaction? tx;
+    if (_isMoneyAmount(paid)) {
+      tx = FinancialTransaction(
+        id: _newId('bill-paid-'),
+        title: bill.title,
+        amount: paid!,
+        type: TransactionType.expense,
+        category: 'housing',
+        paymentMethod: paymentMethod,
+        date: date ?? DateTime.now(),
+      );
+      _transactions.insert(0, tx);
+      _recalculateBudgets();
+    }
+    _persistAll();
+    notifyListeners();
+    return tx;
   }
 
   void removeReminder(String id) {
@@ -500,6 +655,10 @@ class FinancialRepository extends ChangeNotifier {
       paymentMarginDays: draft.paymentMarginDays,
       bankSource: draft.bankSource,
       recurrenceDuration: draft.recurrenceDuration,
+      // "em 7x, pra pagar todo dia 10": the installments' due day is kept
+      // with the purchase — not as [dueDay], which would list the whole
+      // R$ 5000 as a bill every month (it is not recurring).
+      notes: draft.installmentDueDay != null ? 'Parcelas vencem todo dia ${draft.installmentDueDay}' : null,
     );
 
     addTransaction(tx);
@@ -600,14 +759,30 @@ class FinancialRepository extends ChangeNotifier {
   /// A different name whose code is taken — "Supermarket" slugifies to the
   /// built-in `supermarket`, "!!!" and "???" both to `custom` — gets its own
   /// code instead of overwriting (renaming a built-in) the other category.
+  /// The category [name] already names: same display name (ignoring case,
+  /// accents and plural) or the internal name of a built-in one
+  /// ("Supermarket" is Supermercado).
+  BudgetCategory? existingCategoryNamed(String name) {
+    final n = name.trim();
+    if (n.isEmpty) return null;
+    for (final b in _budgets) {
+      if (_foldAccents(b.name.trim().toLowerCase()) == _foldAccents(n.toLowerCase()) || CategoryNameMatcher.sameName(b.name, n)) return b;
+    }
+    final code = BudgetCategory.slugify(n);
+    for (final b in _budgets) {
+      if (!b.isCustom && b.category == code) return b;
+    }
+    return null;
+  }
+
   BudgetCategory addBudgetCategory(String name, double monthlyLimit) {
     final trimmed = name.trim();
     if (trimmed.isEmpty) throw ArgumentError('Category name is empty');
     if (!monthlyLimit.isFinite || monthlyLimit < 0) throw ArgumentError('Invalid monthly limit: $monthlyLimit');
     name = trimmed;
 
-    final sameNameIndex = _budgets.indexWhere((b) =>
-        _foldAccents(b.name.trim().toLowerCase()) == _foldAccents(name.toLowerCase()) || CategoryNameMatcher.sameName(b.name, name));
+    final same = existingCategoryNamed(name);
+    final sameNameIndex = same == null ? -1 : _budgets.indexOf(same);
     if (sameNameIndex != -1) {
       final existing = _budgets[sameNameIndex];
       if (!existing.isCustom) return existing;
@@ -645,7 +820,15 @@ class FinancialRepository extends ChangeNotifier {
   /// Removes a custom category. Built-in categories are protected — dropping
   /// one would silently orphan the dashboard's category breakdown for any
   /// existing transaction still tagged with it.
-  void removeBudgetCategory(String category) {
+  /// Removes a custom category. With [moveTo], its transactions and remembered
+  /// words go to that category first, so no record is left without one.
+  void removeBudgetCategory(String category, {String? moveTo}) {
+    if (moveTo != null && moveTo != category) {
+      for (var i = 0; i < _transactions.length; i++) {
+        if (_transactions[i].category == category) _transactions[i] = _transactions[i].copyWith(category: moveTo);
+      }
+      _categoryOverrides.updateAll((_, v) => v == category ? moveTo : v);
+    }
     _budgets.removeWhere((b) => b.category == category && b.isCustom);
     _persistAll();
     notifyListeners();
@@ -703,6 +886,7 @@ class FinancialRepository extends ChangeNotifier {
     _reminders.clear();
     _goals.clear();
     _categoryOverrides.clear();
+    _setAccounts(const []);
     _budgets.clear();
     _initializeDefaultBudgets();
     // Chained onto _pendingPersist (not called standalone) so an in-flight
@@ -729,8 +913,10 @@ class FinancialRepository extends ChangeNotifier {
     required List<BudgetCategory> budgets,
     required List<FinancialGoal> goals,
     required Map<String, String> categoryOverrides,
+    List<FinancialAccount>? accounts,
   }) {
     _dataGeneration++;
+    if (accounts != null) _setAccounts(accounts);
     _transactions
       ..clear()
       ..addAll(transactions);
@@ -862,7 +1048,7 @@ class FinancialRepository extends ChangeNotifier {
     for (final tx in _transactions) {
       if (tx.type == TransactionType.income) {
         income += tx.amount;
-      } else if (tx.type == TransactionType.expense || tx.type == TransactionType.transfer) {
+      } else if (tx.type == TransactionType.expense || (tx.type == TransactionType.transfer && !tx.isInternalTransfer)) {
         expense += tx.amount;
       }
     }
@@ -883,7 +1069,7 @@ class FinancialRepository extends ChangeNotifier {
     final now = DateTime.now();
     return _transactions
         .where((tx) =>
-            (tx.type == TransactionType.expense || tx.type == TransactionType.transfer) &&
+            (tx.type == TransactionType.expense || (tx.type == TransactionType.transfer && !tx.isInternalTransfer)) &&
             tx.date.year == now.year &&
             tx.date.month == now.month)
         .fold(0.0, (acc, tx) => acc + tx.amount);
@@ -907,7 +1093,7 @@ class FinancialRepository extends ChangeNotifier {
   double expenseForMonth(int year, int month) {
     return _transactions
         .where((tx) =>
-            (tx.type == TransactionType.expense || tx.type == TransactionType.transfer) &&
+            (tx.type == TransactionType.expense || (tx.type == TransactionType.transfer && !tx.isInternalTransfer)) &&
             tx.date.year == year &&
             tx.date.month == month)
         .fold(0.0, (acc, tx) => acc + tx.amount);

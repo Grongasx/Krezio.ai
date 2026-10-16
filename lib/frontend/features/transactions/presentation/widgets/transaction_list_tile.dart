@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../../ai/transaction_code.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 
 class TransactionListTile extends StatelessWidget {
@@ -37,7 +38,7 @@ class TransactionListTile extends StatelessWidget {
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
+        padding: const EdgeInsets.only(right: KrezioSpace.xl),
         decoration: BoxDecoration(
           color: KrezioColors.friendlyOrange.withOpacity(0.2),
           borderRadius: KrezioTheme.borderRadius,
@@ -48,8 +49,8 @@ class TransactionListTile extends StatelessWidget {
         onDelete?.call();
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.only(bottom: KrezioSpace.sm),
+        padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
         decoration: BoxDecoration(
           color: bgSurface,
           borderRadius: KrezioTheme.borderRadius,
@@ -61,7 +62,7 @@ class TransactionListTile extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(KrezioSpace.md),
                 decoration: BoxDecoration(
                   color: transaction.categoryColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
@@ -72,7 +73,7 @@ class TransactionListTile extends StatelessWidget {
                   size: 20,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: KrezioSpace.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,36 +81,36 @@ class TransactionListTile extends StatelessWidget {
                     Text(
                       transaction.title,
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: KrezioFont.body,
                         fontWeight: FontWeight.w600,
                         color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 3),
+                    const SizedBox(height: KrezioSpace.xs),
                     Row(
                       children: [
                         Text(
-                          '$dateStr • ${transaction.paymentMethodLabel}',
+                          '$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: KrezioFont.caption,
                             color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                           ),
                         ),
                         if (transaction.bankSource != null) ...[
-                          const SizedBox(width: 4),
+                          const SizedBox(width: KrezioSpace.xs),
                           Text(
                             '(${transaction.bankSource})',
                             style: const TextStyle(
-                              fontSize: 10,
+                              fontSize: KrezioFont.micro,
                               color: KrezioColors.aiPurple,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                         ],
                         if (transaction.isRecurrent) ...[
-                          const SizedBox(width: 4),
+                          const SizedBox(width: KrezioSpace.xs),
                           const Icon(Icons.repeat, size: 12, color: KrezioColors.emeraldGreen),
                         ],
                       ],
@@ -120,7 +121,7 @@ class TransactionListTile extends StatelessWidget {
               Text(
                 amountFormatted,
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: KrezioFont.body,
                   fontWeight: FontWeight.bold,
                   color: amountColor,
                 ),

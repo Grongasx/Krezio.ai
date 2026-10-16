@@ -15,6 +15,12 @@ class KrezioColors {
   static const Color friendlyOrange = Color(0xFFF97316);
   static const Color friendlyOrangeLight = Color(0xFFFB923C);
 
+  // Budget bands: green up to 79%, yellow 80–99%, red from 100% (a bright,
+  // friendly red — still never blood red).
+  static const Color budgetOk = emeraldGreen;
+  static const Color budgetWarning = Color(0xFFF59E0B);
+  static const Color budgetOver = Color(0xFFEF4444);
+
   // Light Mode Tokens
   static const Color lightBackground = Color(0xFFF9FAFB);
   static const Color lightSurface = Color(0xFFFFFFFF);
@@ -29,6 +35,33 @@ class KrezioColors {
   static const Color darkPrimaryText = Color(0xFFF3F4F6);
   static const Color darkSecondaryText = Color(0xFF9CA3AF);
   static const Color darkBorder = Color(0xFF3F3F46);
+}
+
+/// Type scale. Every `fontSize` in the screens comes from here — no loose
+/// values. The steps keep the sizes the app already used most (11, 12, 13, 14)
+/// so the scale adds consistency without changing how the app looks.
+class KrezioFont {
+  static const double micro = 10; // badges, legends of charts
+  static const double caption = 11; // labels, nav bar, secondary metadata
+  static const double small = 12; // secondary text, chips
+  static const double bodySmall = 13; // list subtitles, dense body
+  static const double body = 14; // default body text
+  static const double bodyLarge = 16; // emphasized body, inputs
+  static const double title = 18; // screen and card titles
+  static const double headline = 24; // big numbers (balance, totals)
+}
+
+/// Spacing on a 4 pt grid (with a 2 pt half-step for hairline gaps). Every
+/// padding/margin/gap in the screens comes from here.
+class KrezioSpace {
+  static const double hair = 2;
+  static const double xs = 4;
+  static const double sm = 8;
+  static const double md = 12;
+  static const double lg = 16;
+  static const double xl = 20;
+  static const double xxl = 24;
+  static const double xxxl = 32;
 }
 
 class KrezioTheme {
@@ -53,7 +86,7 @@ class KrezioTheme {
       iconTheme: IconThemeData(color: KrezioColors.lightPrimaryText),
       titleTextStyle: TextStyle(
         color: KrezioColors.lightPrimaryText,
-        fontSize: 18,
+        fontSize: KrezioFont.title,
         fontWeight: FontWeight.bold,
       ),
     ),
@@ -83,7 +116,7 @@ class KrezioTheme {
       iconTheme: IconThemeData(color: KrezioColors.darkPrimaryText),
       titleTextStyle: TextStyle(
         color: KrezioColors.darkPrimaryText,
-        fontSize: 18,
+        fontSize: KrezioFont.title,
         fontWeight: FontWeight.bold,
       ),
     ),

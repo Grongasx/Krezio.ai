@@ -21,6 +21,17 @@ class TransactionChanges {
   bool get isEmpty =>
       amount == null && date == null && type == null && category == null && paymentMethod == null && installments == null && title == null;
 
+  /// These changes plus [other]'s; [other] wins where both say something.
+  TransactionChanges merge(TransactionChanges other) => TransactionChanges(
+        amount: other.amount ?? amount,
+        date: other.date ?? date,
+        type: other.type ?? type,
+        category: other.category ?? category,
+        paymentMethod: other.paymentMethod ?? paymentMethod,
+        installments: other.installments ?? installments,
+        title: other.title ?? title,
+      );
+
   @override
   String toString() =>
       'Changes(amount=$amount date=$date type=$type cat=$category pay=$paymentMethod inst=$installments title=$title)';
@@ -47,7 +58,12 @@ class ChatCommand {
   /// the last one, and asks when both fit (R2-CONV-001).
   final String? entryText;
 
-  const ChatCommand(this.kind, {this.reference = '', this.changes = TransactionChanges.none, this.strong = true, this.entryText});
+  /// One change per record named: "muda o uber pra 45 e a padaria pra 35".
+  /// When set, [reference] and [changes] are not used.
+  final List<({String reference, TransactionChanges changes})> perTarget;
+
+  const ChatCommand(this.kind,
+      {this.reference = '', this.changes = TransactionChanges.none, this.strong = true, this.entryText, this.perTarget = const []});
 
   @override
   String toString() => 'ChatCommand($kind, ref="$reference", $changes, strong=$strong, entry=$entryText)';
@@ -195,6 +211,17 @@ class TransactionCommandParser {
         if (RegExp(r'\d').hasMatch(named)) return null;
       }
 
+      // "muda a pizzaria: valor 95, pagamento débito, categoria lazer",
+      // "muda o valor pra 95 e a categoria pra lazer": several labelled
+      // fields in one message, each read on its own.
+      final perTarget = _perTargetChanges(rest, raw: raw, now: now, budgets: budgets);
+      if (perTarget != null) return ChatCommand(ChatCommandKind.edit, perTarget: perTarget);
+
+      final labelled = _labelledChanges(rest, raw: raw, now: now, budgets: budgets);
+      if (labelled != null) {
+        return ChatCommand(ChatCommandKind.edit, reference: labelled.reference, changes: labelled.changes);
+      }
+
       final padded = ' $rest ';
       // "o açougue da sexta que foi 86 na verdade": the clause "que foi N"
       // brings the new value (ACC-B-016).
@@ -282,6 +309,69 @@ class TransactionCommandParser {
       }
     }
     return null;
+  }
+
+  /// A field named before its new value: "valor 95", "o pagamento pra débito",
+  /// "categoria: lazer", "a data é ontem", "nome Pizzaria do Zé".
+  static final _fieldLabel = RegExp(
+      r'(?:^|[\s,;]+)(?:e\s+)?(?:o\s+|a\s+)?(valor|preco|categoria|forma\s+de\s+pagamento|meio\s+de\s+pagamento|pagamento|data|dia|nome|descricao|titulo|tipo)\b'
+      r'(?:\s*(?:pra|para|por|como|e|eh|foi|fica|=)\b)?\s*');
+
+  /// Reads "label value" pairs after the record named at the start. Null
+  /// unless the message really is a list of labelled fields: two or more of
+  /// them, or one that starts the message ("muda o valor pra 95" — the record
+  /// is then the last one).
+  static ({String reference, TransactionChanges changes})? _labelledChanges(String rest,
+      {required String raw, required DateTime now, required List<BudgetCategory> budgets}) {
+    final matches = _fieldLabel.allMatches(rest).toList();
+    if (matches.isEmpty) return null;
+    final startsWithLabel = matches.first.start == 0;
+    if (matches.length < 2 && !startsWithLabel) return null;
+    // "o valor do aluguel pra 1500", "a data do uber de segunda pra hoje": the
+    // field belongs to a record named right after it — the single-field path
+    // reads that (record + new value), not this one.
+    if (startsWithLabel && RegExp(r'^(?:d[oa]s?|de|daquel[ea]|dess[ea])\s').hasMatch(rest.substring(matches.first.end))) return null;
+
+    var merged = TransactionChanges.none;
+    for (var i = 0; i < matches.length; i++) {
+      final m = matches[i];
+      final field = m.group(1)!;
+      final end = i + 1 < matches.length ? matches[i + 1].start : rest.length;
+      final value = rest.substring(m.end, end).replaceAll(RegExp(r'^[\s:,;]+|[\s:,;]+$'), '').trim();
+      if (value.isEmpty) return null; // "o valor e a categoria" with no values: not this form
+      TransactionChanges c;
+      if (_fieldKind(field) == 'title') {
+        final spelled = _originalSpelling(value, raw).trim();
+        if (spelled.isEmpty) return null;
+        c = TransactionChanges(title: spelled[0].toUpperCase() + spelled.substring(1));
+      } else {
+        c = parseChanges(value, now: now, budgets: budgets, field: field, originalText: raw);
+      }
+      if (c.isEmpty) return null; // a label whose value can't be read: let the old path decide
+      merged = merged.merge(c);
+    }
+    final reference = rest.substring(0, matches.first.start).replaceAll(RegExp(r'[\s:,;]+$'), '').trim();
+    return (reference: reference, changes: merged);
+  }
+
+  /// "o uber pra 45 e a padaria pra 35": each record with its own new value.
+  /// Null unless every part is "<record> pra|para|como|que foi <change>" and
+  /// each change is understood.
+  static List<({String reference, TransactionChanges changes})>? _perTargetChanges(String rest,
+      {required String raw, required DateTime now, required List<BudgetCategory> budgets}) {
+    final parts = rest.split(RegExp(r'[\s,]+e\s+(?=(?:o|a|os|as|esse|essa|aquele|aquela)\s)|,\s*(?=(?:o|a|esse|essa)\s)'));
+    if (parts.length < 2) return null;
+    final out = <({String reference, TransactionChanges changes})>[];
+    for (final part in parts) {
+      final m = RegExp(r'^(.+?)\s(?:pra|para|como|que\s+foi|que\s+e)\s+(.+)$').firstMatch(part.trim());
+      if (m == null) return null;
+      final ref = m.group(1)!.trim();
+      if (_fieldLabel.hasMatch(ref)) return null; // "o valor pra 95 e a categoria pra lazer" is one record
+      final changes = parseChanges(m.group(2)!, now: now, budgets: budgets, originalText: raw);
+      if (changes.isEmpty) return null;
+      out.add((reference: ref, changes: changes));
+    }
+    return out;
   }
 
   /// A delete/edit command that names a record other than "the last one"
