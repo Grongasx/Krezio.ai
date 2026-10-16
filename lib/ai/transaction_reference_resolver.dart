@@ -4,6 +4,7 @@ import 'category_name_matcher.dart';
 import 'cesar_text.dart';
 import 'local_nlp_engine.dart';
 import 'temporal_date_parser.dart';
+import 'transaction_code.dart';
 
 /// What a reference phrase ("o uber de ontem", "o anterior", "os dois
 /// últimos", "o de 48", "os lançamentos de hoje") asks for, before looking at
@@ -40,6 +41,10 @@ class ReferenceSpec {
   /// them in its title ("Pizzaria Sábado", "Bar Dia 7").
   final String? dateWords;
 
+  /// The card code said ("#4821", "lançamento 4821") — points at one record
+  /// exactly, so nothing else (words, date) is needed.
+  final String? code;
+
   const ReferenceSpec({
     this.position,
     this.lastCount,
@@ -53,10 +58,12 @@ class ReferenceSpec {
     this.invalidDate,
     this.fromStart,
     this.dateWords,
+    this.code,
   });
 
   bool get isEmpty =>
-      position == null && lastCount == null && terms.isEmpty && dayStart == null && amount == null && type == null && fromStart == null;
+      position == null && lastCount == null && terms.isEmpty && dayStart == null && amount == null && type == null && fromStart == null &&
+      code == null;
 
   /// Only "esse"/"o último"/"isso" — i.e. the most recent thing César did.
   bool get isJustLast =>
@@ -75,10 +82,12 @@ class ReferenceSpec {
         invalidDate: invalidDate,
         fromStart: fromStart,
         dateWords: dateWords,
+        code: code,
       );
 
   /// "de 'uber' ontem" — how the search is described back to the user.
   String describe() {
+    if (code != null) return 'com o código #$code';
     final parts = <String>[];
     if (terms.isNotEmpty) parts.add("de '${terms.join(' ')}'");
     if (terms.isEmpty && type != null) {
@@ -147,6 +156,9 @@ class TransactionReferenceResolver {
 
   /// Parses [text] into a [ReferenceSpec] relative to [now].
   static ReferenceSpec parse(String text, {required DateTime now}) {
+    // "apaga o #4821": the card code names the record by itself.
+    final code = TransactionCode.find(text);
+    if (code != null) return ReferenceSpec(code: code);
     // "segunda-feira" is a day; "a feira" alone is a record ("Feira livre").
     var s = SpokenDayParser.normalizeWeekdays(CesarText.simplify(text));
     String? invalidDate;
@@ -273,8 +285,12 @@ class TransactionReferenceResolver {
   /// ("Supermercado Carrefour"), 0 = the title doesn't say it.
   static int _titleScore(FinancialTransaction t, String term) {
     final single = CategoryNameMatcher.tokens(term).join(' ');
-    if (CategoryNameMatcher.tokens(t.title).contains(single)) return 3;
+    final words = CategoryNameMatcher.tokens(t.title);
+    if (words.contains(single)) return 3;
     if (term.length >= 4 && CesarText.fold(t.title).contains(term)) return 2;
+    // Same root: "a pizzaria" for the record titled "Pizza", "o mercadinho"
+    // for "Mercado" — the word said starts with a title word (or the other way).
+    if (term.length >= 5 && words.any((w) => w.length >= 4 && (term.startsWith(w) || w.startsWith(term)))) return 2;
     return 0;
   }
 
@@ -319,6 +335,10 @@ class TransactionReferenceResolver {
   }) {
     final byId = {for (final t in all) t.id: t};
     final groups = recentGroups.where((g) => g.any(byId.containsKey)).toList();
+
+    if (spec.code != null) {
+      return ReferenceResolution(spec, all.where((t) => TransactionCode.matches(t.id, spec.code!)).toList());
+    }
 
     // Pure position: "o último", "esse", "o anterior", "os dois últimos".
     if (spec.terms.isEmpty && spec.dayStart == null && spec.amount == null) {
@@ -382,6 +402,13 @@ class TransactionReferenceResolver {
     if (scored.isNotEmpty) {
       final best = scored.values.reduce((a, b) => a > b ? a : b);
       matches = ordered.where((t) => scored[t] == best).toList();
+    }
+    // "muda o uber pra 45" with "Uber" and "Uber Viagens": the title that is
+    // exactly the words said is the one meant — no need to ask.
+    if (matches.length > 1 && !spec.plural && spec.terms.isNotEmpty) {
+      final said = spec.terms.join(' ');
+      final exact = matches.where((t) => CategoryNameMatcher.tokens(t.title).join(' ') == said).toList();
+      if (exact.length == 1) matches = exact;
     }
     // "o último uber": the most recent of the matches.
     if (spec.position != null && matches.length > 1 && !spec.plural) {

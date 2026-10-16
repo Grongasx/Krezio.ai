@@ -124,6 +124,19 @@ class FinancialTransactionDraft {
   /// terminar…"), to be said when the entry is confirmed.
   final String? assumptionNote;
 
+  /// "comprei um PS5 por 5000 em 7x, pra pagar todo dia 10": the day of the
+  /// month each *installment* falls due. Not a recurrence — [isRecurrent]
+  /// stays false and [dueDay] null, or the purchase became an R$ 5000
+  /// monthly bill. The chat says it in the confirmation: "em 7x de
+  /// R$ 714,29, com vencimento todo dia 10" (see [installmentValue]).
+  final int? installmentDueDay;
+
+  /// The value of each installment of a purchase split on the card
+  /// ([amount] / [installments], rounded to cents), or null when not split.
+  double? get installmentValue => (amount != null && installments != null && installments! > 1)
+      ? double.parse((amount! / installments!).toStringAsFixed(2))
+      : null;
+
   /// Checks of [EntrySafetyGate] the user already answered ("type", "date",
   /// "split") — never asked again for this draft.
   final Set<String> settledChecks;
@@ -162,6 +175,7 @@ class FinancialTransactionDraft {
     this.targetDate,
     this.calendarConsultationNote,
     this.assumptionNote,
+    this.installmentDueDay,
     this.settledChecks = const {},
   });
 
@@ -199,6 +213,7 @@ class FinancialTransactionDraft {
         'target_date': targetDate?.toIso8601String(),
         'calendar_consultation_note': calendarConsultationNote,
         'assumption_note': assumptionNote,
+        'installment_due_day': installmentDueDay,
       };
 
   FinancialTransactionDraft copyWith({
@@ -236,6 +251,7 @@ class FinancialTransactionDraft {
     DateTime? targetDate,
     String? calendarConsultationNote,
     String? assumptionNote,
+    int? installmentDueDay,
     bool clearAmount = false,
     Set<String>? settledChecks,
   }) {
@@ -273,6 +289,7 @@ class FinancialTransactionDraft {
       targetDate: targetDate ?? this.targetDate,
       calendarConsultationNote: calendarConsultationNote ?? this.calendarConsultationNote,
       assumptionNote: assumptionNote ?? this.assumptionNote,
+      installmentDueDay: installmentDueDay ?? this.installmentDueDay,
       settledChecks: settledChecks ?? this.settledChecks,
     );
   }
@@ -797,7 +814,15 @@ class LocalFinancialNlpEngine {
     // "50 reais o dia durante 10 dias": the amount is the daily rate, and the
     // draft carries how many daily expenses to record.
     final dailyRate = _parseDailyRate(numLower);
-    final amount = dailyRate?.rate ?? quantityPricing?.total ?? _parseAmount(normText) ?? _amountByRole(normText, numLower);
+    // "7 parcelas de 714,29", "em 10x, a parcela é de 350": the value said is
+    // of each installment — the purchase is N × that (it was recorded as
+    // R$ 350 in silence). Only when no other value (the total) is said.
+    final perInstallment = dailyRate == null ? installmentValueSaid(CategoryNameMatcher.foldAccents(numLower)) : null;
+    final installmentTotal = perInstallment != null &&
+            otherMoneyValues(CategoryNameMatcher.foldAccents(numLower), perInstallment.value).isEmpty
+        ? double.parse((perInstallment.value * perInstallment.count).toStringAsFixed(2))
+        : null;
+    final amount = dailyRate?.rate ?? installmentTotal ?? quantityPricing?.total ?? _parseAmount(normText) ?? _amountByRole(normText, numLower);
     // With the "3 x 15" span removed, so a multiplication isn't mistaken for
     // "3x" installments on the credit card.
     final paymentText = quantityPricing == null
@@ -805,12 +830,36 @@ class LocalFinancialNlpEngine {
         : numLower.replaceFirst(quantityPricing.matchedText, ' ');
     final description = _extractDescription(cleanText, categoryResult.label);
     final recurrence = _parseRecurrence(normText);
+    // "gastei 100 na mensalidade da academia": a fee said paid, in the past,
+    // with no word of recurrence of its own, is today's payment — not a new
+    // subscription to set up (the batch stopped asking "que dia ela vence
+    // todo mês?"). "pago 100 de mensalidade todo dia 5", "a mensalidade vence
+    // dia 10" and "assinei" still are.
+    if (_isOneOffFeePayment(normText)) {
+      recurrence
+        ..clear()
+        ..addAll(_parseRecurrence(normText.replaceAll(_feeWord, 'conta')));
+    }
+    // "comprei um PS5 por 5000 em 7x, pra pagar todo dia 10": with the
+    // installments said, the day is when each installment falls due — the
+    // purchase is not a monthly bill of R$ 5000 (it was saved recurring).
+    final installmentDueDay = _installmentDueDay(normText, paymentText, recurrence);
+    if (installmentDueDay != null) {
+      recurrence
+        ..['is_recurrent'] = false
+        ..['due_day'] = null
+        ..['due_business_day'] = null
+        ..['frequency'] = null
+        ..['recurrence_duration'] = null
+        ..['bare_day'] = false;
+    }
     // A recurring due day ("todo dia 10") is not the date of the entry.
     // …unless it was said bare after the user's own past verb: "paguei a
     // netflix de 55 dia 12" was paid on the 12th (ACC-A-012) — the renewal
     // day may be the same, but the entry is not today's.
-    final dayIsDueDay = recurrence['due_day'] != null &&
-        !(recurrence['bare_day'] == true && _firstPersonEntryVerb.hasMatch(CategoryNameMatcher.foldAccents(lower)));
+    final dayIsDueDay = installmentDueDay != null ||
+        (recurrence['due_day'] != null &&
+            !(recurrence['bare_day'] == true && _firstPersonEntryVerb.hasMatch(CategoryNameMatcher.foldAccents(lower))));
     // Date words inside a proper name ("no Bar Dia 7") are not the date.
     // Without "se/caso" clauses, streets named after dates, and "hoje" when
     // another day is said too (CHAOS-B-002/003, ACC-B-005).
@@ -985,7 +1034,7 @@ class LocalFinancialNlpEngine {
         targetReminderDate = payday;
         resolvedDueDay = payday.day;
         final dateLabel = RealtimeCalendarService.formatDateLabel(payday);
-        calendarConsultationNote = '5º dia útil bancário consultado no calendário em tempo real: $dateLabel';
+        calendarConsultationNote = '5º dia útil (sábado conta) consultado no calendário em tempo real: $dateLabel';
       }
     } else if (isDividend && (lower.contains('lembr') || lower.contains('aviso') || lower.contains('quando') || lower.contains('cai') || lower.contains('dia') || lower.contains('receber'))) {
       isReminder = true;
@@ -1160,6 +1209,12 @@ class LocalFinancialNlpEngine {
     }
     if (assumptionNote == null && dateOffsetDays < 0) assumptionNote = _gluedWeekdayNote(dateText, dateOffsetDays);
     assumptionNote ??= _weekendNote(dateText);
+    if (installmentTotal != null) {
+      // The total was computed, not said: show the math.
+      final calc = '🧮 ${perInstallment!.count} × ${QuantityPricing._brl(perInstallment.value)} = '
+          '${QuantityPricing._brl(installmentTotal)} — registrei o total da compra.';
+      assumptionNote = assumptionNote == null ? calc : '$calc $assumptionNote';
+    }
 
     // A user-created category named in the sentence wins over the model's
     // guess among the built-in ones (it can't know them).
@@ -1389,6 +1444,7 @@ class LocalFinancialNlpEngine {
       targetDate: targetReminderDate,
       calendarConsultationNote: calendarConsultationNote,
       assumptionNote: assumptionNote,
+      installmentDueDay: installmentDueDay,
     );
   }
 
@@ -1547,7 +1603,7 @@ class LocalFinancialNlpEngine {
   static String loanReminderText({String? personName, DateTime? targetDate, double? amount}) {
     final person = (personName != null && personName.isNotEmpty) ? 'o $personName' : 'essa pessoa';
     final when = targetDate != null
-        ? 'Consultei o calendário em tempo real: o 5º dia útil bancário cai em ${RealtimeCalendarService.formatDateLabel(targetDate)}. '
+        ? 'Consultei o calendário em tempo real: o 5º dia útil cai em ${RealtimeCalendarService.formatDateLabel(targetDate)}. '
         : '';
     if (amount == null || amount <= 0) {
       return 'Entendido! ${when}Vou agendar um lembrete para você cobrar $person${targetDate != null ? ' nessa data' : ''}. Qual foi o valor que você emprestou para ele?';
@@ -1559,9 +1615,82 @@ class LocalFinancialNlpEngine {
   static const openEndedAssumptionNote = 'Considerei sem prazo para terminar — se for plano anual, me avise.';
 
   /// "assinei", "assinar", "contratei", "mensalidade": a new recurring charge
-  /// whose renewal day matters.
-  static bool _isNewSubscriptionPhrase(String lower) =>
-      lower.contains('assinei') || lower.contains('assinar') || lower.contains('contratei') || lower.contains('mensalidade');
+  /// whose renewal day matters — not a fee paid once ([_isOneOffFeePayment]).
+  bool _isNewSubscriptionPhrase(String lower) =>
+      lower.contains('assinei') ||
+      lower.contains('assinar') ||
+      lower.contains('contratei') ||
+      (lower.contains('mensalidade') && !_isOneOffFeePayment(lower));
+
+  static final RegExp _feeWord = RegExp(r'\bmensalidades?\b');
+
+  /// A verb that tells money already went out ("gastei", "paguei"): what
+  /// was paid is a fact of the past, not a commitment being set up.
+  static final RegExp _pastPaymentVerb =
+      RegExp(r'\b(?:gastei|gastamos|paguei|pagamos|quitei|quitamos|torrei|desembolsei|transferi|mandei|acertei)\b');
+
+  /// "gastei 100 na mensalidade da academia", "paguei a mensalidade da
+  /// escola dia 5": a monthly fee said paid, in the past, with nothing else
+  /// in the sentence that makes it recurring ("todo dia 5", "vence dia 10",
+  /// "assinei", "por mês") — one payment, not a subscription. The word
+  /// "mensalidade" alone only names what was paid.
+  bool _isOneOffFeePayment(String lower) {
+    final f = CategoryNameMatcher.foldAccents(lower.toLowerCase());
+    if (!_feeWord.hasMatch(f) || !_pastPaymentVerb.hasMatch(f)) return false;
+    final rest = _parseRecurrence(f.replaceAll(_feeWord, 'conta'));
+    return rest['is_recurrent'] != true;
+  }
+
+  /// "7 parcelas de 714,29", "em 10x de 350", "a parcela é de 350", "com
+  /// parcelas de 99,90 em 12x": the value of each installment and how many
+  /// there are ([folded]: lowercase, accents folded, spoken numbers as
+  /// digits). Null when no installment value is said, or no count of 2+.
+  static ({double value, int count})? installmentValueSaid(String folded) {
+    final count = RegExp(r'\b(\d{1,2})\s*(?:x|vezes|parcelas|prestacoes)\b').firstMatch(folded);
+    final n = count == null ? null : int.tryParse(count.group(1)!);
+    if (n == null || n < 2) return null;
+    const money = r'(?:r\$\s*)?(\d[\d.]*(?:,\d{1,2})?)(?![\d.,]?\d|\s*(?:x|vezes|parcelas|dias?|meses)\b|\s+de\s+\d)';
+    final m = RegExp(r'\b\d{1,2}\s*(?:x|vezes|parcelas|prestacoes)\s+(?:iguais\s+|fixas\s+|mensais\s+)?de\s+' + money).firstMatch(folded) ??
+        RegExp(r'\b(?:parcelas?|prestac(?:ao|oes))\s+(?:mensa(?:l|is)\s+)?(?:(?:e|eh|sao|fica|ficam|ficou|ficaram|sai|saem|saiu|vai\s+ser|vao\s+ser|sera|serao|deu|deram)\s+)?(?:de\s+)?' + money)
+            .firstMatch(folded);
+    if (m == null) return null;
+    final v = cleanAndParseAmount(m.group(1));
+    if (v == null || v <= 0) return null;
+    return (value: v, count: n);
+  }
+
+  /// "todo dia 10", "pra pagar dia 20", "a parcela vence todo dia 15",
+  /// "vencimento no dia 5": the day the installments fall due, when the
+  /// purchase was split in 2+ installments and nothing else in the sentence
+  /// makes it a subscription ("assinei o plano anual em 12x, renova dia 5"
+  /// keeps its renewal). Null otherwise.
+  int? _installmentDueDay(String normText, String paymentText, Map<String, dynamic> recurrence) {
+    final count = _parseInstallments(paymentText);
+    if (count == null || count < 2) return null;
+    final f = CategoryNameMatcher.foldAccents(normText.toLowerCase());
+    final said = RegExp(
+            r'\b(?:(?:pra|para)\s+pagar|pagando|pago|paga|pagas|vence|vencem|vencendo|vencimento|cai|caem|debita|debitam|cobra|cobram)'
+            r'\s+(?:(?:sempre|todo|toda|todos|o|os|no|nos|em|mes|mensalmente)\s+){0,4}?dia\s+(\d{1,2})\b(?!\s*(?:x|vezes|parcelas|reais|real)\b)'
+            r'|\btod[oa]s?\s+(?:o\s+)?(?:santo\s+)?dia\s+(\d{1,2})\b'
+            r'|\bdia\s+(\d{1,2})\s+de\s+cada\s+mes\b')
+        .firstMatch(f);
+    final day = said == null
+        ? (recurrence['is_recurrent'] == true ? recurrence['due_day'] as int? : null)
+        : int.tryParse(said.group(1) ?? said.group(2) ?? said.group(3)!);
+    if (day == null || day < 1 || day > 31) return null;
+    // A subscription bought in installments renews — that stays recurring.
+    if (_isNewSubscriptionPhrase(f) || _parseRecurrence(_withoutSchedule(f))['is_recurrent'] == true) return null;
+    return day;
+  }
+
+  /// [f] without the words that only tell *when* something is paid ("todo
+  /// dia 10", "por mês", "vence", "em 12x"): what is left says whether the
+  /// thing itself is a subscription.
+  static String _withoutSchedule(String f) => f
+      .replaceAll(RegExp(r'\b(?:tod[oa]s?\s+(?:o\s+)?)?(?:santo\s+)?dias?\s+\d{1,2}\b'), ' ')
+      .replaceAll(RegExp(r'\b(?:todo|por|ao|cada)\s+mes\b|\bdo\s+mes\b|\bmensa(?:l|is|lmente)\b'), ' ')
+      .replaceAll(RegExp(r'\b(?:vence\w*|vencimento|pagar|pago|paga|cai|caem)\b'), ' ')
+      .replaceAll(RegExp(r'\b(?:em\s+|de\s+)?\d{1,2}\s*(?:x|vezes|parcelas|prestacoes|meses)\b'), ' ');
 
   /// Parses multi-transaction inputs (e.g. "Gastei 150 no mercado no debito e 35 no uber no pix")
   List<FinancialTransactionDraft> parseMulti(String phrase) {
@@ -1598,9 +1727,24 @@ class LocalFinancialNlpEngine {
     // "dentista 200 e remédio 37 ambos no débito": the closing "ambos no
     // débito"/"os dois ontem" is said of the whole batch — a piece of its
     // own, not part of the last item (ACC-C-003, the 37 vanished).
+    // ("…ambos no crédito em 3x": the count of installments may come along.)
     listBody = listBody.replaceFirstMapped(
-        RegExp(r'(?<=\d)\s*,?\s+((?:ambos|ambas|os\s+dois|as\s+duas|tudo|todos|todas)\b[^\d]*)$', caseSensitive: false), (m) => ', ${m.group(1)}');
-    final rawSegments = listBody.split(separatorPattern).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+        RegExp(r'(?<=\d)\s*,?\s+((?:ambos|ambas|os\s+dois|as\s+duas|tudo|todos|todas|cada\s+um|cada\s+uma)\b[^\d]*(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*)?)$',
+            caseSensitive: false),
+        (m) {
+          // "…e 3 refris de 5 cada um no pix": "cada" after a count and a
+          // price is the unit price of that item, not a group piece.
+          final before = CategoryNameMatcher.foldAccents(listBody.substring(0, m.start).toLowerCase());
+          if (m.group(1)!.toLowerCase().startsWith('cada') &&
+              RegExp(r'\b(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis)\s+[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:de|por|a)\s+(?:r\$\s*)?\d[\d.,]*\s*(?:reais)?\s*$')
+                  .hasMatch(before)) {
+            return m.group(0)!;
+          }
+          return ', ${m.group(1)}';
+        });
+    final rawSegments = [
+      for (final piece in listBody.split(separatorPattern).map((s) => s.trim()).where((s) => s.isNotEmpty)) ..._splitBatchPiece(piece),
+    ];
 
     // "tudo no débito", "no pix": the payment said once for the whole batch.
     String? batchPayment;
@@ -1609,10 +1753,31 @@ class LocalFinancialNlpEngine {
     // "fui na feira e gastei 35": a piece with no value that sets the scene
     // for the next piece's own verb goes with it (ACC-A-005).
     final segments = <String>[];
+    // "comprei whey por 250 e albumina por 75, ambos no crédito em 3x, e…":
+    // a piece that only says how/when for a group of the items before it,
+    // keyed by where it sits among [segments] (see [_groupModifier]).
+    final groupMods = <int, _GroupModifier>{};
+    final modPieces = <String>[];
     String? carry;
     for (var i = 0; i < rawSegments.length; i++) {
       var seg = rawSegments[i];
       final f = CategoryNameMatcher.foldAccents(seg.toLowerCase());
+      final mod = _groupModifier(f);
+      // "…, tudo no débito" / "…, tudo ontem" closing the sentence keep the
+      // batch-wide reading below.
+      final closingWholeBatch = i == rawSegments.length - 1 &&
+          mod != null &&
+          mod.count == null &&
+          (_paymentOnlyPiece.hasMatch(f) || _batchDatePiece.hasMatch(f));
+      if (mod != null && !closingWholeBatch) {
+        modPieces.add(seg);
+        if (carry != null) {
+          segments.add(carry);
+          carry = null;
+        }
+        groupMods[segments.length] = mod;
+        continue;
+      }
       if (_paymentOnlyPiece.hasMatch(f)) {
         batchPayment = f;
         continue;
@@ -1664,7 +1829,19 @@ class LocalFinancialNlpEngine {
       // A verbless piece before a piece with its own verb is context ("moro
       // no apartamento 302 e paguei 450"), not an item of its own.
       final anyVerbPiece = segments.any((p) => _multiPieceVerb.hasMatch(CategoryNameMatcher.foldAccents(p.toLowerCase())));
-      for (final seg in segments) {
+      // The items of one clause — a piece with its own verb and the
+      // verbless pieces that follow it ("comprei whey por 250 e albumina
+      // por 75") — are a group: [clauseOf] holds where each item's group
+      // starts, [purchaseClause] whether that verb bought things.
+      final clauseOf = <int>[];
+      final purchaseClause = <int, bool>{};
+      var clauseStart = 0;
+      final mods = <({int at, int clauseStart, _GroupModifier mod})>[];
+      for (var si = 0; si <= segments.length; si++) {
+        final mod = groupMods[si];
+        if (mod != null) mods.add((at: drafts.length, clauseStart: clauseStart, mod: mod));
+        if (si == segments.length) break;
+        final seg = segments[si];
         final segTrim = seg.trim();
         if (segTrim.isEmpty) continue;
 
@@ -1688,16 +1865,68 @@ class LocalFinancialNlpEngine {
             // "coloquei 100 de gasolina e…") is a purchase.
             final verb = drafts.isNotEmpty ? verbFor[drafts.first.intent] : (hasVerb ? null : 'gastei');
             if (verb != null) {
-              final inherited = parse('$verb $item');
-              if (inherited.amount != null) draft = inherited;
+              // ("3 refris de 5 cada um" reads as a purchase of things.)
+              final itemVerb = verb == 'gastei' &&
+                      RegExp(r'^(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis)\s+[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:de|por|a)\s+(?:r\$\s*)?\d').hasMatch(item)
+                  ? 'comprei'
+                  : verb;
+              final inherited = parse('$itemVerb $item');
+              // (Its name with the accents said: "colágeno", not "Colageno".)
+              if (inherited.amount != null) draft = inherited.copyWith(description: _accentedAs(inherited.description, segTrim));
             }
           } else if (drafts.isNotEmpty && !hasVerb) {
             continue;
           }
         }
         if (const {'expense', 'income', 'transfer'}.contains(draft.intent) && draft.amount != null) {
+          if (hasVerb || drafts.isEmpty) {
+            clauseStart = drafts.length;
+            purchaseClause[clauseStart] = RegExp(r'\b(?:comprei|compramos|peguei|pegamos)\b').hasMatch(foldedSeg);
+          }
+          clauseOf.add(clauseStart);
           drafts.add(draft);
           sources.add(segTrim);
+        }
+      }
+
+      // "comprei whey por 250 e albumina por 75": an item of the same
+      // purchase with no category of its own is of the kind of the things
+      // bought with it (one category among them all).
+      for (var i = 0; i < drafts.length; i++) {
+        final d = drafts[i];
+        if (purchaseClause[clauseOf[i]] != true || !d.missingSlots.contains('category')) continue;
+        // Only a thing bought ("albumina por 75"), not a place or service
+        // ("25 no borracheiro" is asked).
+        if (RegExp(r'\b(?:no|na|nos|nas|num|numa|em)\s+(?!(?:pix|debito|credito|dinheiro|cartao|boleto|especie)\b)')
+            .hasMatch(CategoryNameMatcher.foldAccents(sources[i].toLowerCase()))) {
+          continue;
+        }
+        final kin = {
+          for (var j = 0; j < drafts.length; j++)
+            if (j != i && clauseOf[j] == clauseOf[i] && drafts[j].category != 'unknown' && !drafts[j].missingSlots.contains('category'))
+              drafts[j].category,
+        };
+        if (kin.length == 1) drafts[i] = _withCategory(d, kin.single);
+      }
+
+      // "ambos no crédito em 3x", "os dois ontem", "cada um no débito": said
+      // once for a group, it is for each item of it — not only the last one.
+      // "ambos"/"os dois" are the last two items, "os 3" the last three;
+      // "todos"/"cada um" the items of that clause, or of the whole
+      // sentence when it closes it.
+      final groupPaid = <int>{};
+      for (final m in mods) {
+        if (m.at == 0) continue;
+        final start = m.mod.count != null
+            ? max(0, m.at - m.mod.count!)
+            : (m.at == drafts.length ? 0 : min(m.clauseStart, m.at - 1));
+        for (var i = start; i < m.at; i++) {
+          final d = drafts[i];
+          if (m.mod.payment != null && (d.paymentMethod == 'unknown' || (d.paymentMethod == 'credit_card' && d.installments == null))) {
+            drafts[i] = mergeDrafts(d, m.mod.payment!);
+            groupPaid.add(i);
+          }
+          if (m.mod.date != null) sources[i] = '${sources[i]}, ${m.mod.date}';
         }
       }
 
@@ -1705,10 +1934,15 @@ class LocalFinancialNlpEngine {
         // Every money value of the sentence must be one of the items: a value
         // no item took was lost in silence (CHAOS-B-007). The sentence as a
         // whole then asks ([EntrySafetyGate]).
-        if (EntrySafetyGate.unexplainedMoney(clean, [for (final d in drafts) d.amount!]).isNotEmpty) return [parse(phrase)];
+        // (A group piece has no value: its "os 3" is how many items.)
+        var moneyText = clean;
+        for (final piece in modPieces) {
+          moneyText = moneyText.replaceFirst(piece, ' ');
+        }
+        if (EntrySafetyGate.unexplainedMoney(moneyText, [for (final d in drafts) d.amount!]).isNotEmpty) return [parse(phrase)];
         final dated = _shareDate(drafts, sources, batchDate: batchDate);
         if (dated == null) return [parse(phrase)];
-        return _confirmBatchIfUnsure(_sharePaymentMethod(dated, batchPayment: batchPayment), phrase);
+        return _confirmBatchIfUnsure(_sharePaymentMethod(dated, batchPayment: batchPayment, groupPaid: groupPaid), phrase);
       }
     }
 
@@ -1732,6 +1966,118 @@ class LocalFinancialNlpEngine {
                 clarificationPrompt: d.missingSlots.isEmpty ? EntrySafetyGate.confirmQuestion(d) : d.clarificationPrompt,
               ),
     ];
+  }
+
+  /// [description] (read from the accent-folded piece) as the word was
+  /// said in [said]: "Feijao" → "Feijão".
+  static String _accentedAs(String description, String said) {
+    final folded = CategoryNameMatcher.foldAccents(description.toLowerCase());
+    for (final w in said.split(RegExp(r'[^a-zA-ZÀ-ÿ]+'))) {
+      final lw = w.toLowerCase();
+      // Only a word said with accents: "remedio" keeps "Remédio".
+      if (lw != description.toLowerCase() && CategoryNameMatcher.foldAccents(lw) != lw && CategoryNameMatcher.foldAccents(lw) == folded) {
+        return w[0].toUpperCase() + w.substring(1).toLowerCase();
+      }
+    }
+    return description;
+  }
+
+  /// A piece of a batch as the pieces it holds when said with no
+  /// punctuation (speech): "gastei 100 na academia no pix comprei whey por
+  /// 250" is two clauses — a new first-person verb with a value of its own
+  /// after a value already said — and "albumina por 75 ambos no crédito em
+  /// 3x" is an item and a group piece ([_groupModifier]).
+  List<String> _splitBatchPiece(String piece) {
+    final f = CategoryNameMatcher.foldAccents(piece.toLowerCase());
+    if (f.length != piece.length) return [piece];
+    for (final m in RegExp(r'\s+(?=(?:gastei|paguei|comprei|recebi|ganhei|transferi|torrei|abasteci|depositei|desembolsei)\b)').allMatches(f)) {
+      if (m.start == 0) continue;
+      // (A value, not any number: "há 4 dias paguei 50…" is one clause.)
+      // (And an entry of its own: "planejei gastar 100 mas gastei 140" is one.)
+      if (_firstPersonEntryVerb.hasMatch(f.substring(0, m.start)) && _pickAmount(f.substring(0, m.start), requireMoneyContext: false) != null && RegExp(r'\d').hasMatch(f.substring(m.end))) {
+        return [..._splitBatchPiece(piece.substring(0, m.start).trim()), ..._splitBatchPiece(piece.substring(m.end).trim())];
+      }
+    }
+    // "camiseta por 80 no crédito em 2x cada um": the how comes before the
+    // quantifier — it is the group piece "cada um no crédito em 2x". (Only
+    // pieces ending with a quantifier pay for the long pattern below.)
+    final endsWithGroup = RegExp(r'\b(?:ambos|ambas|os\s+dois|as\s+duas|todos|todas|cada\s+um|cada\s+uma)\s*$').hasMatch(f);
+    final before = !endsWithGroup ? null : RegExp(r'^(.*?\d[\d.,]*(?:\s*(?:reais|real|conto|contos))?)\s+((?:no|na|em|via|pelo|pela|parcelad[oa]s?)\s+[^\d]*?(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*?)?)\s*,?\s+'
+            r'(ambos|ambas|os\s+dois|as\s+duas|todos|todas|cada\s+um|cada\s+uma)\s*$')
+        .firstMatch(f);
+    if (before != null && _groupModifier('${before.group(3)} ${before.group(2)}') != null) {
+      return [piece.substring(0, before.group(1)!.length).trim(), '${before.group(3)} ${before.group(2)!.trim()}'];
+    }
+    final q = RegExp(r'\d[^\d]*?\s*,?\s+'
+            r'((?:ambos|ambas|os\s+dois|as\s+duas|(?:os|as)\s+(?:\d|tres|quatro|cinco|seis)|tudo|todos|todas|cada\s+um|cada\s+uma)\b.*)$')
+        .firstMatch(f);
+    if (q == null || _groupModifier(q.group(1)!) == null) return [piece];
+    final cut = f.length - q.group(1)!.length;
+    // "2 pizzas de 40 cada uma": "cada" after a count is the unit price.
+    if (q.group(1)!.startsWith('cada') && RegExp(r'\b(?:\d{1,2}|dois|duas|tres|quatro|cinco)\s+[a-z]+s\b').hasMatch(f.substring(0, cut))) {
+      return [piece];
+    }
+    return [piece.substring(0, cut).trim().replaceAll(RegExp(r',$'), ''), piece.substring(cut).trim()];
+  }
+
+  /// [d] with the category [category] (taken from the items bought with
+  /// it), its question about the category gone.
+  FinancialTransactionDraft _withCategory(FinancialTransactionDraft d, String category) {
+    final missing = [...d.missingSlots]..remove('category');
+    final complete = d.intent != 'unknown' && missing.isEmpty;
+    return d.copyWith(
+      category: category,
+      missingSlots: missing,
+      isComplete: complete,
+      clarificationPrompt: complete
+          ? null
+          : _generateEmpatheticClarificationPrompt(
+              intent: d.intent,
+              amount: d.amount,
+              category: category,
+              paymentMethod: d.paymentMethod,
+              description: d.description,
+              missingSlots: missing,
+              rawText: d.rawText,
+              isRecurrent: d.isRecurrent,
+              dueDay: d.dueDay,
+              recurrenceDuration: d.recurrenceDuration,
+            ),
+    );
+  }
+
+  static final RegExp _groupQuantifier = RegExp(
+      r'^(?:e\s+)?(?:(?:foi|foram|paguei|pago|pagos|pagas|comprei)\s+)?'
+      r'(ambos|ambas|os\s+dois|as\s+duas|(?:os|as)\s+(?:\d|tres|quatro|cinco|seis)|tudo|todos|todas|cada\s+um|cada\s+uma)\b'
+      r'(?:\s+(?:eles|elas|isso))?(?:\s+(?:foi|foram))?\s*(.*)$');
+
+  static const Map<String, int> _groupCounts = {'ambos': 2, 'ambas': 2, 'dois': 2, 'duas': 2, 'tres': 3, 'quatro': 4, 'cinco': 5, 'seis': 6};
+
+  /// A piece of a batch that only says how or when for a group of items:
+  /// "ambos no cartão de crédito parcelado em 3 vezes", "os dois ontem",
+  /// "cada um no débito", "os 3 no pix". Null when the piece carries a value
+  /// of its own (then it is an item) or says neither payment nor date.
+  _GroupModifier? _groupModifier(String folded) {
+    final m = _groupQuantifier.firstMatch(folded.trim());
+    if (m == null) return null;
+    final rest = m.group(2)!.replaceAll(RegExp(r'[.!]+$'), '').trim();
+    // It goes on with how or when ("no pix", "ontem", "parcelado…"), not
+    // with a thing ("os dois amigos").
+    if (rest.isEmpty ||
+        !RegExp(r'^(?:no|na|nos|nas|em|via|pelo|pela|com|parcelad[oa]s?|a|ontem|hoje|anteontem|dia|semana|mes|segunda|terca|quarta|quinta|sexta|sabado|domingo|pix|debito|credito|dinheiro|cartao)\b')
+            .hasMatch(rest)) {
+      return null;
+    }
+    final bare = rest
+        .replaceAll(RegExp(r'\b(?:parcelad[oa]s?\s+)?(?:em\s+)?\d{1,2}\s*(?:x|vezes|parcelas)\b'), ' ')
+        .replaceAll(RegExp(r'\bdias?\s+\d{1,2}\b'), ' ');
+    if (RegExp(r'\d').hasMatch(bare)) return null;
+    final saysPayment = RegExp(r'\b(?:pix|debito|credito|cartao|dinheiro|especie|boleto|vista|parcel\w*|vezes)\b|\d\s*x\b').hasMatch(rest);
+    final saysDate = _saysDate(_normalizeText(rest));
+    if (!saysPayment && !saysDate) return null;
+    final q = m.group(1)!.split(RegExp(r'\s+')).last;
+    final count = _groupCounts[q] ?? (RegExp(r'^\d$').hasMatch(q) ? int.parse(q) : null);
+    return _GroupModifier(count: count, payment: saysPayment ? rest : null, date: saysDate ? rest : null);
   }
 
   /// "tudo ontem", "foi tudo no dia 21", "ambos anteontem": a date for the
@@ -1872,6 +2218,12 @@ class LocalFinancialNlpEngine {
     // "dois cafés 9", "3 pães 6": a count before the thing, then the value
     // of them all — the count is not part of the name nor the value
     // (ACC-C-003).
+    // "3 refris de 5 cada um": the count, the thing and its unit price —
+    // kept whole, so the value is 3 × 5.
+    if (RegExp(r'^(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:de|por|a)\s+(?:r\$\s*)?\d[\d.,]*\s*(?:reais\s+)?cada\b')
+        .hasMatch(p)) {
+      return p.replaceFirst(RegExp(r'\bcada\b(?!\s+uma?\b)'), 'cada um');
+    }
     p = p.replaceFirst(RegExp(r'^(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+(?=[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:r\$\s*)?\d)'), '');
     // "30 hoje no mercado": a date word between the value and what it paid
     // is the item's date (read from the piece by [_shareDate]), not its name.
@@ -1918,19 +2270,28 @@ class LocalFinancialNlpEngine {
 
   /// "gastei 50 no mercado e 30 na farmácia no pix": the payment said once
   /// at the end is for every item that didn't name its own.
-  List<FinancialTransactionDraft> _sharePaymentMethod(List<FinancialTransactionDraft> drafts, {String? batchPayment}) {
+  ///
+  /// [groupPaid]: items whose payment came from a group piece ("ambos no
+  /// crédito em 3x") — said for that group only, it doesn't spread to the
+  /// other items ("…e gastei 30 no mercado" is asked).
+  List<FinancialTransactionDraft> _sharePaymentMethod(List<FinancialTransactionDraft> drafts,
+      {String? batchPayment, Set<int> groupPaid = const {}}) {
     // "…, tudo no débito": said as a piece of its own, it is for every item
     // that didn't name another (ACC-A-005).
     if (batchPayment != null && drafts.any((d) => d.paymentMethod == 'unknown')) {
       return [for (final d in drafts) d.paymentMethod == 'unknown' ? mergeDrafts(d, batchPayment) : d];
     }
-    final known = drafts.map((d) => d.paymentMethod).where((p) => p != 'unknown').toSet();
+    final own = [
+      for (var i = 0; i < drafts.length; i++)
+        if (!groupPaid.contains(i)) drafts[i],
+    ];
+    final known = own.map((d) => d.paymentMethod).where((p) => p != 'unknown').toSet();
     if (known.length != 1) return drafts;
     var answer = _paymentAnswerWords[known.first];
     if (answer == null) return drafts;
     // "…e um caderno de 20 no crédito à vista": the "à vista"/"em 3x" said
     // with the card goes along with it, or César asked it again.
-    final counts = drafts.where((d) => d.paymentMethod == 'credit_card').map((d) => d.installments).whereType<int>().toSet();
+    final counts = own.where((d) => d.paymentMethod == 'credit_card').map((d) => d.installments).whereType<int>().toSet();
     if (known.first == 'credit_card' && counts.length == 1) {
       answer = counts.first <= 1 ? 'crédito à vista' : 'crédito em ${counts.first}x';
     }
@@ -2427,7 +2788,14 @@ class LocalFinancialNlpEngine {
       frequency = 'monthly';
     }
 
-    if (lower.contains('indeterminado') || lower.contains('tempo indeterminado') || lower.contains('sem prazo') ||
+    // "comprei um notebook em 12 meses no cartão": installments, not a
+    // 12-month subscription (see [_parseInstallments]).
+    final installmentMonths = RegExp(r'\bem\s+\d{1,2}\s+meses\b').hasMatch(lower) &&
+        RegExp(r'\b(?:cart[aã]o|cr[eé]dito)\b').hasMatch(lower) &&
+        !RegExp(r'\b(?:assinatura|plano|mensalidade|anuidade)\b').hasMatch(lower);
+    if (installmentMonths) {
+      // (Nothing below: the months are how it was split.)
+    } else if (lower.contains('indeterminado') || lower.contains('tempo indeterminado') || lower.contains('sem prazo') ||
         lower.contains('não tem prazo') || lower.contains('nao tem prazo') || lower.contains('não tem tempo') ||
         lower.contains('nao tem tempo') || lower.contains('até cancelar') || lower.contains('ate cancelar')) {
       recurrenceDuration = 'indeterminado';
@@ -2921,6 +3289,8 @@ class LocalFinancialNlpEngine {
       targetDate: previousDraft.targetDate,
       calendarConsultationNote: previousDraft.calendarConsultationNote,
       assumptionNote: weekendNote,
+      // "em 7x, pra pagar todo dia 10" said as the answer.
+      installmentDueDay: (updatedInstallments ?? 0) > 1 ? followUpParsed.installmentDueDay : null,
       description: placeAnswer,
     ), turns: [...previousDraft.rawText.split(' + '), followUpText.trim()]);
   }
@@ -3203,7 +3573,8 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'ótica') || _hasTermOrDiminutive(lower, 'otica') || _hasTermOrDiminutive(lower, 'lentes de contato') || _hasTermOrDiminutive(lower, 'plano de saúde') ||
         _hasTermOrDiminutive(lower, 'unimed') || _hasTermOrDiminutive(lower, 'amil') || _hasTermOrDiminutive(lower, 'bradesco saúde') || _hasTermOrDiminutive(lower, 'sulamerica') ||
         _hasTermOrDiminutive(lower, 'notredame') || _hasTermOrDiminutive(lower, 'hapvida') ||
-        _hasTermOrDiminutive(lower, 'gympass') || _hasTermOrDiminutive(lower, 'wellhub') || _hasTermOrDiminutive(lower, 'totalpass')) {
+        _hasTermOrDiminutive(lower, 'gympass') || _hasTermOrDiminutive(lower, 'wellhub') || _hasTermOrDiminutive(lower, 'totalpass') ||
+        _supplements.hasMatch(lower)) {
       return 'health';
     }
 
@@ -3269,7 +3640,7 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'paramount') || _hasTermOrDiminutive(lower, 'star+') || _hasTermOrDiminutive(lower, 'star plus') || _hasTermOrDiminutive(lower, 'audible') || _hasTermOrDiminutive(lower, 'kindle unlimited') ||
         _hasTermOrDiminutive(lower, 'steam') || _hasTermOrDiminutive(lower, 'playstation') || _hasTermOrDiminutive(lower, 'psn') || _hasTermOrDiminutive(lower, 'ps plus') || _hasTermOrDiminutive(lower, 'xbox') ||
         _hasTermOrDiminutive(lower, 'game pass') || _hasTermOrDiminutive(lower, 'gamepass') || _hasTermOrDiminutive(lower, 'nintendo') || _hasTermOrDiminutive(lower, 'epic games') || _hasTermOrDiminutive(lower, 'roblox') ||
-        _hasTermOrDiminutive(lower, 'videogame') || _hasTermOrDiminutive(lower, 'console') ||
+        _hasTermOrDiminutive(lower, 'videogame') || _hasTermOrDiminutive(lower, 'console') || RegExp(r'\bps[2-5]\b|\bpley\s*[2-5]\b|\bplay\s*[2-5]\b').hasMatch(lower) ||
         _hasTermOrDiminutive(lower, 'violão') || _hasTermOrDiminutive(lower, 'violao') || _hasTermOrDiminutive(lower, 'guitarra') || _hasTermOrDiminutive(lower, 'baixo') ||
         _hasTermOrDiminutive(lower, 'cavaquinho') || _hasTermOrDiminutive(lower, 'ukulele') || _hasTermOrDiminutive(lower, 'bateria') || _hasTermOrDiminutive(lower, 'teclado musical') ||
         _hasTermOrDiminutive(lower, 'piano') || _hasTermOrDiminutive(lower, 'flauta') || _hasTermOrDiminutive(lower, 'saxofone') || _hasTermOrDiminutive(lower, 'trompete') ||
@@ -3306,7 +3677,7 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'claro controle') || _hasTermOrDiminutive(lower, 'vivo controle') ||
         _hasTermOrDiminutive(lower, 'luz') || _hasTermOrDiminutive(lower, 'energia') ||
         _hasTermOrDiminutive(lower, 'água') || _hasTermOrDiminutive(lower, 'agua') || RegExp(r'\b(gás|gas)\b').hasMatch(lower) ||
-        _hasTermOrDiminutive(lower, 'botijão') || _hasTermOrDiminutive(lower, 'internet') || _hasTermOrDiminutive(lower, 'wifi') || _hasTermOrDiminutive(lower, 'aluguel') || _hasTermOrDiminutive(lower, 'aluguéis') || _hasTermOrDiminutive(lower, 'alugueis') ||
+        _hasTermOrDiminutive(lower, 'botijão') || _hasTermOrDiminutive(lower, 'internet') || _hasTermOrDiminutive(lower, 'wifi') || RegExp(r'\b(?:a|de|da|do)\s+net\b(?!flix)').hasMatch(lower) || _hasTermOrDiminutive(lower, 'aluguel') || _hasTermOrDiminutive(lower, 'aluguéis') || _hasTermOrDiminutive(lower, 'alugueis') ||
         _hasTermOrDiminutive(lower, 'condominio') || _hasTermOrDiminutive(lower, 'condomínio') || _hasTermOrDiminutive(lower, 'iptu') || _hasTermOrDiminutive(lower, 'quintoandar') ||
         _hasTermOrDiminutive(lower, 'loft') || _hasTermOrDiminutive(lower, 'diarista') || _hasTermOrDiminutive(lower, 'faxina') || _hasTermOrDiminutive(lower, 'sofa') ||
         _hasTermOrDiminutive(lower, 'sofá') || _hasTermOrDiminutive(lower, 'cama') || _hasTermOrDiminutive(lower, 'colchão') || _hasTermOrDiminutive(lower, 'colchao') ||
@@ -3388,10 +3759,16 @@ class LocalFinancialNlpEngine {
       r"\b(?:rol[eê]s?|rolezinho|espetinhos?|churrasquinho|combos?|bob'?s|caldo\s+de\s+cana|quiosque|lanchonete|boteco|petiscos?|porç[aã]o|porcao)(?![a-zà-úç])");
   static final RegExp _everydayTransport =
       RegExp(r'\b(?:lava[\s-]?(?:jato|r[aá]pido)|lavagem\s+d[oe]\s+carro|borracharia|funilaria|guincho|vistoria|mototaxi|moto[\s-]t[aá]xi)(?![a-zà-úç])');
+  /// Food supplements ("albumina", "whey", "colágeno", "vitamina D") are
+  /// health, like the gym they go with.
+  static final RegExp _supplements = RegExp(
+      r'\b(?:albumina|whey|creatina|suplementos?|col[aá]geno|multivitam[ií]nic[oa]s?|pr[eé][\s-]?treino|bcaa|glutamina|'
+      r'termog[eê]nicos?|[oô]mega[\s-]?3|vitamina\s+(?:[abcdek]\d{0,2}|b\s?12|d3))(?![a-zà-úç\d])');
+
   static final RegExp _everydayHealth =
       RegExp(r'\b(?:cl[ií]nicas?|hospital|pronto[\s-]socorro|fisioterap\w*|nutricionista|pediatra|vacinas?|consult[oó]rio)(?![a-zà-úç])');
   static final RegExp _everydayServices = RegExp(
-      r'\b(?:barbeiro|barbearia|cabeleireir[oa]|manicure|banca(?:\s+de\s+(?:jornal|revista))?|lot[eé]rica|costureira|lavanderia|cart[oó]rio|xerox|despachante)(?![a-zà-úç])');
+      r'\b(?:cort(?:ar|e)\s+(?:o\s+|de\s+)?cabelo|barbeiro|barbearia|cabeleireir[oa]|manicure|banca(?:\s+de\s+(?:jornal|revista))?|lot[eé]rica|costureira|lavanderia|cart[oó]rio|xerox|despachante)(?![a-zà-úç])');
 
   static String? _extractPersonName(String text) {
     final patterns = [
@@ -3906,6 +4283,16 @@ class LocalFinancialNlpEngine {
       }
     }
 
+    // "comprei um notebook em 12 meses no cartão": months on the card are
+    // installments (a subscription or plan "por 12 meses" is not).
+    final months = RegExp(r'\bem\s+(\d{1,2})\s+meses\b').firstMatch(lower);
+    if (months != null &&
+        RegExp(r'\b(?:cart[aã]o|cr[eé]dito)\b').hasMatch(lower) &&
+        !RegExp(r'\b(?:assinatura|plano|mensalidade|anuidade)\b').hasMatch(lower)) {
+      final count = int.parse(months.group(1)!);
+      if (count >= 2 && count <= 99) return count;
+    }
+
     // 4. Word numbers: "vinte e quatro vezes", "duas vezes", "três vezes", "quatro vezes", etc.
     final wordMap = {
       'vinte e quatro vezes': 24, 'vinte e quatro parcelas': 24, '24 vezes': 24,
@@ -3949,7 +4336,14 @@ class LocalFinancialNlpEngine {
     }
     if (_hasTerm(lower, 'crédito') || _hasTerm(lower, 'credito') || _hasTerm(lower, 'crdito') || _hasTerm(lower, 'kredito') || _hasTerm(lower, 'crebito') ||
         _hasTerm(lower, 'parcelado') || _hasTerm(lower, 'parcelada') || _hasTerm(lower, 'parcelei') || _hasTerm(lower, 'parceley') ||
-        _hasTerm(lower, 'parcelamento') || _hasTerm(lower, 'parcelas') || RegExp(r'\b\d{1,2}\s*x\b').hasMatch(lower)) {
+        _hasTerm(lower, 'parcelamento') || _hasTerm(lower, 'parcelas') || RegExp(r'\b\d{1,2}\s*x\b').hasMatch(lower) ||
+        // "em 6 vezes no cartão" is split like "6x": only the credit card is
+        // (unless another way of paying is said).
+        (RegExp(r'\b(?:em|de)\s+\d{1,2}\s+vezes\b').hasMatch(lower) && !RegExp(r'\b(?:dinheiro|especie|espécie|debito|débito)\b').hasMatch(lower)) ||
+        // "notebook de 4200 em 12 meses no cartão": months on a card are
+        // installments, and only the credit card is split.
+        (RegExp(r'\bem\s+\d{1,2}\s+meses\b').hasMatch(lower) && RegExp(r'\bcart[aã]o\b').hasMatch(lower) &&
+            !RegExp(r'\b(?:debito|débito)\b').hasMatch(lower))) {
       if (!_boletoAsMethod.hasMatch(lower)) {
         return 'credit_card';
       }
@@ -4891,6 +5285,28 @@ class LocalFinancialNlpEngine {
     if (RegExp(r'\b(?:na|no|pela|pelo|app)\s+99\b|\b99\s*(?:pop|taxis|taxi|moto)\b').hasMatch(lower)) {
       return "99";
     }
+    // Compound nouns read as one thing ("guarda chuva" was "Guarda").
+    const compounds = {
+      r'guarda[\s-]chuvas?': 'Guarda-chuva',
+      r'guarda[\s-]roupas?': 'Guarda-roupa',
+      r'porta[\s-]retratos?': 'Porta-retrato',
+      r'lava[\s-]lou[cç]as?': 'Lava-louças',
+      r'ar[\s-]condicionado': 'Ar-condicionado',
+      r'micro[\s-]ondas': 'Micro-ondas',
+      r'cachorro[\s-]quente': 'Cachorro-quente',
+      r'pe[\s-]de[\s-]moleque': 'Pé-de-moleque',
+    };
+    for (final c in compounds.entries) {
+      if (RegExp('\\b${c.key}\\b').hasMatch(lower)) return c.value;
+    }
+    // "comprei um ps5": a console named with its number (the generic reader
+    // drops words with digits and left the whole sentence as the title).
+    final console = RegExp(r'\b(?:ps|play(?:station)?\s*)([2-5])\b').firstMatch(lower);
+    if (console != null) return 'PlayStation ${console.group(1)}';
+
+    // "gastei 75 pra lavar o carro" is "Lavagem do carro", not "Lavar".
+    final action = _actionTitle(lower);
+    if (action != null) return action;
 
     final brandAliases = {
       'outback': "Outback",
@@ -5203,6 +5619,36 @@ class LocalFinancialNlpEngine {
     return text;
   }
 
+  /// Services said as "pra/para/de + verb + what" — the verb becomes the
+  /// name of the service ("lavar o carro" → "Lavagem do carro", "cortar o
+  /// cabelo" → "Corte do cabelo", "consertar a geladeira" → "Conserto da
+  /// geladeira").
+  static const Map<String, String> _actionNouns = {
+    'lavar': 'Lavagem', 'consertar': 'Conserto', 'arrumar': 'Conserto', 'cortar': 'Corte', 'revisar': 'Revisão',
+    'trocar': 'Troca', 'pintar': 'Pintura', 'limpar': 'Limpeza', 'instalar': 'Instalação', 'reformar': 'Reforma',
+    'alinhar': 'Alinhamento', 'balancear': 'Balanceamento', 'calibrar': 'Calibragem', 'polir': 'Polimento',
+    'higienizar': 'Higienização', 'formatar': 'Formatação', 'desentupir': 'Desentupimento',
+    'costurar': 'Costura', 'ajustar': 'Ajuste',
+  };
+
+  /// "… pra lavar o carro" → "Lavagem do carro". Only when nothing was
+  /// bought: "comprei um balde pra lavar o carro" is the bucket.
+  static String? _actionTitle(String lower) {
+    final f = CategoryNameMatcher.foldAccents(lower);
+    if (f.length != lower.length || RegExp(r'\b(?:comprei|compramos|comprar)\b').hasMatch(f)) return null;
+    final m = RegExp(r'\b(?:pra|pro|para|de|com|por)\s+(?:(?:mandar|levar)\s+)?([a-z]{2,}(?:ar|er|ir))\s+(?:(o|a|os|as|meu|minha|meus|minhas)\s+)?([a-z]{3,})')
+        .firstMatch(f);
+    if (m == null) return null;
+    final noun = _actionNouns[m.group(1)!];
+    if (noun == null) return null;
+    final obj = m.group(3)!;
+    if (_notANoun.contains(obj) || PtNumberWords.normalize(obj) != obj) return noun;
+    const contraction = {'o': 'do', 'a': 'da', 'os': 'dos', 'as': 'das', 'meu': 'do', 'minha': 'da', 'meus': 'dos', 'minhas': 'das'};
+    final article = contraction[m.group(2)] ?? 'de';
+    // The object as said (with its accents): same position in [lower].
+    return '$noun $article ${lower.substring(m.end - obj.length, m.end)}';
+  }
+
   static const _notANoun = {
     'pix', 'pics', 'debito', 'débito', 'credito', 'crédito', 'cartao', 'cartão', 'dinheiro', 'boleto', 'especie', 'espécie',
     'dia', 'hoje', 'ontem', 'anteontem', 'semana', 'mes', 'mês', 'ano', 'hora', 'horas', 'valor', 'total', 'pagamento',
@@ -5429,4 +5875,14 @@ class LocalFinancialNlpEngine {
       draft: draft,
     );
   }
+}
+
+/// What a group piece of a batch says ("ambos no crédito em 3x", "os dois
+/// ontem"): for how many of the items before it ([count]; null = the whole
+/// clause), and the payment and/or date words to apply to them.
+class _GroupModifier {
+  final int? count;
+  final String? payment;
+  final String? date;
+  const _GroupModifier({this.count, this.payment, this.date});
 }

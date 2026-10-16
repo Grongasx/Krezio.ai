@@ -1,4 +1,8 @@
 import '../backend/models/budget_category.dart';
+import 'cesar_planner.dart';
+import 'bill_split_parser.dart';
+import '../backend/models/financial_reminder.dart';
+import 'cesar_advisor.dart';
 import '../backend/models/financial_goal.dart';
 import '../backend/models/financial_transaction.dart';
 import '../backend/repositories/financial_repository.dart';
@@ -15,6 +19,8 @@ import 'local_nlp_engine.dart';
 import 'pending_reply_check.dart';
 import 'reference_edit_parser.dart';
 import 'transaction_command_parser.dart';
+import 'record_lookup.dart';
+import 'transaction_code.dart';
 import 'transaction_reference_resolver.dart';
 
 /// What César says back for a message the assistant handled.
@@ -106,6 +112,82 @@ class CesarAssistant {
   List<String> _focus = const [];
 
   FinancialQaEngine get _qa => FinancialQaEngine(repository: repository, now: _clock);
+  CesarAdvisor get _advisor => CesarAdvisor(repository: repository, now: _clock);
+
+  /// Agenda, debts, planning — with its multi-turn flows (kept across turns).
+  late final CesarPlanner _planner = CesarPlanner(repository: repository, now: _clock);
+
+  /// A planner reply, with "desfaz" for whatever it created.
+  AssistantReply _fromPlanner(PlannerReply r) {
+    final reminders = r.createdReminderIds;
+    final goal = r.createdGoalId;
+    final budgets = r.previousBudgets;
+    final extra = r.undo;
+    if (reminders.isNotEmpty || goal != null || budgets.isNotEmpty || extra != null) {
+      history.push(ChatAction.custom((repo) {
+        if (extra != null && !extra(repo)) return false;
+        for (final id in reminders) {
+          repo.removeReminder(id);
+        }
+        if (goal != null) repo.deleteGoal(goal);
+        budgets.forEach(repo.setBudgetLimit);
+        return true;
+      }, 'Desfiz o que eu tinha criado.'));
+      _lastMutationTurn = _turn;
+    }
+    return AssistantReply(r.text, spokenText: r.spokenText, route: r.route);
+  }
+
+  /// How César calls the user ("Gustavo"), or null.
+  String? get userName => repository.preference(FinancialRepository.prefUserName);
+
+  /// What César says when the chat opens, after the greeting: last week's
+  /// summary (once a week, from Monday on) and out-of-pattern spending.
+  List<String> openingNotes() {
+    final notes = <String>[];
+    final week = CesarAdvisor.weekStart(_clock()).toIso8601String().substring(0, 10);
+    if (repository.preference(FinancialRepository.prefWeeklySummaryWeek) != week) {
+      final summary = _advisor.weeklySummary();
+      if (summary != null) {
+        notes.add(summary.text);
+        repository.setPreference(FinancialRepository.prefWeeklySummaryWeek, week);
+      }
+    }
+    final muted = (repository.preference(FinancialRepository.prefMutedUnusual) ?? '').split(',').where((x) => x.isNotEmpty).toSet();
+    notes.addAll(_advisor.unusualSpending(muted: muted).map((a) => a.text));
+    return notes;
+  }
+
+  /// "me chama de Gu", "meu nome é Ana", "para de me avisar de lazer",
+  /// "volta a me avisar de lazer".
+  AssistantReply? _preferenceCommand(String text) {
+    final s = CesarText.simplify(text);
+    final name = RegExp(r'^(?:pode\s+)?(?:me\s+cham[ae]\s+de|meu\s+nome\s+(?:e|eh)|eu\s+me\s+chamo)\s+([a-z][a-z ]{0,29})$').firstMatch(s);
+    if (name != null) {
+      final words = text.trim().split(RegExp(r'\s+'));
+      final n = words.sublist(words.length - name.group(1)!.split(' ').length).join(' ').replaceAll(RegExp(r'[.!?]+$'), '');
+      final display = n.isEmpty ? n : n[0].toUpperCase() + n.substring(1);
+      repository.setPreference(FinancialRepository.prefUserName, display);
+      return AssistantReply('Combinado, $display! Vou te chamar assim. 😊', route: 'preference');
+    }
+    final mute = RegExp(r'^(?:para|pare|parar)\s+de\s+me\s+avisar\s+(?:d[aeo]s?|sobre(?:\s+[oa]s?)?|com)\s+(?:gastos?\s+(?:com|de|d[oa])\s+)?(.+)$').firstMatch(s);
+    final unmute = RegExp(r'^(?:volta|volte|pode\s+voltar)\s+a\s+me\s+avisar\s+(?:d[aeo]s?|sobre(?:\s+[oa]s?)?|com)\s+(.+)$').firstMatch(s);
+    final m = mute ?? unmute;
+    if (m != null) {
+      final code = CesarText.resolveCategory(m.group(1)!, repository.budgets);
+      if (code == null) return AssistantReply('Não achei a categoria "${m.group(1)}".', route: 'category_not_found');
+      final set = (repository.preference(FinancialRepository.prefMutedUnusual) ?? '').split(',').where((x) => x.isNotEmpty).toSet();
+      mute != null ? set.add(code) : set.remove(code);
+      repository.setPreference(FinancialRepository.prefMutedUnusual, set.join(','));
+      final name = CesarText.categoryName(code, repository.budgets);
+      return AssistantReply(
+          mute != null
+              ? 'Tudo bem, não te aviso mais de gasto fora do padrão em $name. Se quiser de volta, diga "volta a me avisar de ${name.toLowerCase()}".'
+              : 'Combinado, volto a te avisar quando $name sair do padrão.',
+          route: 'preference');
+    }
+    return null;
+  }
 
   /// Whether César is waiting for a yes/no or a choice from a list.
   bool get hasPendingQuestion => _pending != null;
@@ -161,8 +243,11 @@ class CesarAssistant {
 
   /// The chat changed records through another path (e.g. a recurring due-day
   /// correction): keep the snapshot so "desfaz" can put them back.
-  void recordExternalEdit(List<FinancialTransaction> before) {
-    history.push(ChatAction(ChatActionKind.edited, before));
+  /// [learned]: category memory set with this edit (description → the value
+  /// it had before, null = none), forgotten again by "desfaz".
+  void recordExternalEdit(List<FinancialTransaction> before, {Map<String, String?> learned = const {}}) {
+    history.push(ChatAction(ChatActionKind.edited, before,
+        alsoUndo: learned.isEmpty ? null : (r) => learned.forEach(r.restoreCategoryOverride)));
     _lastMutationTurn = _turn;
   }
 
@@ -189,6 +274,11 @@ class CesarAssistant {
   /// questions. [hasPendingDraft]: the chat is still asking about a new
   /// entry — then only answers to César's pending question are taken here.
   AssistantReply? handleCommand(String text, {bool hasPendingDraft = false}) {
+    // An answer inside a planning flow ("40 mil", "sim", "internet 100").
+    if (_planner.hasFlow && !TransactionCommandParser.isUndo(text)) {
+      final r = _planner.continueFlow(text);
+      if (r != null) return _fromPlanner(r);
+    }
     final pending = _pending;
     if (pending != null) {
       final reply = _answerPending(pending, text);
@@ -207,6 +297,9 @@ class CesarAssistant {
     if (hasPendingDraft) return _commandDuringDraft(text);
 
     if (TransactionCommandParser.isUndo(text)) return _undo();
+
+    final split = BillSplitParser.parse(text);
+    if (split != null) return _recordSplit(split, text);
 
     // Something that didn't (or didn't yet) happen with a value — "era pra
     // eu pagar 77 hoje mas esqueci", "tenho que pagar 7 de iptu semana que
@@ -314,7 +407,47 @@ class CesarAssistant {
     return _act(cmd, targets, text);
   }
 
+  /// "muda o uber pra 45 e a padaria pra 35": each record gets its own change,
+  /// all in one step (one "desfaz" undoes them together). Every part must
+  /// point to exactly one record, or nothing changes.
+  AssistantReply _runPerTarget(List<({String reference, TransactionChanges changes})> items, String text) {
+    final now = _clock();
+    final picked = <(FinancialTransaction, TransactionChanges)>[];
+    for (final item in items) {
+      final r = _resolve(TransactionReferenceResolver.parse(item.reference, now: now));
+      if (r.matches.isEmpty || r.byCategoryOnly) {
+        return AssistantReply('Não achei "${item.reference}", então não mexi em nada. Pode repetir só com os que existem?', route: 'not_found');
+      }
+      if (r.matches.length > 1) {
+        final opts = r.matches.take(3).map((t) => '${CesarText.describe(t, now)} ${TransactionCode.label(t.id)}').join('; ');
+        return AssistantReply('Achei mais de um lançamento para "${item.reference}" ($opts), então não mexi em nada. '
+            'Me diga qual — pode usar o código do card, ex.: "muda o ${TransactionCode.label(r.matches.first.id)} pra …".',
+            route: 'choose');
+      }
+      picked.add((r.matches.first, item.changes));
+    }
+    final before = picked.map((p) => p.$1).toList();
+    final sentences = <String>[];
+    final updatedIds = <String>{};
+    for (final (t, changes) in picked) {
+      final u = _rebuild(t, changes);
+      final diffs = _diff(t, u);
+      if (diffs.isEmpty) continue;
+      repository.updateTransaction(u);
+      updatedIds.add(u.id);
+      sentences.add('${_joinPt(diffs)} em **${u.title}**');
+    }
+    if (sentences.isEmpty) return const AssistantReply('Esses lançamentos já estão assim. Nada mudou.', route: 'edit_noop');
+    history.push(ChatAction(ChatActionKind.edited, before.where((t) => updatedIds.contains(t.id)).toList()));
+    _focus = List.unmodifiable(updatedIds);
+    _focusDeleted = false;
+    _lastMutationTurn = _turn;
+    final msg = 'Pronto! Mudei ${_joinPt(sentences)}. ✏️';
+    return AssistantReply(msg, spokenText: msg.replaceAll('**', '').replaceAll(' ✏️', ''), route: 'edited', changedIds: updatedIds);
+  }
+
   AssistantReply? _runCommand(ChatCommand cmd, String text) {
+    if (cmd.perTarget.isNotEmpty) return _runPerTarget(cmd.perTarget, text);
     final List<FinancialTransaction> targets;
     final ref = cmd.reference.trim();
     final entryText = cmd.entryText;
@@ -1027,7 +1160,7 @@ class CesarAssistant {
   AssistantReply _runCategoryCommand(CategoryCommand c) {
     switch (c.kind) {
       case CategoryCommandKind.create:
-        final existing = repository.budgets.where((b) => CesarText.fold(b.name) == CesarText.fold(c.name)).firstOrNull;
+        final existing = repository.existingCategoryNamed(c.name);
         if (existing != null && (!existing.isCustom || c.limit == null)) {
           return AssistantReply('A categoria **${existing.name}** já existe. '
               '${c.limit == null ? 'Se quiser mudar o limite, diga "meu limite de ${existing.name.toLowerCase()} é 500".' : ''}'.trim(),
@@ -1133,6 +1266,62 @@ class CesarAssistant {
 
   static bool _goalExists(FinancialRepository r, String id) => r.goals.any((g) => g.id == id);
 
+  /// "o jantar deu 240, dividi com mais 3": my part is an expense and the
+  /// rest is money to receive (one entry per person named, or one for the
+  /// group). One "desfaz" removes all of it.
+  AssistantReply _recordSplit(BillSplit split, String text) {
+    final now = _clock();
+    final draft = engine.parse(text);
+    final category = draft.category.isNotEmpty && draft.category != 'unknown' ? draft.category : 'leisure';
+    final payment = draft.paymentMethod.isNotEmpty && draft.paymentMethod != 'unknown' ? draft.paymentMethod : 'pix';
+    final id = 'split-${now.microsecondsSinceEpoch}';
+    final mine = FinancialTransaction(
+      id: id,
+      title: split.description,
+      amount: split.myShare,
+      type: TransactionType.expense,
+      category: category,
+      paymentMethod: payment,
+      date: now,
+      notes: 'Dividido em ${split.people}: total ${CesarText.money(split.total)}',
+    );
+    repository.addTransaction(mine);
+    final due = CesarText.dayOnly(now).add(const Duration(days: 7));
+    final reminders = <FinancialReminder>[];
+    if (split.others.isNotEmpty) {
+      final each = split.toReceive / split.others.length;
+      for (var i = 0; i < split.others.length; i++) {
+        reminders.add(FinancialReminder(
+            id: '$id-r$i', title: '${split.description} (${split.others[i]})', personName: split.others[i],
+            amount: (each * 100).round() / 100, targetDate: due, type: ReminderType.loanReceivable));
+      }
+    } else {
+      reminders.add(FinancialReminder(
+          id: '$id-r', title: '${split.description} — parte dos outros ${split.people - 1}', personName: 'Divisão: ${split.description}',
+          amount: split.toReceive, targetDate: due, type: ReminderType.loanReceivable));
+    }
+    reminders.forEach(repository.addReminder);
+    history.push(ChatAction.custom((r) {
+      r.deleteTransaction(id);
+      for (final rem in reminders) {
+        r.removeReminder(rem.id);
+      }
+      return true;
+    }, 'Tirei a divisão de ${split.description}.', [mine]));
+    _lastMutationTurn = _turn;
+    final who = split.others.isEmpty ? 'dos outros ${split.people - 1}' : 'de ${split.others.join(' e ')}';
+    return AssistantReply(
+      'Pronto! ${split.description}: ${CesarText.money(split.total)} dividido em ${split.people} '
+      '(${CesarText.money(split.perPerson)} cada).\n'
+      '- Seu gasto: **${CesarText.money(split.myShare)}**\n'
+      '- A receber $who: **${CesarText.money(split.toReceive)}** (lembrete para ${CesarText.ddmm(due)})\n\n'
+      'Quando te pagarem, diga "o João me pagou 60". Se errei, "desfaz".',
+      spokenText: 'Registrei ${CesarText.money(split.myShare)} de gasto seu e ${CesarText.money(split.toReceive)} a receber.',
+      route: 'split',
+      changedIds: {id},
+    );
+  }
+
   AssistantReply _deleteCategory(BudgetCategory b) {
     repository.removeBudgetCategory(b.category);
     history.push(ChatAction.custom((r) {
@@ -1222,12 +1411,21 @@ class CesarAssistant {
     for (final t in updated) {
       repository.updateTransaction(t);
     }
-    history.push(ChatAction(ChatActionKind.edited, targets));
-    // Category memory: once corrected, similar entries get it right next time.
+    // Category memory: once corrected, similar entries get it right next
+    // time — and "desfaz" forgets it again.
+    final learned = <String, String?>{};
     if (changes.category != null && updated.first.category != targets.first.category) {
-      repository.rememberCategoryOverride(targets.first.title, updated.first.category);
-      if (updated.first.title != targets.first.title) repository.rememberCategoryOverride(updated.first.title, updated.first.category);
+      for (final title in {targets.first.title, updated.first.title}) {
+        learned[title] = repository.recallCategoryOverride(title);
+        repository.rememberCategoryOverride(title, updated.first.category);
+      }
     }
+    history.push(ChatAction(ChatActionKind.edited, targets,
+        alsoUndo: learned.isEmpty
+            ? null
+            : (r) {
+                learned.forEach(r.restoreCategoryOverride);
+              }));
     _focus = List.unmodifiable(updated.map((t) => t.id));
     _focusDeleted = false;
     _lastMutationTurn = _turn;
@@ -1249,11 +1447,23 @@ class CesarAssistant {
   /// Questions about the data, with follow-ups that reuse the last one ("e
   /// ontem?", "e com mercado?"). Null when [text] isn't a question.
   AssistantReply? handleQuestion(String text) {
+    final pref = _preferenceCommand(text);
+    if (pref != null) return pref;
+
+    final plan = _planner.start(text);
+    if (plan != null) return _fromPlanner(plan);
+
     final talk = CesarSmallTalk.reply(text, now: _clock());
     if (talk != null) return AssistantReply(talk.text, spokenText: talk.spokenText, route: talk.kind == 'help' || talk.kind == 'howto' ? 'help' : 'smalltalk');
 
     final why = _explainCategory(text);
     if (why != null) return why;
+
+    final lookup = _lookupRecord(text);
+    if (lookup != null) return lookup;
+
+    final advice = _advisor.answer(text);
+    if (advice != null) return AssistantReply(advice.text, spokenText: advice.spokenText, route: advice.route);
 
     final whatIf = _hypothesis(text);
     if (whatIf != null) return whatIf;
@@ -1268,6 +1478,72 @@ class CesarAssistant {
       return const AssistantReply(LocalFinancialNlpEngine.unansweredQuestionReply, route: 'unanswered');
     }
     return null;
+  }
+
+  /// "qual foi o valor do restaurante?", "lembra do mercado?", "me mostra o
+  /// #4821": César finds the saved record, shows it with its card code and
+  /// keeps it in focus — so "foi 130" or "apaga ele" right after acts on it.
+  /// "lembra do restaurante? foi 130" asks and corrects in one message.
+  AssistantReply? _lookupRecord(String text) {
+    final q = RecordLookupParser.parse(text);
+    if (q == null) return null;
+    final now = _clock();
+
+    // A correction after the name: "lembra do restaurante? foi 130".
+    var reference = q.reference;
+    String? correction;
+    final cut = RegExp(r'^(.+?)\s+(?:foi|era|deu|custou|na\s+verdade)\s+(.+)$').firstMatch(CesarText.simplify(reference));
+    if (cut != null && TransactionCode.find(reference) == null) {
+      reference = cut.group(1)!;
+      correction = cut.group(2)!;
+    }
+
+    final r = _resolve(TransactionReferenceResolver.parse(reference, now: now));
+    if (r.matches.isEmpty) {
+      final hint = r.suggestions.isEmpty
+          ? ''
+          : ' Os mais parecidos: ${r.suggestions.map((t) => '${CesarText.describe(t, now)} ${TransactionCode.label(t.id)}').join('; ')}.';
+      return AssistantReply('Não achei nenhum lançamento ${r.spec.describe()}.$hint', route: 'lookup_not_found');
+    }
+    if (r.matches.length > 1) {
+      final list = r.matches.take(5).map((t) => '- ${CesarText.describe(t, now)} ${TransactionCode.label(t.id)}').join('\n');
+      return AssistantReply('Achei ${r.matches.length} lançamentos ${r.spec.describe()}:\n$list\n\n'
+          'Qual deles? Pode responder com o código, ex.: "${TransactionCode.label(r.matches.first.id)}".',
+          route: 'lookup_many');
+    }
+
+    final t = r.matches.first;
+    _focus = List.unmodifiable([t.id]);
+    _focusDeleted = false;
+    if (correction != null) {
+      final changes = TransactionCommandParser.parseChanges(correction, now: now, budgets: repository.budgets, originalText: text);
+      if (!changes.isEmpty) return _applyEdit([t], changes, text);
+    }
+
+    final code = TransactionCode.label(t.id);
+    final day = '${CesarText.relativeDay(t.date, now)} (${t.date.day.toString().padLeft(2, '0')}/${t.date.month.toString().padLeft(2, '0')})';
+    final pay = CesarText.paymentName(t.paymentMethod);
+    final inst = (t.installments ?? 1) > 1 ? ' em ${t.installments}x de ${CesarText.money(t.amount / t.installments!)}' : '';
+    final category = repository.budgets.where((b) => b.category == t.category).map((b) => b.name).firstOrNull;
+    final String answer;
+    switch (q.aspect) {
+      case LookupAspect.amount:
+        answer = '**${t.title}** $code foi de **${CesarText.money(t.amount)}**$inst, $day.';
+      case LookupAspect.date:
+        answer = '**${t.title}** $code foi **$day**, ${CesarText.money(t.amount)}.';
+      case LookupAspect.payment:
+        answer = '**${t.title}** $code foi pago no **$pay**$inst (${CesarText.money(t.amount)}, $day).';
+      case LookupAspect.category:
+        answer = '**${t.title}** $code está em **${category ?? t.category}**.';
+      case LookupAspect.all:
+        answer = '📌 **${t.title}** $code\n'
+            '- Valor: ${CesarText.money(t.amount)}$inst\n'
+            '- Data: $day\n'
+            '- Pagamento: $pay\n'
+            '${category == null ? '' : '- Categoria: $category\n'}';
+    }
+    final follow = '\nQuer mudar algo? É só dizer, ex.: "foi ${(t.amount + 10).toStringAsFixed(0)}", "foi no débito" ou "apaga ele".';
+    return AssistantReply('$answer$follow', spokenText: answer.replaceAll('**', '').replaceAll('📌 ', '').replaceAll('\n- ', '. '), route: 'lookup');
   }
 
   /// "se eu comprar um celular de 2000 em 10x, quanto fica?", "e se eu

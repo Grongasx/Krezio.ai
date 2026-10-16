@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="krezio_widget_description">Saldo do mês e um atalho para falar com o César</string>
+    <string name="shortcut_talk_short">Falar com o César</string>
+    <string name="shortcut_talk_long">Falar com o César por voz</string>
+    <string name="shortcut_add_short">Novo gasto</string>
+</resources>
