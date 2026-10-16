@@ -164,9 +164,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                   value: overallProgress,
                   minHeight: 10,
                   backgroundColor: isDark ? KrezioColors.darkBackground : const Color(0xFFE5E7EB),
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    overallProgress >= 0.9 ? KrezioColors.friendlyOrange : KrezioColors.aiPurple,
-                  ),
+                  valueColor: AlwaysStoppedAnimation<Color>(_levelColor(
+                    overallProgress >= 1 ? BudgetLevel.over : (overallProgress >= 0.8 ? BudgetLevel.warning : BudgetLevel.ok),
+                  )),
                 ),
               ),
             ],
@@ -194,9 +194,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     Color secondaryTextColor,
   ) {
     final progress = b.percentage.clamp(0.0, 1.0);
-    final statusColor = b.isOverBudget
-        ? KrezioColors.friendlyOrange
-        : (b.isNearLimit ? KrezioColors.friendlyOrange : b.color);
+    final statusColor = _levelColor(b.level);
 
     return Container(
       margin: const EdgeInsets.only(bottom: KrezioSpace.md),
@@ -245,7 +243,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                   icon: const Icon(Icons.delete_outline, size: 16),
                   color: secondaryTextColor,
                   tooltip: 'Remover categoria',
-                  onPressed: () => repository.removeBudgetCategory(b.category),
+                  onPressed: () => _confirmRemoveCategory(context, b),
                 ),
             ],
           ),
@@ -259,22 +257,64 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               valueColor: AlwaysStoppedAnimation<Color>(statusColor),
             ),
           ),
-          if (b.isOverBudget) ...[
-            const SizedBox(height: KrezioSpace.sm),
-            Text(
-              '⚠️ Limite mensal ultrapassado em R\$ ${(b.currentSpent - b.monthlyLimit).toStringAsFixed(2).replaceAll('.', ',')}',
-              style: const TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: KrezioColors.friendlyOrange),
-            ),
-          ] else if (b.isNearLimit) ...[
-            const SizedBox(height: KrezioSpace.sm),
-            Text(
-              '💡 Restam R\$ ${b.remaining.toStringAsFixed(2).replaceAll('.', ',')} para atingir o teto.',
-              style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
-            ),
-          ],
+          const SizedBox(height: KrezioSpace.sm),
+          Row(
+            children: [
+              Text(
+                b.statusText,
+                style: TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: b.level == BudgetLevel.ok ? secondaryTextColor : statusColor),
+              ),
+              const Spacer(),
+              Text(
+                '${(b.monthlyLimit > 0 ? b.currentSpent / b.monthlyLimit * 100 : 0).toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  static Color _levelColor(BudgetLevel level) => switch (level) {
+        BudgetLevel.ok => KrezioColors.budgetOk,
+        BudgetLevel.warning => KrezioColors.budgetWarning,
+        BudgetLevel.over => KrezioColors.budgetOver,
+      };
+
+  /// Removing a category asks where its transactions go, so none is left
+  /// without a category.
+  Future<void> _confirmRemoveCategory(BuildContext context, BudgetCategory b) async {
+    final count = repository.transactions.where((t) => t.category == b.category).length;
+    if (count == 0) {
+      repository.removeBudgetCategory(b.category);
+      return;
+    }
+    final targets = repository.budgets.where((x) => x.category != b.category).toList();
+    final moveTo = await showDialog<String>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Apagar ${b.name}?'),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(KrezioSpace.xxl, 0, KrezioSpace.xxl, KrezioSpace.sm),
+            child: Text('$count ${count == 1 ? 'lançamento está' : 'lançamentos estão'} nesta categoria. Mover para:'),
+          ),
+          for (final t in targets)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(ctx, t.category),
+              child: Row(children: [Icon(t.icon, size: 18, color: t.color), const SizedBox(width: KrezioSpace.sm), Text(t.name)]),
+            ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(ctx, 'expense_other'),
+            child: const Row(children: [Icon(Icons.more_horiz, size: 18), SizedBox(width: KrezioSpace.sm), Text('Outras despesas')]),
+          ),
+          SimpleDialogOption(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+        ],
+      ),
+    );
+    if (moveTo == null) return;
+    repository.removeBudgetCategory(b.category, moveTo: moveTo);
   }
 
   void _showEditBudgetDialog(BuildContext context, BudgetCategory b) {
@@ -450,6 +490,13 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         final name = nameController.text.trim();
         final limit = KrezioMoneyField.parse(limitController.text);
         if (name.isEmpty || limit == null) return false;
+        final existing = repository.existingCategoryNamed(name);
+        if (existing != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Essa categoria já existe: ${existing.name}')),
+          );
+          return false;
+        }
         repository.addBudgetCategory(name, limit);
         return true;
       },

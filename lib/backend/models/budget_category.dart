@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../frontend/theme/krezio_theme.dart';
 
+/// Progress band of a budget.
+enum BudgetLevel { ok, warning, over }
+
 class BudgetCategory {
   final String category;
   final String name;
@@ -24,6 +27,29 @@ class BudgetCategory {
   double get remaining => (monthlyLimit - currentSpent).clamp(0.0, double.infinity);
   bool get isOverBudget => currentSpent > monthlyLimit;
   bool get isNearLimit => currentSpent >= (monthlyLimit * 0.8) && !isOverBudget;
+
+  /// Band of the progress bar: green up to 79%, yellow from 80% to 99%, red
+  /// from 100%.
+  BudgetLevel get level {
+    if (monthlyLimit <= 0) return BudgetLevel.ok;
+    final ratio = currentSpent / monthlyLimit;
+    if (ratio >= 1) return BudgetLevel.over;
+    if (ratio >= 0.8) return BudgetLevel.warning;
+    return BudgetLevel.ok;
+  }
+
+  /// "Faltam R$ 80,00", "No limite" or "Passou R$ 30,00".
+  String get statusText {
+    final diff = monthlyLimit - currentSpent;
+    if (diff.abs() < 0.005) return 'No limite';
+    return diff > 0 ? 'Faltam ${_money(diff)}' : 'Passou ${_money(-diff)}';
+  }
+
+  static String _money(double v) {
+    final parts = v.toStringAsFixed(2).split('.');
+    final intPart = parts[0].replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
+    return 'R\$ $intPart,${parts[1]}';
+  }
 
   BudgetCategory copyWith({
     String? category,

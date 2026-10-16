@@ -6,6 +6,7 @@ import '../models/financial_transaction.dart';
 import '../models/financial_reminder.dart';
 import '../models/budget_category.dart';
 import '../models/financial_goal.dart';
+import '../models/financial_account.dart';
 import '../repositories/financial_repository.dart';
 import 'sync_merge.dart';
 
@@ -127,6 +128,7 @@ class CloudSyncService {
         'reminders': repository.reminders.map((r) => r.toJson()).toList(),
         'budgets': repository.budgets.map((b) => b.toJson()).toList(),
         'goals': repository.goals.map((g) => g.toJson()).toList(),
+        'accounts': repository.accounts.map((a) => a.toJson()).toList(),
         'categoryOverrides': Map<String, String>.from(repository.categoryOverrides),
       };
 
@@ -149,6 +151,7 @@ class CloudSyncService {
       'reminders': byId('reminders', 'id'),
       'budgets': byId('budgets', 'category'),
       'goals': byId('goals', 'id'),
+      'accounts': byId('accounts', 'id'),
       'categoryOverrides': SyncMerge.mergeMap(base: base == null ? null : map(base), local: map(local), remote: map(remote)),
     };
   }
@@ -163,6 +166,7 @@ class CloudSyncService {
         reminders: decode('reminders', FinancialReminder.fromJson),
         budgets: decode('budgets', BudgetCategory.fromJson),
         goals: decode('goals', FinancialGoal.fromJson),
+        accounts: data['accounts'] == null ? null : decode('accounts', FinancialAccount.fromJson),
         categoryOverrides:
             ((data['categoryOverrides'] as Map?) ?? const {}).map((k, v) => MapEntry(k.toString(), v.toString())),
       );

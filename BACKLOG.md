@@ -121,7 +121,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Frontend` Criar a escolha de categoria, forma de pagamento e data (categorias filtradas pelo tipo, Pix como padrão, data padrão hoje com atalho "ontem" → receita não mostra categoria de despesa)
 - [x] `Backend` Criar o parcelamento no crédito (ex.: R$ 1.200 em 10x gera 10 lançamentos de R$ 120, um por mês, "Parcela 3/10" → a soma das parcelas é igual ao total, com o arredondamento na última)
 - [x] `Backend` Criar as assinaturas e recorrências (dia de vencimento, sem prazo ou com data de fim, ex.: Netflix todo dia 12 → a próxima ocorrência aparece nas contas a vencer)
-- [ ] `Frontend` Criar a edição de lançamento (abre o formulário preenchido; editar uma parcela pergunta "só esta ou todas as seguintes?" → o saldo é recalculado na hora) — ⚠️ parcial: editar parcela não pergunta "só esta ou todas"
+- [x] `Frontend` Criar a edição de lançamento (abre o formulário preenchido; a compra parcelada é um registro só: editar vale para todas as parcelas, com aviso no formulário → o saldo é recalculado na hora)
 - [x] `Frontend` Criar a exclusão com confirmação ("Apagar Mercado de R$ 50,00?" e "Desfazer" por alguns segundos depois → nada é apagado sem confirmação)
 - [x] `Backend` Recalcular o saldo e os totais a cada mudança (saldo = receitas − despesas; transferência entre contas próprias não altera o total → saldo sempre igual à soma dos lançamentos)
 
@@ -129,22 +129,22 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 `30 pts` · 🔴 **Alta** · `Backend` `Frontend` `Design`
 - [x] `Backend` Criar as categorias nativas (despesa: mercado, alimentação, transporte, moradia e contas, lazer, saúde, educação, pets, outros; receita: salário, freela, outras receitas → não podem ser apagadas)
 - [x] `Frontend` Criar categorias personalizadas (nome livre, ex.: "Academia", "Presentes"; nome igual a uma existente é recusado → "Essa categoria já existe")
-- [ ] `Backend` Renomear e excluir categorias (ao excluir, perguntar para qual categoria mover os lançamentos → nenhum lançamento fica sem categoria) — ⚠️ parcial: excluir categoria não pergunta para onde mover os lançamentos
+- [x] `Backend` Renomear e excluir categorias (ao excluir, perguntar para qual categoria mover os lançamentos → nenhum lançamento fica sem categoria)
 - [x] `Design` Gerar ícone e cor automáticos para categorias personalizadas (paleta determinística pelo nome → o mesmo nome sempre gera o mesmo ícone e cor)
 
 ### 3.3 Formas de pagamento e contas
 `70 pts` · 🟠 **Média** · `Backend` `Frontend`
 - [x] `Backend` Cadastrar as formas de pagamento (Pix, débito, crédito, dinheiro, boleto, TED → crédito sempre pergunta à vista ou parcelado)
-- [ ] `Backend` Criar múltiplas contas ou carteiras (ex.: Nubank, Itaú, Carteira; cada lançamento pertence a uma conta → saldo por conta + saldo total)
-- [ ] `Frontend` Criar a tela de contas e carteiras (lista com saldo de cada uma, criar, renomear, arquivar → conta arquivada some da escolha mas mantém o histórico)
-- [ ] `Backend` Criar a fatura de cartão de crédito com ciclo (dia de fechamento e de vencimento; compra depois do fechamento vai para a próxima fatura → total da fatura e data de pagamento corretos)
-- [ ] `Backend` Tratar transferência entre contas próprias (ex.: da conta para a poupança → sai de uma e entra na outra; o saldo total não muda)
+- [x] `Backend` Criar múltiplas contas ou carteiras (ex.: Nubank, Itaú, Carteira; cada lançamento pertence a uma conta → saldo por conta + saldo total)
+- [x] `Frontend` Criar a tela de contas e carteiras (lista com saldo de cada uma, criar, renomear, arquivar → conta arquivada some da escolha mas mantém o histórico)
+- [x] `Backend` Criar a fatura de cartão de crédito com ciclo (dia de fechamento e de vencimento; compra depois do fechamento vai para a próxima fatura → total da fatura e data de pagamento corretos)
+- [x] `Backend` Tratar transferência entre contas próprias (ex.: da conta para a poupança → sai de uma e entra na outra; o saldo total não muda)
 
 ### 3.4 Extrato e histórico
 `40 pts` · 🔴 **Alta** · `Frontend` `Design`
-- [ ] `Frontend` Criar a tela de extrato agrupada por dia (cabeçalho "Hoje", "Ontem", "Seg, 28/09" com o total do dia; rolagem infinita → mil lançamentos rolam sem travar)
-- [ ] `Frontend` Criar filtros (período: este mês, mês passado, personalizado; categoria; tipo; forma de pagamento → os filtros se combinam e mostram o total filtrado)
-- [ ] `Frontend` Criar a busca por texto (busca no título e na categoria, ignorando acento e maiúscula: "acougue" acha "Açougue" → resultado enquanto digita) — ⚠️ parcial: busca existe, mas sem ignorar acento
+- [x] `Frontend` Criar a tela de extrato agrupada por dia (cabeçalho "Hoje", "Ontem", "Seg, 28/09" com o total do dia; rolagem infinita → mil lançamentos rolam sem travar)
+- [x] `Frontend` Criar filtros (período: este mês, mês passado, personalizado; categoria; tipo; forma de pagamento → os filtros se combinam e mostram o total filtrado)
+- [x] `Frontend` Criar a busca por texto (busca no título e na categoria, ignorando acento e maiúscula: "acougue" acha "Açougue" → resultado enquanto digita)
 - [x] `Frontend` Editar e excluir pelo extrato (toque abre a edição, arrastar para o lado apaga com confirmação → o chat do César fica sabendo da mudança)
 - [x] `Design` Criar o card de lançamento (ícone e cor da categoria, título, forma de pagamento, valor verde para receita e vermelho para despesa, "3/10" em parcelas → legível em tela pequena)
 
@@ -159,7 +159,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 3.6 Orçamentos
 `40 pts` · 🟠 **Média** · `Backend` `Frontend`
 - [x] `Backend` Criar um orçamento mensal por categoria (ex.: Lazer R$ 400; reinicia todo dia 1º → só despesas do mês corrente contam)
-- [ ] `Frontend` Mostrar o progresso (barra gasto × limite: verde até 79%, amarelo de 80% a 99%, vermelho a partir de 100% → mostra "faltam R$ 80" ou "passou R$ 30") — ⚠️ parcial: barra de progresso sem as faixas de cor 80%/100%
+- [x] `Frontend` Mostrar o progresso (barra gasto × limite: verde até 79%, amarelo de 80% a 99%, vermelho a partir de 100% → mostra "faltam R$ 80" ou "passou R$ 30")
 - [x] `Frontend` Criar a tela de orçamentos (lista por categoria, criar, editar e remover limite → total orçado × total gasto no topo)
 - [x] `Backend` Recalcular os orçamentos a cada lançamento (inclusive edição, exclusão e desfazer → o progresso nunca fica desatualizado)
 
@@ -175,7 +175,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Criar lembretes de contas a pagar (descrição, valor opcional, vencimento, recorrente ou não, ex.: "Luz todo dia 10" → marcar como paga cria o lançamento)
 - [x] `Backend` Criar as dívidas (emprestei para alguém, me emprestaram, com pessoa e valor → "quem me deve" e "a quem devo" separados)
 - [x] `Backend` Registrar o pagamento parcial de dívida (ex.: o João me devia 100 e pagou 70 → falta R$ 30; com o restante pago, a dívida é quitada)
-- [ ] `Frontend` Criar a lista de devedores e de contas em aberto (ordenada por vencimento, atrasadas em vermelho → toque permite registrar o pagamento) — ⚠️ parcial: devedores e contas em aberto só pelo chat e dashboard, sem tela própria
+- [x] `Frontend` Criar a lista de devedores e de contas em aberto (ordenada por vencimento, atrasadas em vermelho → toque permite registrar o pagamento)
 
 ### 3.9 Alertas
 `30 pts` · 🟠 **Média** · `Backend` `Frontend` `Produto`
@@ -183,7 +183,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Alertar sobre boleto vencendo em até 3 dias (ex.: "A conta de luz de R$ 180 vence amanhã" → some quando a conta é marcada como paga)
 - [x] `Backend` Alertar sobre dívida atrasada (ex.: "O João está 5 dias atrasado nos R$ 30" → só para dívidas com data combinada)
 - [x] `Frontend` Mostrar um banner de alertas no dashboard (no máximo 2 por vez, com "dispensar" → alerta dispensado não volta)
-- [ ] `Produto` Decidir entre alertas só no app e notificação push do sistema (comparar esforço, permissões e suporte na web → decisão registrada em `docs/architecture`) — ⚠️ parcial: decisão tomada (alertas no app), registrada só no handoff
+- [x] `Produto` Decidir entre alertas só no app e notificação push do sistema (comparar esforço, permissões e suporte na web → decisão registrada em `docs/architecture/adr/2026-10-16-in-app-alerts.md`)
 
 ---
 

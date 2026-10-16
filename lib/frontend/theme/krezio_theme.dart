@@ -15,6 +15,12 @@ class KrezioColors {
   static const Color friendlyOrange = Color(0xFFF97316);
   static const Color friendlyOrangeLight = Color(0xFFFB923C);
 
+  // Budget bands: green up to 79%, yellow 80–99%, red from 100% (a bright,
+  // friendly red — still never blood red).
+  static const Color budgetOk = emeraldGreen;
+  static const Color budgetWarning = Color(0xFFF59E0B);
+  static const Color budgetOver = Color(0xFFEF4444);
+
   // Light Mode Tokens
   static const Color lightBackground = Color(0xFFF9FAFB);
   static const Color lightSurface = Color(0xFFFFFFFF);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 import '../../../../../backend/models/budget_category.dart';
+import '../../../../../backend/models/financial_account.dart';
 import '../../../../../ai/local_nlp_engine.dart';
 
 class AddTransactionModal extends StatefulWidget {
@@ -15,12 +16,16 @@ class AddTransactionModal extends StatefulWidget {
   /// User-created categories, offered as chips next to the built-in ones.
   final List<BudgetCategory> customCategories;
 
+  /// Accounts to pick from; the picker shows when there is more than one.
+  final List<FinancialAccount> accounts;
+
   const AddTransactionModal({
     super.key,
     required this.isDark,
     required this.onAdd,
     this.initialTransaction,
     this.customCategories = const [],
+    this.accounts = const [],
   });
 
   @override
@@ -36,6 +41,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
   int _installments = 1;
   bool _isRecurrent = false;
   int? _dueDay;
+  String _accountId = FinancialAccount.mainId;
   late DateTime _date;
 
   bool get _isEditing => widget.initialTransaction != null;
@@ -54,6 +60,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
     _installments = tx.installments ?? 1;
     _isRecurrent = tx.isRecurrent;
     _dueDay = tx.dueDay;
+    _accountId = tx.account;
   }
 
   @override
@@ -129,6 +136,8 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
       recurrenceDuration: _isRecurrent ? original?.recurrenceDuration : null,
       bankSource: original?.bankSource,
       notes: original?.notes,
+      accountId: _accountId == FinancialAccount.mainId ? null : _accountId,
+      toAccountId: original?.toAccountId,
     );
 
     widget.onAdd(tx);
@@ -278,8 +287,43 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
             ),
             const SizedBox(height: KrezioSpace.lg),
 
+            // Account
+            if (widget.accounts.length > 1) ...[
+              Text(
+                'Conta',
+                style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: secondaryTextColor),
+              ),
+              const SizedBox(height: KrezioSpace.sm),
+              Wrap(
+                spacing: 6,
+                children: widget.accounts.map((a) {
+                  return ChoiceChip(
+                    label: Text(a.name, style: const TextStyle(fontSize: KrezioFont.small)),
+                    selected: _accountId == a.id,
+                    selectedColor: KrezioColors.aiPurple,
+                    onSelected: (val) {
+                      if (!val) return;
+                      setState(() {
+                        _accountId = a.id;
+                        // A purchase on a card account is a credit purchase.
+                        if (a.isCreditCard) _selectedPaymentMethod = 'credit_card';
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: KrezioSpace.lg),
+            ],
+
             // Credit Card Installments
             if (_selectedPaymentMethod == 'credit_card') ...[
+              if (_isEditing && (widget.initialTransaction!.installments ?? 1) > 1) ...[
+                Text(
+                  'Compra parcelada: a mudança vale para todas as parcelas.',
+                  style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
+                ),
+                const SizedBox(height: KrezioSpace.xs),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
