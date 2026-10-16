@@ -1,4 +1,4 @@
-# Krezio.ai — Handoff para nova sessão (atualizado 2026-09-29)
+# Krezio.ai — Handoff para nova sessão (atualizado 2026-10-16)
 
 > Leia isto antes de qualquer trabalho. É o resumo do estado atual. O histórico completo,
 > sessão por sessão, está em `docs/SESSION_HANDOFF.md` (longo; consulte só o que precisar).
@@ -109,13 +109,27 @@
 - Achados e status: `docs/qa/findings-conversa.md`, `findings-caos.md`,
   `findings-conversa-r2.md`, `findings-caos-r2.md`, **`findings-conversa-r3.md`, `findings-caos-r3.md`**.
 
+## Estado em 2026-10-16
+
+- **PRs abertos, mesclar nesta ordem:** #71 (Fase 1) → #72 (Fase 2) → #73 (`fix/cesar-feedback`, 7 problemas
+  da IA) → #74 (`feat/fase-3`, Fase 3 completa). Cada branch parte da anterior.
+- **Firebase:** pulado a pedido do usuário (falta `firebase login` + `flutterfire configure`).
+- **Fase 3 (#33) toda marcada no BACKLOG.md:** extrato por dia com filtros (`StatementQuery`), contas e
+  carteiras (`FinancialAccount`, `accountId`/`toAccountId` no lançamento, `balanceOf`,
+  `transferBetweenAccounts`), fatura do cartão (`CreditCardInvoice`), faixas do orçamento (`BudgetLevel`),
+  contas em aberto (`OpenItemsScreen`, `payBill`), ADR dos alertas.
+- **Próximo:** Fase 4 (César: motor de linguagem), seguindo o Project #8.
+- Web local: `flutter build web` e servir `build/web` na porta 8091 (`.claude/launch.json` → `krezio-web`);
+  o service worker guarda a versão antiga — limpe-o ao reconferir.
+
 ## Em aberto
 
 **Decisões pendentes do usuário (não mude sem perguntar):**
 1. "paguei 3 meses de academia de 100" registra R$ 300 (3 × 100) — ou 100 é o total?
 2. "oitenta e sete e cinquenta" = R$ 87,50 (logo "cinquenta e trinta" = R$ 50,30) — aceitável?
-3. Transferência entre contas próprias (ex.: poupança) deve reduzir o saldo? (hoje reduz)
-4. Categoria "Supermarket" vira personalizada (`supermarket_2`) em vez de sobrescrever a nativa — ok?
+3. ~~Transferência para conta própria~~ — decidido (card #23): entre contas cadastradas não muda o total.
+   Falta o chat reconhecer "transferi 500 pra poupança" como transferência entre contas (Fase 5).
+4. ~~"Supermarket"~~ — decidido (card #22): reaproveita a nativa Supermercado.
 5. "recebi 4700 de salário" com salário já lançado no mês: perguntar se é correção? (hoje registra)
 
 **Em andamento (plano v0.5):** Item 2, lote A. Portão: etapas 5 e 6 reprovaram (listas fechadas não generalizavam);

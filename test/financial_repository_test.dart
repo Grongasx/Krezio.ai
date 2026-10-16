@@ -691,8 +691,9 @@ void main() {
     test('nome que vira código de categoria nativa não renomeia a nativa', () {
       final repo = FinancialRepository();
       for (final name in ['Supermarket', 'Health', 'Transport']) {
+        // Card #22, opção B: o nome interno de uma nativa é a própria nativa.
         final created = repo.addBudgetCategory(name, 357);
-        expect(created.isCustom, isTrue, reason: name);
+        expect(created.isCustom, isFalse, reason: name);
       }
       expect(repo.budgets.firstWhere((b) => b.category == 'supermarket').name, 'Supermercado');
       expect(repo.budgets.firstWhere((b) => b.category == 'supermarket').monthlyLimit, 1200);
