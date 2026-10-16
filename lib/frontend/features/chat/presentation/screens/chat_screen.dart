@@ -5,6 +5,7 @@ import '../../../../../ai/chat_draft_tracker.dart';
 import '../../../../../ai/transaction_code.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
+import '../../../../navigation/krezio_routes.dart';
 import '../../../../../backend/services/feedback_service.dart';
 import '../../../../../backend/models/financial_reminder.dart';
 import '../../../../../backend/models/budget_category.dart';
@@ -175,10 +176,26 @@ class _ChatScreenState extends State<ChatScreen> {
       _scrollToBottom();
     };
     _addInitialWelcomeMessage();
+    KrezioRoutes.pendingLink.addListener(_onLink);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onLink());
+  }
+
+  /// "krezio://app/chat?frase=gastei 30 no uber" sends the sentence;
+  /// "…?voz=1" opens the voice conversation.
+  void _onLink() {
+    final link = KrezioRoutes.pendingLink.value;
+    if (!mounted || link == null || KrezioRoutes.tabFor(link.path) != KrezioRoutes.tabs.indexOf(KrezioRoutes.chat)) return;
+    final phrase = KrezioRoutes.phraseIn(link);
+    final voice = KrezioRoutes.wantsVoice(link);
+    if (phrase == null && !voice) return;
+    KrezioRoutes.pendingLink.value = null;
+    if (phrase != null) _sendMessage(phrase);
+    if (voice) _openVoiceConversationModal();
   }
 
   @override
   void dispose() {
+    KrezioRoutes.pendingLink.removeListener(_onLink);
     _textController.dispose();
     _scrollController.dispose();
     _voiceController.dispose();

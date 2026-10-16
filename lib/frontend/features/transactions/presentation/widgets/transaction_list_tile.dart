@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../../backend/services/currency_service.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../ai/transaction_code.dart';
 import '../../../../../backend/models/financial_transaction.dart';
@@ -93,7 +94,8 @@ class TransactionListTile extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            '$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}',
+                            '$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}'
+                            '${transaction.originalCurrency != null && transaction.originalAmount != null ? ' • ${Currencies.format(transaction.originalCurrency!, transaction.originalAmount!)}' : ''}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(

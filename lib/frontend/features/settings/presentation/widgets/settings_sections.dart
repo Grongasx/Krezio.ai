@@ -8,6 +8,8 @@ import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/services/data_export.dart';
 import '../../../../../backend/services/feedback_service.dart';
+import '../../../../../backend/services/tax_report.dart';
+import '../../../import/import_statement_screen.dart';
 import '../../../../../backend/config/app_version.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../../backend/services/pin_lock.dart';
@@ -398,6 +400,56 @@ class HelpSection extends StatelessWidget {
         leading: const Icon(Icons.info_outline, color: KrezioColors.aiPurple),
         title: const Text('Versão'),
         subtitle: Text('Krezio.ai ${AppVersion.label}'),
+      ),
+    ]);
+  }
+}
+
+/// Import a bank statement and the yearly report for the Imposto de Renda.
+class ToolsSection extends StatelessWidget {
+  final FinancialRepository repository;
+  const ToolsSection({super.key, required this.repository});
+
+  Future<void> _taxReport(BuildContext context) async {
+    final years = {for (final t in repository.transactions) t.date.year}.toList()..sort((a, b) => b.compareTo(a));
+    if (years.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ainda não há lançamentos.')));
+      return;
+    }
+    final year = await showDialog<int>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Ano do relatório'),
+        children: [for (final y in years) SimpleDialogOption(onPressed: () => Navigator.pop(ctx, y), child: Text('$y'))],
+      ),
+    );
+    if (year == null) return;
+    final report = TaxReport.build(repository.transactions, year);
+    try {
+      await SharePlus.instance.share(ShareParams(
+        title: 'Relatório para o IR $year',
+        files: [XFile.fromData(utf8.encode(report.toCsv()), mimeType: 'text/csv', name: 'krezio-ir-$year.csv')],
+        fileNameOverrides: ['krezio-ir-$year.csv'],
+      ));
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível exportar: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsGroup(title: 'Ferramentas', children: [
+      ListTile(
+        leading: const Icon(Icons.upload_file, color: KrezioColors.aiPurple),
+        title: const Text('Importar extrato do banco'),
+        subtitle: const Text('OFX ou CSV, sem duplicar o que já existe'),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImportStatementScreen(repository: repository))),
+      ),
+      ListTile(
+        leading: const Icon(Icons.receipt_long_outlined, color: KrezioColors.aiPurple),
+        title: const Text('Relatório para o Imposto de Renda'),
+        subtitle: const Text('Saúde, educação e rendimentos por fonte, por ano'),
+        onTap: () => _taxReport(context),
       ),
     ]);
   }

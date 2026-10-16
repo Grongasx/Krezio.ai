@@ -36,6 +36,12 @@ class FinancialTransaction {
   /// it doesn't change the total balance, only the accounts'.
   final String? toAccountId;
 
+  /// Bought in another currency: what was paid there and the rate used
+  /// (reais per unit). [amount] is always the value in reais.
+  final String? originalCurrency;
+  final double? originalAmount;
+  final double? exchangeRate;
+
   FinancialTransaction({
     required this.id,
     required this.title,
@@ -56,6 +62,9 @@ class FinancialTransaction {
     this.notes,
     this.accountId,
     this.toAccountId,
+    this.originalCurrency,
+    this.originalAmount,
+    this.exchangeRate,
   });
 
   FinancialTransaction copyWith({
@@ -78,6 +87,9 @@ class FinancialTransaction {
     String? notes,
     String? accountId,
     String? toAccountId,
+    String? originalCurrency,
+    double? originalAmount,
+    double? exchangeRate,
   }) {
     return FinancialTransaction(
       id: id ?? this.id,
@@ -99,6 +111,9 @@ class FinancialTransaction {
       notes: notes ?? this.notes,
       accountId: accountId ?? this.accountId,
       toAccountId: toAccountId ?? this.toAccountId,
+      originalCurrency: originalCurrency ?? this.originalCurrency,
+      originalAmount: originalAmount ?? this.originalAmount,
+      exchangeRate: exchangeRate ?? this.exchangeRate,
     );
   }
 
@@ -123,6 +138,9 @@ class FinancialTransaction {
       'notes': notes,
       if (accountId != null) 'accountId': accountId,
       if (toAccountId != null) 'toAccountId': toAccountId,
+      if (originalCurrency != null) 'originalCurrency': originalCurrency,
+      if (originalAmount != null) 'originalAmount': originalAmount,
+      if (exchangeRate != null) 'exchangeRate': exchangeRate,
     };
   }
 
@@ -150,6 +168,9 @@ class FinancialTransaction {
       notes: json['notes'] as String?,
       accountId: json['accountId'] as String?,
       toAccountId: json['toAccountId'] as String?,
+      originalCurrency: json['originalCurrency'] as String?,
+      originalAmount: (json['originalAmount'] as num?)?.toDouble(),
+      exchangeRate: (json['exchangeRate'] as num?)?.toDouble(),
     );
   }
 

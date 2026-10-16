@@ -1,4 +1,6 @@
 import '../backend/models/budget_category.dart';
+import 'bill_split_parser.dart';
+import '../backend/models/financial_reminder.dart';
 import 'cesar_advisor.dart';
 import '../backend/models/financial_goal.dart';
 import '../backend/models/financial_transaction.dart';
@@ -265,6 +267,9 @@ class CesarAssistant {
     if (hasPendingDraft) return _commandDuringDraft(text);
 
     if (TransactionCommandParser.isUndo(text)) return _undo();
+
+    final split = BillSplitParser.parse(text);
+    if (split != null) return _recordSplit(split, text);
 
     // Something that didn't (or didn't yet) happen with a value — "era pra
     // eu pagar 77 hoje mas esqueci", "tenho que pagar 7 de iptu semana que
@@ -1230,6 +1235,62 @@ class CesarAssistant {
   }
 
   static bool _goalExists(FinancialRepository r, String id) => r.goals.any((g) => g.id == id);
+
+  /// "o jantar deu 240, dividi com mais 3": my part is an expense and the
+  /// rest is money to receive (one entry per person named, or one for the
+  /// group). One "desfaz" removes all of it.
+  AssistantReply _recordSplit(BillSplit split, String text) {
+    final now = _clock();
+    final draft = engine.parse(text);
+    final category = draft.category.isNotEmpty && draft.category != 'unknown' ? draft.category : 'leisure';
+    final payment = draft.paymentMethod.isNotEmpty && draft.paymentMethod != 'unknown' ? draft.paymentMethod : 'pix';
+    final id = 'split-${now.microsecondsSinceEpoch}';
+    final mine = FinancialTransaction(
+      id: id,
+      title: split.description,
+      amount: split.myShare,
+      type: TransactionType.expense,
+      category: category,
+      paymentMethod: payment,
+      date: now,
+      notes: 'Dividido em ${split.people}: total ${CesarText.money(split.total)}',
+    );
+    repository.addTransaction(mine);
+    final due = CesarText.dayOnly(now).add(const Duration(days: 7));
+    final reminders = <FinancialReminder>[];
+    if (split.others.isNotEmpty) {
+      final each = split.toReceive / split.others.length;
+      for (var i = 0; i < split.others.length; i++) {
+        reminders.add(FinancialReminder(
+            id: '$id-r$i', title: '${split.description} (${split.others[i]})', personName: split.others[i],
+            amount: (each * 100).round() / 100, targetDate: due, type: ReminderType.loanReceivable));
+      }
+    } else {
+      reminders.add(FinancialReminder(
+          id: '$id-r', title: '${split.description} — parte dos outros ${split.people - 1}', personName: 'Divisão: ${split.description}',
+          amount: split.toReceive, targetDate: due, type: ReminderType.loanReceivable));
+    }
+    reminders.forEach(repository.addReminder);
+    history.push(ChatAction.custom((r) {
+      r.deleteTransaction(id);
+      for (final rem in reminders) {
+        r.removeReminder(rem.id);
+      }
+      return true;
+    }, 'Tirei a divisão de ${split.description}.', [mine]));
+    _lastMutationTurn = _turn;
+    final who = split.others.isEmpty ? 'dos outros ${split.people - 1}' : 'de ${split.others.join(' e ')}';
+    return AssistantReply(
+      'Pronto! ${split.description}: ${CesarText.money(split.total)} dividido em ${split.people} '
+      '(${CesarText.money(split.perPerson)} cada).\n'
+      '- Seu gasto: **${CesarText.money(split.myShare)}**\n'
+      '- A receber $who: **${CesarText.money(split.toReceive)}** (lembrete para ${CesarText.ddmm(due)})\n\n'
+      'Quando te pagarem, diga "o João me pagou 60". Se errei, "desfaz".',
+      spokenText: 'Registrei ${CesarText.money(split.myShare)} de gasto seu e ${CesarText.money(split.toReceive)} a receber.',
+      route: 'split',
+      changedIds: {id},
+    );
+  }
 
   AssistantReply _deleteCategory(BudgetCategory b) {
     repository.removeBudgetCategory(b.category);

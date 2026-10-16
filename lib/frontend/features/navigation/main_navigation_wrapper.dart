@@ -41,6 +41,26 @@ class MainNavigationWrapper extends StatefulWidget {
 class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   late int _currentIndex = widget.initialIndex;
 
+  @override
+  void initState() {
+    super.initState();
+    KrezioRoutes.pendingLink.addListener(_onLink);
+  }
+
+  @override
+  void dispose() {
+    KrezioRoutes.pendingLink.removeListener(_onLink);
+    super.dispose();
+  }
+
+  /// A link opens its tab; the chat handles a sentence or the voice itself.
+  void _onLink() {
+    final link = KrezioRoutes.pendingLink.value;
+    if (link == null) return;
+    _goTo(KrezioRoutes.tabFor(link.path));
+    if (KrezioRoutes.phraseIn(link) == null && !KrezioRoutes.wantsVoice(link)) KrezioRoutes.pendingLink.value = null;
+  }
+
   void _goTo(int index) {
     if (index == _currentIndex) return;
     setState(() => _currentIndex = index);
