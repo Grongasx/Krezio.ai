@@ -241,6 +241,19 @@ class FinancialRepository extends ChangeNotifier {
     ]);
   }
 
+  /// Date of a demo entry that happens on [day] of the month: this month when
+  /// that day has already come, otherwise the same day of the previous month.
+  /// Before this, on the 1st–13th of a month the seed created entries dated in
+  /// the future (e.g. "Carrefour" on the 10th seen on the 1st — issue #30),
+  /// and César even offered them as candidates to edit.
+  @visibleForTesting
+  static DateTime seedDate(DateTime now, int day) {
+    if (day <= now.day) return DateTime(now.year, now.month, day);
+    final prev = DateTime(now.year, now.month - 1, 1);
+    final lastDayPrev = DateTime(prev.year, prev.month + 1, 0).day;
+    return DateTime(prev.year, prev.month, day > lastDayPrev ? lastDayPrev : day);
+  }
+
   void _seedInitialData() {
     final now = DateTime.now();
     _transactions.addAll([
@@ -251,7 +264,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.income,
         category: 'salary',
         paymentMethod: 'pix',
-        date: DateTime(now.year, now.month, 5),
+        date: seedDate(now, 5),
         bankSource: 'Banco Inter',
       ),
       FinancialTransaction(
@@ -261,7 +274,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'supermarket',
         paymentMethod: 'debit_card',
-        date: DateTime(now.year, now.month, 10),
+        date: seedDate(now, 10),
       ),
       FinancialTransaction(
         id: 'init-3',
@@ -270,7 +283,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'housing',
         paymentMethod: 'bank_slip',
-        date: DateTime(now.year, now.month, 8),
+        date: seedDate(now, 8),
         isRecurrent: true,
         dueDay: 8,
       ),
@@ -281,7 +294,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'health',
         paymentMethod: 'credit_card',
-        date: DateTime(now.year, now.month, 12),
+        date: seedDate(now, 12),
         isRecurrent: true,
         dueDay: 12,
       ),
@@ -292,7 +305,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'transport',
         paymentMethod: 'pix',
-        date: DateTime(now.year, now.month, 14),
+        date: seedDate(now, 14),
       ),
     ]);
 
@@ -500,6 +513,10 @@ class FinancialRepository extends ChangeNotifier {
       paymentMarginDays: draft.paymentMarginDays,
       bankSource: draft.bankSource,
       recurrenceDuration: draft.recurrenceDuration,
+      // "em 7x, pra pagar todo dia 10": the installments' due day is kept
+      // with the purchase — not as [dueDay], which would list the whole
+      // R$ 5000 as a bill every month (it is not recurring).
+      notes: draft.installmentDueDay != null ? 'Parcelas vencem todo dia ${draft.installmentDueDay}' : null,
     );
 
     addTransaction(tx);

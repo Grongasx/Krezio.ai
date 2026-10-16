@@ -17,7 +17,7 @@ class AiInsightCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
@@ -38,7 +38,7 @@ class AiInsightCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(
                   color: KrezioColors.aiPurple.withOpacity(0.25),
                   shape: BoxShape.circle,
@@ -49,28 +49,28 @@ class AiInsightCard extends StatelessWidget {
                   size: 16,
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: KrezioSpace.sm),
               Text(
                 'Insight do Krezio.ai',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: KrezioFont.bodySmall,
                   fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : const Color(0xFF5B21B6),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: KrezioSpace.md),
           Text(
             insightText,
             style: TextStyle(
-              fontSize: 13,
+              fontSize: KrezioFont.bodySmall,
               height: 1.4,
               color: isDark ? const Color(0xFFE9D5FF) : const Color(0xFF4C1D95),
             ),
           ),
           if (onAskAi != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: KrezioSpace.md),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
@@ -78,10 +78,10 @@ class AiInsightCard extends StatelessWidget {
                 icon: const Icon(Icons.chat_bubble_outline, size: 14, color: KrezioColors.aiPurple),
                 label: const Text(
                   'Conversar com a IA',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: KrezioColors.aiPurple),
+                  style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: KrezioColors.aiPurple),
                 ),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
                   backgroundColor: isDark ? Colors.black26 : Colors.white60,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
