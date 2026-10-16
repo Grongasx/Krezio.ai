@@ -11,6 +11,17 @@ import 'backend/services/auth_service.dart';
 import 'backend/services/cloud_sync_service.dart';
 import 'frontend/features/navigation/main_navigation_wrapper.dart';
 import 'frontend/features/auth/presentation/screens/login_screen.dart';
+import 'frontend/navigation/krezio_routes.dart';
+import 'frontend/widgets/krezio_components.dart';
+import 'frontend/theme/theme_controller.dart';
+import 'frontend/features/onboarding/onboarding_screen.dart';
+import 'frontend/features/legal/legal_documents.dart';
+import 'frontend/features/security/app_lock_gate.dart';
+import 'frontend/features/security/biometric_auth.dart';
+import 'backend/services/pin_lock.dart';
+import 'backend/services/pin_store_prefs.dart';
+import 'package:home_widget/home_widget.dart';
+import 'frontend/features/home_widget/home_widget_sync.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,12 +35,20 @@ class KrezioApp extends StatefulWidget {
   State<KrezioApp> createState() => _KrezioAppState();
 }
 
-class _KrezioAppState extends State<KrezioApp> {
-  ThemeMode _themeMode = ThemeMode.dark;
+class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
+  ThemeMode get _themeMode => ThemeController.mode.value;
+  bool get _isDark => ThemeController.isDark(_themeMode, WidgetsBinding.instance.platformDispatcher.platformBrightness);
+  final PinLock _pinLock = PinLock(PrefsPinStore());
+  final BiometricAuth _biometric = BiometricAuth();
+  bool _onboardingDone = true;
+  HomeWidgetSync? _widgetSync;
   LocalFinancialNlpEngine? _engine;
   final FinancialRepository _repository = FinancialRepository();
   bool _isRepositoryReady = false;
   String? _errorMessage;
+
+  // Deep link: the route the app was opened at (web `/#/chat`, Android intent).
+  final int _initialTab = KrezioRoutes.tabFor(WidgetsBinding.instance.platformDispatcher.defaultRouteName);
 
   // Login is only required once Firebase has real credentials (see
   // firebase_options.dart). Until `flutterfire configure` has run, the app
@@ -42,6 +61,19 @@ class _KrezioAppState extends State<KrezioApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ThemeController.mode.addListener(_onThemeChanged);
+    // Opened by a link ("krezio://app/chat?frase=…", a shortcut, the widget).
+    final start = Uri.tryParse(WidgetsBinding.instance.platformDispatcher.defaultRouteName);
+    if (start != null && start.hasQuery) KrezioRoutes.pendingLink.value = start;
+    if (HomeWidgetSync.supported) {
+      HomeWidget.initiallyLaunchedFromHomeWidget().then((u) {
+        if (u != null) KrezioRoutes.pendingLink.value = KrezioRoutes.asRoute(u);
+      });
+      HomeWidget.widgetClicked.listen((u) {
+        if (u != null) KrezioRoutes.pendingLink.value = KrezioRoutes.asRoute(u);
+      });
+    }
     _loadNlpEngine();
     _loadRepository();
     _initFirebase();
@@ -65,9 +97,13 @@ class _KrezioAppState extends State<KrezioApp> {
     // Restores transactions, reminders, budgets, goals and category memory from
     // the last session; on the very first run it just persists the seed data.
     await _repository.initialize();
+    final savedTheme = _repository.preference(ThemeController.pref);
+    if (savedTheme != null) ThemeController.mode.value = ThemeController.parse(savedTheme);
+    _widgetSync = HomeWidgetSync(_repository)..start();
     if (mounted) {
       setState(() {
         _isRepositoryReady = true;
+        _onboardingDone = _repository.preference(OnboardingScreen.donePref) != null;
       });
     }
   }
@@ -115,14 +151,42 @@ class _KrezioAppState extends State<KrezioApp> {
     await _authService?.signOut();
   }
 
+  /// Stops syncing first: signing out would push the local data back up.
+  Future<void> _deleteAccount() async {
+    _cloudSync?.dispose();
+    _cloudSync = null;
+    await _authService!.deleteAccount();
+  }
+
   void _toggleTheme() {
-    setState(() {
-      _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    });
+    final next = _isDark ? ThemeMode.light : ThemeMode.dark;
+    ThemeController.mode.value = next;
+    _repository.setPreference(ThemeController.pref, ThemeController.nameOf(next));
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// A link received while the app is open: handled here (switch tab, send
+  /// the sentence) instead of pushing a named route that doesn't exist.
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) async {
+    KrezioRoutes.pendingLink.value = KrezioRoutes.asRoute(routeInformation.uri);
+    return true;
+  }
+
+  /// "Seguir o sistema" follows the phone switching light/dark.
+  @override
+  void didChangePlatformBrightness() {
+    if (_themeMode == ThemeMode.system) setState(() {});
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ThemeController.mode.removeListener(_onThemeChanged);
+    _widgetSync?.stop();
     _cloudSync?.dispose();
     super.dispose();
   }
@@ -142,65 +206,49 @@ class _KrezioAppState extends State<KrezioApp> {
   Widget _buildHome() {
     if (_errorMessage != null) {
       return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, color: KrezioColors.friendlyOrange, size: 48),
-                const SizedBox(height: 16),
-                Text(_errorMessage!, textAlign: TextAlign.center),
-              ],
-            ),
-          ),
+        body: KrezioErrorState(
+          message: _errorMessage!,
+          onRetry: () {
+            setState(() => _errorMessage = null);
+            _loadNlpEngine();
+          },
         ),
       );
     }
 
     if (_engine == null || !_isRepositoryReady) {
-      return Scaffold(
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: KrezioColors.aiPurple.withOpacity(0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.auto_awesome,
-                  color: KrezioColors.aiPurple,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const CircularProgressIndicator(color: KrezioColors.aiPurple),
-              const SizedBox(height: 16),
-              const Text(
-                'Carregando Engine Local On-Device...',
-                style: TextStyle(fontSize: 14, color: KrezioColors.aiPurple),
-              ),
-            ],
-          ),
-        ),
-      );
+      return const KrezioSplash();
     }
 
     // Login is only enforced once Firebase is actually configured and reachable.
-    if (_firebaseReady && _currentUser == null) {
-      return LoginScreen(authService: _authService!, isDark: _themeMode == ThemeMode.dark);
+    if (!_onboardingDone) {
+      return OnboardingScreen(
+        repository: _repository,
+        onDone: () => setState(() => _onboardingDone = true),
+      );
     }
 
-    return MainNavigationWrapper(
-      engine: _engine!,
-      repository: _repository,
-      onToggleTheme: _toggleTheme,
-      isDark: _themeMode == ThemeMode.dark,
-      userEmail: _currentUser?.email,
-      onSignOut: (_firebaseReady && _currentUser != null) ? _signOut : null,
+    if (_firebaseReady && _currentUser == null) {
+      return LoginScreen(
+        authService: _authService!,
+        isDark: _isDark,
+        onTermsAccepted: () => _repository.setPreference(LegalDocuments.acceptedPref, LegalDocuments.acceptedValue(DateTime.now())),
+      );
+    }
+
+    return AppLockGate(
+      lock: _pinLock,
+      biometric: _biometric.authenticate,
+      child: MainNavigationWrapper(
+        engine: _engine!,
+        repository: _repository,
+        onToggleTheme: _toggleTheme,
+        isDark: _isDark,
+        userEmail: _currentUser?.email,
+        onSignOut: (_firebaseReady && _currentUser != null) ? _signOut : null,
+        onDeleteAccount: (_firebaseReady && _currentUser != null) ? _deleteAccount : null,
+        initialIndex: _initialTab,
+      ),
     );
   }
 }

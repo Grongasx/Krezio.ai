@@ -41,6 +41,17 @@ O [CI](.github/workflows/ci.yml) roda em todo PR e em todo push no `main`:
 
 As baterias de medição em `test/_qa/` não rodam no CI. Elas só imprimem placares; rode-as localmente quando mexer no César.
 
+## Revisão a cada entrega
+
+Todo PR passa por duas revisões no diff antes de mesclar:
+
+1. **Revisão de código** (`/code-review` no Claude Code, ou leitura linha a linha): bugs, casos de borda,
+   dados do usuário que possam ser perdidos ou gravados errados.
+2. **Simplificação** (`/simplify`): código duplicado, nomes confusos, abstração sem uso.
+
+Cada achado é **resolvido** no próprio PR ou **justificado por escrito** num comentário do PR
+("não vou mudar porque…"). O modelo de PR (`.github/pull_request_template.md`) traz essas caixinhas.
+
 ## Antes de abrir o PR
 
 - [ ] `flutter analyze lib` sem erros
@@ -48,3 +59,5 @@ As baterias de medição em `test/_qa/` não rodam no CI. Elas só imprimem plac
 - [ ] Lógica nova numa classe Dart pura, com teste
 - [ ] Entrada no `[Unreleased]` do CHANGELOG, se a mudança for visível para o usuário
 - [ ] Caixinhas do card atualizadas no `BACKLOG.md` (e `python scripts/github/create_backlog.py` para levar ao GitHub)
+- [ ] Tela nova ou alterada: teste de widget em 360 px sem overflow (`test/screens_widget_test.dart`)
+- [ ] Revisão de código e simplificação feitas, achados resolvidos ou justificados
