@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../theme/krezio_theme.dart';
 import '../../../backend/services/pin_lock.dart';
@@ -55,7 +56,12 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
       case AppLifecycleState.hidden:
       case AppLifecycleState.paused:
         _backgroundSince ??= DateTime.now();
-        if (!_covered) setState(() => _covered = true);
+        // Only with the PIN on — and on the web/desktop not for a mere loss
+        // of focus ("inactive"), which covered the app at every click outside.
+        final cover = !kIsWeb && defaultTargetPlatform != TargetPlatform.windows || state != AppLifecycleState.inactive;
+        widget.lock.isEnabled.then((on) {
+          if (on && cover && mounted && _backgroundSince != null && !_covered) setState(() => _covered = true);
+        });
       case AppLifecycleState.resumed:
         final since = _backgroundSince;
         _backgroundSince = null;
