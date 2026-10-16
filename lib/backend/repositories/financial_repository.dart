@@ -513,6 +513,10 @@ class FinancialRepository extends ChangeNotifier {
       paymentMarginDays: draft.paymentMarginDays,
       bankSource: draft.bankSource,
       recurrenceDuration: draft.recurrenceDuration,
+      // "em 7x, pra pagar todo dia 10": the installments' due day is kept
+      // with the purchase — not as [dueDay], which would list the whole
+      // R$ 5000 as a bill every month (it is not recurring).
+      notes: draft.installmentDueDay != null ? 'Parcelas vencem todo dia ${draft.installmentDueDay}' : null,
     );
 
     addTransaction(tx);

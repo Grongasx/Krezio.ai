@@ -95,33 +95,63 @@ class RealtimeCalendarService extends ChangeNotifier {
     ]);
   }
 
-  /// Checks whether a given date is a business day (not weekend and not holiday)
+  /// Good Friday (Sexta-feira da Paixão) — a national holiday whose date
+  /// follows Easter (Meeus/Jones/Butcher algorithm).
+  static DateTime goodFriday(int year) {
+    final a = year % 19;
+    final b = year ~/ 100;
+    final c = year % 100;
+    final d = b ~/ 4;
+    final e = b % 4;
+    final f = (b + 8) ~/ 25;
+    final g = (b - f + 1) ~/ 3;
+    final h = (19 * a + b - d - g + 15) % 30;
+    final i = c ~/ 4;
+    final k = c % 4;
+    final l = (32 + 2 * e + 2 * i - h - k) % 7;
+    final m = (a + 11 * h + 22 * l) ~/ 451;
+    final month = (h + l - 7 * m + 114) ~/ 31;
+    final day = ((h + l - 7 * m + 114) % 31) + 1;
+    return DateTime(year, month, day).subtract(const Duration(days: 2));
+  }
+
+  /// National holidays: the fixed dates plus Good Friday.
+  static bool isHoliday(DateTime date) {
+    final key = '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    if (_fixedHolidays.contains(key)) return true;
+    final gf = goodFriday(date.year);
+    return gf.month == date.month && gf.day == date.day;
+  }
+
+  /// A *bank* day (dia bancário): Monday to Friday, not a holiday. Banks
+  /// don't clear on Saturdays — this is the notion for boletos/compensação.
   bool isBusinessDay(DateTime date) {
     if (date.weekday == DateTime.saturday || date.weekday == DateTime.sunday) {
       return false;
     }
-    final key = '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    if (_fixedHolidays.contains(key)) {
-      return false;
-    }
-    return true;
+    return !isHoliday(date);
   }
 
-  /// The [n]-th business day (weekdays minus national holidays) of the month
+  /// A *working* day (dia útil) in the sense of "5º dia útil" for salary:
+  /// Monday to **Saturday**, minus Sundays and holidays. That is how the CLT
+  /// (art. 459) counts the payday, and what the user means by "dia útil" —
+  /// November/2026 is 3, 4, 5, 6, 7 → the 5th is Saturday the 7th. The bank
+  /// notion ([isBusinessDay]) is a different thing and is kept apart.
+  static bool isWorkingDay(DateTime date) => date.weekday != DateTime.sunday && !isHoliday(date);
+
+  /// The [n]-th working day ([isWorkingDay]: Saturday counts) of the month
   /// of [month] — "5º dia útil" lands on a different date every month.
   static DateTime nthBusinessDay(DateTime month, int n) {
     var count = 0;
     var current = DateTime(month.year, month.month, 1);
     while (current.month == month.month) {
-      final key = '${current.month.toString().padLeft(2, '0')}-${current.day.toString().padLeft(2, '0')}';
-      final isBusiness = current.weekday != DateTime.saturday && current.weekday != DateTime.sunday && !_fixedHolidays.contains(key);
-      if (isBusiness && ++count == n) return current;
-      current = current.add(const Duration(days: 1));
+      if (isWorkingDay(current) && ++count == n) return current;
+      current = DateTime(current.year, current.month, current.day + 1);
     }
     return DateTime(month.year, month.month, n.clamp(1, 28));
   }
 
-  /// The next [n]-th business day on or after [referenceDate] (today by default).
+  /// The next [n]-th working day on or after [referenceDate] (today by default).
   static DateTime nextNthBusinessDay(int n, {DateTime? referenceDate}) {
     final ref = referenceDate ?? DateTime.now();
     final today = DateTime(ref.year, ref.month, ref.day);
@@ -130,24 +160,9 @@ class RealtimeCalendarService extends ChangeNotifier {
     return nthBusinessDay(DateTime(ref.year, ref.month + 1), n);
   }
 
-  /// Computes the 5th business day (5º dia útil bancário) for any given month
-  DateTime getFifthBusinessDay(DateTime month) {
-    int businessDaysCount = 0;
-    DateTime current = DateTime(month.year, month.month, 1);
-
-    while (current.month == month.month) {
-      if (isBusinessDay(current)) {
-        businessDaysCount++;
-        if (businessDaysCount == 5) {
-          return current;
-        }
-      }
-      current = current.add(const Duration(days: 1));
-    }
-
-    // Fallback if month ends before (unlikely)
-    return DateTime(month.year, month.month, 5);
-  }
+  /// The 5th working day (5º dia útil, Saturday counts — see
+  /// [isWorkingDay]) of the month of [month]: the salary payday.
+  DateTime getFifthBusinessDay(DateTime month) => nthBusinessDay(month, 5);
 
   /// Returns the next upcoming salary payday (5th business day).
   /// If today is before or on this month's 5th business day, returns this month's.

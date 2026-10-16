@@ -15,6 +15,8 @@ import 'local_nlp_engine.dart';
 import 'pending_reply_check.dart';
 import 'reference_edit_parser.dart';
 import 'transaction_command_parser.dart';
+import 'record_lookup.dart';
+import 'transaction_code.dart';
 import 'transaction_reference_resolver.dart';
 
 /// What César says back for a message the assistant handled.
@@ -314,7 +316,47 @@ class CesarAssistant {
     return _act(cmd, targets, text);
   }
 
+  /// "muda o uber pra 45 e a padaria pra 35": each record gets its own change,
+  /// all in one step (one "desfaz" undoes them together). Every part must
+  /// point to exactly one record, or nothing changes.
+  AssistantReply _runPerTarget(List<({String reference, TransactionChanges changes})> items, String text) {
+    final now = _clock();
+    final picked = <(FinancialTransaction, TransactionChanges)>[];
+    for (final item in items) {
+      final r = _resolve(TransactionReferenceResolver.parse(item.reference, now: now));
+      if (r.matches.isEmpty || r.byCategoryOnly) {
+        return AssistantReply('Não achei "${item.reference}", então não mexi em nada. Pode repetir só com os que existem?', route: 'not_found');
+      }
+      if (r.matches.length > 1) {
+        final opts = r.matches.take(3).map((t) => '${CesarText.describe(t, now)} ${TransactionCode.label(t.id)}').join('; ');
+        return AssistantReply('Achei mais de um lançamento para "${item.reference}" ($opts), então não mexi em nada. '
+            'Me diga qual — pode usar o código do card, ex.: "muda o ${TransactionCode.label(r.matches.first.id)} pra …".',
+            route: 'choose');
+      }
+      picked.add((r.matches.first, item.changes));
+    }
+    final before = picked.map((p) => p.$1).toList();
+    final sentences = <String>[];
+    final updatedIds = <String>{};
+    for (final (t, changes) in picked) {
+      final u = _rebuild(t, changes);
+      final diffs = _diff(t, u);
+      if (diffs.isEmpty) continue;
+      repository.updateTransaction(u);
+      updatedIds.add(u.id);
+      sentences.add('${_joinPt(diffs)} em **${u.title}**');
+    }
+    if (sentences.isEmpty) return const AssistantReply('Esses lançamentos já estão assim. Nada mudou.', route: 'edit_noop');
+    history.push(ChatAction(ChatActionKind.edited, before.where((t) => updatedIds.contains(t.id)).toList()));
+    _focus = List.unmodifiable(updatedIds);
+    _focusDeleted = false;
+    _lastMutationTurn = _turn;
+    final msg = 'Pronto! Mudei ${_joinPt(sentences)}. ✏️';
+    return AssistantReply(msg, spokenText: msg.replaceAll('**', '').replaceAll(' ✏️', ''), route: 'edited', changedIds: updatedIds);
+  }
+
   AssistantReply? _runCommand(ChatCommand cmd, String text) {
+    if (cmd.perTarget.isNotEmpty) return _runPerTarget(cmd.perTarget, text);
     final List<FinancialTransaction> targets;
     final ref = cmd.reference.trim();
     final entryText = cmd.entryText;
@@ -1255,6 +1297,9 @@ class CesarAssistant {
     final why = _explainCategory(text);
     if (why != null) return why;
 
+    final lookup = _lookupRecord(text);
+    if (lookup != null) return lookup;
+
     final whatIf = _hypothesis(text);
     if (whatIf != null) return whatIf;
 
@@ -1268,6 +1313,72 @@ class CesarAssistant {
       return const AssistantReply(LocalFinancialNlpEngine.unansweredQuestionReply, route: 'unanswered');
     }
     return null;
+  }
+
+  /// "qual foi o valor do restaurante?", "lembra do mercado?", "me mostra o
+  /// #4821": César finds the saved record, shows it with its card code and
+  /// keeps it in focus — so "foi 130" or "apaga ele" right after acts on it.
+  /// "lembra do restaurante? foi 130" asks and corrects in one message.
+  AssistantReply? _lookupRecord(String text) {
+    final q = RecordLookupParser.parse(text);
+    if (q == null) return null;
+    final now = _clock();
+
+    // A correction after the name: "lembra do restaurante? foi 130".
+    var reference = q.reference;
+    String? correction;
+    final cut = RegExp(r'^(.+?)\s+(?:foi|era|deu|custou|na\s+verdade)\s+(.+)$').firstMatch(CesarText.simplify(reference));
+    if (cut != null && TransactionCode.find(reference) == null) {
+      reference = cut.group(1)!;
+      correction = cut.group(2)!;
+    }
+
+    final r = _resolve(TransactionReferenceResolver.parse(reference, now: now));
+    if (r.matches.isEmpty) {
+      final hint = r.suggestions.isEmpty
+          ? ''
+          : ' Os mais parecidos: ${r.suggestions.map((t) => '${CesarText.describe(t, now)} ${TransactionCode.label(t.id)}').join('; ')}.';
+      return AssistantReply('Não achei nenhum lançamento ${r.spec.describe()}.$hint', route: 'lookup_not_found');
+    }
+    if (r.matches.length > 1) {
+      final list = r.matches.take(5).map((t) => '- ${CesarText.describe(t, now)} ${TransactionCode.label(t.id)}').join('\n');
+      return AssistantReply('Achei ${r.matches.length} lançamentos ${r.spec.describe()}:\n$list\n\n'
+          'Qual deles? Pode responder com o código, ex.: "${TransactionCode.label(r.matches.first.id)}".',
+          route: 'lookup_many');
+    }
+
+    final t = r.matches.first;
+    _focus = List.unmodifiable([t.id]);
+    _focusDeleted = false;
+    if (correction != null) {
+      final changes = TransactionCommandParser.parseChanges(correction, now: now, budgets: repository.budgets, originalText: text);
+      if (!changes.isEmpty) return _applyEdit([t], changes, text);
+    }
+
+    final code = TransactionCode.label(t.id);
+    final day = '${CesarText.relativeDay(t.date, now)} (${t.date.day.toString().padLeft(2, '0')}/${t.date.month.toString().padLeft(2, '0')})';
+    final pay = CesarText.paymentName(t.paymentMethod);
+    final inst = (t.installments ?? 1) > 1 ? ' em ${t.installments}x de ${CesarText.money(t.amount / t.installments!)}' : '';
+    final category = repository.budgets.where((b) => b.category == t.category).map((b) => b.name).firstOrNull;
+    final String answer;
+    switch (q.aspect) {
+      case LookupAspect.amount:
+        answer = '**${t.title}** $code foi de **${CesarText.money(t.amount)}**$inst, $day.';
+      case LookupAspect.date:
+        answer = '**${t.title}** $code foi **$day**, ${CesarText.money(t.amount)}.';
+      case LookupAspect.payment:
+        answer = '**${t.title}** $code foi pago no **$pay**$inst (${CesarText.money(t.amount)}, $day).';
+      case LookupAspect.category:
+        answer = '**${t.title}** $code está em **${category ?? t.category}**.';
+      case LookupAspect.all:
+        answer = '📌 **${t.title}** $code\n'
+            '- Valor: ${CesarText.money(t.amount)}$inst\n'
+            '- Data: $day\n'
+            '- Pagamento: $pay\n'
+            '${category == null ? '' : '- Categoria: $category\n'}';
+    }
+    final follow = '\nQuer mudar algo? É só dizer, ex.: "foi ${(t.amount + 10).toStringAsFixed(0)}", "foi no débito" ou "apaga ele".';
+    return AssistantReply('$answer$follow', spokenText: answer.replaceAll('**', '').replaceAll('📌 ', '').replaceAll('\n- ', '. '), route: 'lookup');
   }
 
   /// "se eu comprar um celular de 2000 em 10x, quanto fica?", "e se eu
