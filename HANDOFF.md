@@ -111,14 +111,21 @@
 
 ## Estado em 2026-10-16
 
-- **PRs abertos, mesclar nesta ordem:** #71 (Fase 1) → #72 (Fase 2) → #73 (`fix/cesar-feedback`, 7 problemas
-  da IA) → #74 (`feat/fase-3`, Fase 3 completa). Cada branch parte da anterior.
-- **Firebase:** pulado a pedido do usuário (falta `firebase login` + `flutterfire configure`).
-- **Fase 3 (#33) toda marcada no BACKLOG.md:** extrato por dia com filtros (`StatementQuery`), contas e
-  carteiras (`FinancialAccount`, `accountId`/`toAccountId` no lançamento, `balanceOf`,
-  `transferBetweenAccounts`), fatura do cartão (`CreditCardInvoice`), faixas do orçamento (`BudgetLevel`),
-  contas em aberto (`OpenItemsScreen`, `payBill`), ADR dos alertas.
-- **Próximo:** Fase 4 (César: motor de linguagem), seguindo o Project #8.
+- **PRs abertos, mesclar nesta ordem** (cada branch parte da anterior):
+  #71 Fase 1 → #72 Fase 2 → #73 feedback do César → #74 Fase 3 → #75 Fase 5 → #76 Fase 6 → #77 Fase 7 →
+  #78 Fase 8 → #79 Fase 9 → #80 Fase 10 → #81 componentes/skeleton/regras → #82 defeitos do César.
+- **BACKLOG.md:** tudo marcado, exceto o que precisa de algo de fora (lista abaixo).
+- **Precisa do usuário / de outro software:**
+  - Firebase: `firebase login` + `flutterfire configure`, ativar e-mail/senha, criar o Firestore em
+    `southamerica-east1`, publicar `firestore.rules` (`firebase deploy --only firestore:rules`). Crashlytics depois disso.
+  - Aparelho: testar a voz do sistema no Redmi com o PC desligado, a biometria e o widget; testar o iOS num Mac.
+  - Play Console: keystore (`RELEASING.md`), conta de desenvolvedor, URL da política, prints, teste fechado, publicação.
+  - Open Finance (agregador com contrato) e "Ok Google" (só depois de publicado).
+- **Correção importante no #80:** a `MainActivity` estava em `com.example.krezio_ai`, mas o manifest resolve
+  `com.krezio.ai.MainActivity` — o app quebrava ao abrir no Android. Movida para `android/app/src/main/kotlin/com/krezio/ai/`.
+- **Placar do César:** aceite 264/272 (P0: 1, `pm3`, por decisão), conversa 221/267.
+- **Armadilha:** não use heredoc de Python no Bash com regex: `\b` vira backspace. Escreva o script com a
+  ferramenta Write e rode o arquivo, ou edite com Edit.
 - Web local: `flutter build web` e servir `build/web` na porta 8091 (`.claude/launch.json` → `krezio-web`);
   o service worker guarda a versão antiga — limpe-o ao reconferir.
 
