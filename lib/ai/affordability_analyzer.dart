@@ -1,3 +1,4 @@
+import 'analytics/financial_advisors.dart';
 import 'local_nlp_engine.dart';
 import '../backend/repositories/financial_repository.dart';
 import '../backend/models/budget_category.dart';
@@ -30,8 +31,16 @@ class AffordabilityResult {
 /// the wording always stays in "isso cabe no seu orçamento" terms.
 class AffordabilityAnalyzer {
   final FinancialRepository repository;
+  final DateTime Function() _clock;
 
-  AffordabilityAnalyzer({required this.repository});
+  AffordabilityAnalyzer({required this.repository, DateTime Function()? now}) : _clock = now ?? DateTime.now;
+
+  /// "em 10x", "parcelado em 6 vezes", "12 parcelas" — 1 when not said.
+  static int _installments(String text) {
+    final m = RegExp(r'\b(\d{1,2})\s*x\b|\bem\s+(\d{1,2})\s+(?:vezes|parcelas)\b|\b(\d{1,2})\s+parcelas\b', caseSensitive: false).firstMatch(text);
+    final n = int.tryParse(m?.group(1) ?? m?.group(2) ?? m?.group(3) ?? '');
+    return n != null && n >= 2 && n <= 48 ? n : 1;
+  }
 
   static final RegExp _questionPattern = RegExp(
     r'posso\s+comprar|consigo\s+comprar|d[áa]\s+pra\s+comprar|dá\s+pra\s+eu\s+comprar|'
@@ -76,9 +85,21 @@ class AffordabilityAnalyzer {
     final committedTotal = upcomingBillsTotal + goalsMonthlyTotal;
 
     var verdict = AffordabilityVerdict.yes;
-    final reasons = <String>[];
+    var reasons = <String>[];
 
-    if (afterPurchase < 0) {
+    // With a month of history or more, the cash-flow simulation decides:
+    // salary, bills and the user's own daily spending over the next 90 days.
+    final ctx = AnalysisContext(repository, now: _clock());
+    PurchaseAdvice? advice;
+    if (ctx.profile.hasHistory) {
+      advice = PurchaseAdvisor(ctx).evaluate(price: amount, installments: _installments(text), item: itemLabel);
+      verdict = switch (advice.verdict) {
+        PurchaseVerdict.yes => AffordabilityVerdict.yes,
+        PurchaseVerdict.caution => AffordabilityVerdict.caution,
+        PurchaseVerdict.no => AffordabilityVerdict.no,
+      };
+      reasons = [...advice.lines];
+    } else if (afterPurchase < 0) {
       verdict = AffordabilityVerdict.no;
       reasons.add('Seu saldo atual é de R\$ ${_fmt(balance)} — não cobre uma compra de R\$ ${_fmt(amount)}.');
     } else if (afterPurchase < committedTotal) {
@@ -91,9 +112,11 @@ class AffordabilityAnalyzer {
       reasons.add('Depois da compra ainda sobram R\$ ${_fmt(afterPurchase)} no seu saldo.');
     }
 
-    if (monthIncome > 0 && amount > monthIncome * 0.5) {
+    // In installments, what weighs on the month is each installment.
+    final perMonthCost = amount / _installments(text);
+    if (monthIncome > 0 && perMonthCost > monthIncome * 0.5) {
       if (verdict == AffordabilityVerdict.yes) verdict = AffordabilityVerdict.caution;
-      reasons.add('Essa compra sozinha equivale a mais da metade da sua renda mensal (R\$ ${_fmt(monthIncome)}).');
+      if (advice == null) reasons.add('Essa compra sozinha equivale a mais da metade da sua renda mensal (R\$ ${_fmt(monthIncome)}).');
     }
 
     BudgetCategory? budget;
@@ -103,7 +126,9 @@ class AffordabilityAnalyzer {
         break;
       }
     }
-    if (budget != null) {
+    // A one-off far bigger than the month's budget (a motorbike against the
+    // transport budget) is not a budget matter.
+    if (budget != null && (advice == null || amount <= budget.monthlyLimit * 3)) {
       final projectedSpent = budget.currentSpent + amount;
       if (projectedSpent > budget.monthlyLimit) {
         if (verdict != AffordabilityVerdict.no) verdict = AffordabilityVerdict.caution;

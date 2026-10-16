@@ -6,6 +6,10 @@ import 'cesar_text.dart';
 import 'local_nlp_engine.dart';
 import 'pt_number_words.dart';
 import 'temporal_date_parser.dart';
+import 'dart:math';
+import 'affordability_analyzer.dart';
+import 'analytics/financial_advisors.dart';
+import 'analytics/financial_profile.dart';
 
 /// A reply from the planner. [createdReminderIds]/[createdGoalId] let the
 /// assistant offer "desfaz" for what was created.
@@ -46,6 +50,12 @@ class _DebtFlow extends _Flow {
   int? day;
   DateTime? due;
   _DebtFlow();
+}
+
+/// "posso comprar um notebook?": waiting for the price.
+class _PurchaseFlow extends _Flow {
+  final String item;
+  _PurchaseFlow(this.item);
 }
 
 /// "vamos dividir meu salário": salary → fixed expenses → proposal → "sim".
@@ -116,7 +126,12 @@ class CesarPlanner {
   PlannerReply? start(String text) {
     final s = expandShorthand(CesarText.simplify(text));
     if (s.isEmpty) return null;
-    return _howTo(s) ??
+    return _scenario(s) ??
+        _cutsAdvice(s) ??
+        _saveMore(s) ??
+        _howAmIDoing(s) ??
+        _purchaseAsk(s, text) ??
+        _howTo(s) ??
         _appHelp(s) ??
         _knowledge(s) ??
         _feelings(s) ??
@@ -165,6 +180,8 @@ class CesarPlanner {
         return _debtContinue(flow, s, text);
       case _BudgetFlow():
         return _budgetContinue(flow, s, text);
+      case _PurchaseFlow():
+        return _purchaseContinue(flow, s, text);
     }
   }
 
@@ -634,9 +651,32 @@ class CesarPlanner {
     if (!howMuch && !where) return null;
     final avg = monthlyAverages();
     final free = _freeThisMonth();
-    final reserveGoal = repository.goals.where((g) => CesarText.fold(g.title).contains('reserva')).firstOrNull;
     final reserveTarget = avg.expense * 6;
     final buf = StringBuffer();
+    // With history: the simulated end of the month, pessimistic case (p10).
+    final ctx = _ctx;
+    if (ctx.profile.hasHistory) {
+      // Until a few days after the next salary: the lowest balance of the
+      // pessimistic path (p10) minus the safety floor can go to investments.
+      final salaryDay = ctx.profile.recurringIncomes.isEmpty ? null : ctx.profile.recurringIncomes.first.day;
+      var next = salaryDay == null ? _today.add(const Duration(days: 30)) : DateTime(_today.year, _today.month, salaryDay);
+      if (!next.isAfter(_today)) next = DateTime(_today.year, _today.month + 1, salaryDay ?? _today.day);
+      final days = next.difference(_today).inDays + 5;
+      final f = ctx.forecast(days: days);
+      final lowP10 = f.p10.reduce(min);
+      final investable = ((lowP10 - ctx.floor) * 0.9 / 10).floor() * 10.0;
+      if (investable > 0) {
+        buf.writeln('Simulei 400 cenários até o próximo salário (${CesarText.ddmm(next)}) com o seu histórico: com **90% de chance**, '
+            'dá para investir **${CesarText.money(investable)}** hoje sem que o saldo fique abaixo da sua reserva mínima de ${CesarText.money(ctx.floor)}.');
+        if (ctx.profile.avgNet > 0) {
+          buf.writeln('E todo mês sobram, em média, ${CesarText.money(ctx.profile.avgNet)} — dá para investir uns ${CesarText.money((ctx.profile.avgNet * 0.8 / 10).floor() * 10.0)} por mês.');
+        }
+        buf.writeln();
+        buf.writeln(_investTail(avg, reserveTarget, where));
+        return PlannerReply('💰 ${buf.toString().trim()}', 'planner:invest',
+            spoken: 'Com 90% de chance, dá para investir ${CesarText.money(investable)} hoje, mantendo sua reserva mínima.');
+      }
+    }
     if (free > 0) {
       final invest = (free * 0.8 / 10).floor() * 10.0;
       buf.writeln('Pelas contas deste mês, devem sobrar uns **${CesarText.money(free)}** (entradas − saídas − contas que ainda vencem − seu ritmo de gastos).');
@@ -646,6 +686,15 @@ class CesarPlanner {
           'Pergunte "onde posso economizar?" que eu mostro onde cortar.');
     }
     buf.writeln();
+    buf.writeln(_investTail(avg, reserveTarget, where));
+    final spoken = free > 0 ? 'Este mês devem sobrar uns ${CesarText.money(free)}.' : 'Este mês não sobra margem para investir.';
+    return PlannerReply('💰 ${buf.toString().trim()}', 'planner:invest', spoken: spoken);
+  }
+
+  /// Emergency fund first; where to invest is general information only.
+  String _investTail(({double income, double expense, int months}) avg, double reserveTarget, bool where) {
+    final reserveGoal = repository.goals.where((g) => CesarText.fold(g.title).contains('reserva')).firstOrNull;
+    final buf = StringBuffer();
     if (reserveGoal == null || !reserveGoal.isReached) {
       buf.writeln('💡 Antes de investir em coisas que oscilam, o comum é montar uma **reserva de emergência** de 3 a 6 meses de gastos '
           '(para você, ${CesarText.money(avg.expense * 3)} a ${CesarText.money(reserveTarget)}), num lugar seguro e com resgate rápido.'
@@ -656,8 +705,7 @@ class CesarPlanner {
       buf.writeln('Sobre onde investir: não posso recomendar produtos específicos (não sou consultor de investimentos). '
           'Compare rentabilidade, risco, liquidez e taxas, e para decisões maiores procure um profissional certificado.');
     }
-    final spoken = free > 0 ? 'Este mês devem sobrar uns ${CesarText.money(free)}.' : 'Este mês não sobra margem para investir.';
-    return PlannerReply('💰 ${buf.toString().trim()}', 'planner:invest', spoken: spoken);
+    return buf.toString().trim();
   }
 
   // ───────────────────────── goals for a purchase ─────────────────────────
@@ -1273,5 +1321,229 @@ class CesarPlanner {
       return PlannerReply(jokes[_clock().second % jokes.length], 'smalltalk');
     }
     return null;
+  }
+
+  // ───────────────────────── analytics: cuts, savings, goals, scenarios ─────────────────────────
+
+  /// The cuts of the last "o que eu devo cortar?" — what "nisso" refers to.
+  List<CutSuggestion> _lastCuts = const [];
+
+  AnalysisContext get _ctx => AnalysisContext(repository, now: _clock());
+
+  String _dataNote(AnalysisContext ctx) => ctx.profile.daysOfData < 60
+      ? '\n\n_Tenho ${ctx.profile.daysOfData} dias dos seus dados: as contas ficam mais precisas com o tempo._'
+      : '';
+
+  PlannerReply? _cutsAdvice(String s) {
+    if (!RegExp(r'\b(?:o\s+que|oque|onde|em\s+que|no\s+que|qual\s+gasto|quais\s+gastos)\s+(?:eu\s+)?(?:devo|posso|deveria|poderia|consigo|preciso|tenho\s+que|da\s+pra)\s+(?:cortar|reduzir|diminuir|economizar|enxugar)\b|'
+            r'\bonde\s+(?:eu\s+)?(?:to|estou)\s+gastando\s+(?:demais|muito)\b|\bem\s+que\s+(?:eu\s+)?gasto\s+demais\b|\bcortar\s+(?:de\s+|meus\s+|os\s+)?gastos\b|\bquais?\s+gastos?\s+(?:eu\s+)?(?:corto|cortar)\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    final ctx = _ctx;
+    final cuts = SavingsCoach(ctx).cuts();
+    _lastCuts = cuts;
+    if (cuts.isEmpty) {
+      const t = 'Não encontrei exageros: seus gastos estão no seu padrão e dentro do comum para a sua renda. 👏 '
+          'Se quiser guardar mais, pergunte "o que eu poderia fazer para economizar mais?".';
+      return const PlannerReply('✂️ $t', 'planner:cuts', spoken: t);
+    }
+    final total = cuts.fold(0.0, (a, c) => a + c.monthly);
+    const effort = {1: 'fácil', 2: 'médio', 3: 'difícil'};
+    final lines = [
+      for (var i = 0; i < cuts.length; i++) '${i + 1}. **${cuts[i].title}** — ${CesarText.money(cuts[i].monthly)}/mês (${effort[cuts[i].effort]}). ${cuts[i].detail}',
+    ];
+    final impact = SavingsCoach(ctx).goalImpact(total).where((g) => g.before.isFinite && g.before - g.after >= 0.5).take(2).toList();
+    final goals = impact.isEmpty
+        ? ''
+        : '\n\n🎯 Com tudo isso, ${impact.map((g) => '**${g.goal.title}** chega ${(g.before - g.after).round()} ${(g.before - g.after).round() == 1 ? 'mês' : 'meses'} antes').join(' e ')}.';
+    final t = 'Analisei seus gastos mês a mês. Dá para economizar até **${CesarText.money(total)} por mês** (${CesarText.money(total * 12)} por ano):';
+    return PlannerReply('✂️ $t\n${lines.join('\n')}$goals\n\nQuer saber em quanto tempo isso vira uma compra? Pergunte, por exemplo, '
+        '"se eu economizar nisso, em quanto tempo compro um notebook de 2000?".${_dataNote(ctx)}', 'planner:cuts',
+        spoken: 'Dá para economizar até ${CesarText.money(total)} por mês. O maior corte é ${cuts.first.title}, ${CesarText.money(cuts.first.monthly)} por mês.');
+  }
+
+  PlannerReply? _saveMore(String s) {
+    if (!RegExp(r'\b(?:o\s+que|oque|como)\s+(?:eu\s+)?(?:poderia|posso|devo|consigo|deveria|da\s+pra)\s+(?:fazer\s+)?(?:pra|para)?\s*(?:economizar|guardar|poupar|juntar)\s+mais\b|'
+            r'\b(?:economizar|guardar|poupar|sobrar)\s+mais\s+(?:dinheiro|grana)?\b|\bdicas?\s+(?:de|pra|para)\s+(?:economi|guardar|poupar)\w*|\bcomo\s+(?:eu\s+)?(?:faco|faço)\s+(?:pra|para)\s+sobrar\s+(?:mais\s+)?dinheiro\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    final ctx = _ctx;
+    final p = ctx.profile;
+    final coach = SavingsCoach(ctx);
+    final cuts = coach.cuts();
+    _lastCuts = cuts;
+    final total = cuts.fold(0.0, (a, c) => a + c.monthly);
+    final actions = <String>[];
+    if (cuts.isNotEmpty) {
+      actions.add('**Cortes com mais efeito**: ${cuts.take(3).map((c) => '${c.title} (${CesarText.money(c.monthly)}/mês)').join(', ')}'
+          ' — juntos, ${CesarText.money(cuts.take(3).fold(0.0, (a, c) => a + c.monthly))} por mês.');
+    }
+    if (p.avgIncome > 0) {
+      final target = max(p.avgIncome * 0.1, (p.avgNet * 0.5 / 10).round() * 10.0);
+      final salaryDay = p.recurringIncomes.isEmpty ? null : p.recurringIncomes.first.day;
+      actions.add('**Pague-se primeiro**: separe ${CesarText.money(target)} assim que o salário cair${salaryDay != null ? ' (dia $salaryDay)' : ''}, '
+          'antes de gastar — o que sobra no fim do mês costuma sumir.');
+    }
+    final uncovered = p.categories.values
+        .where((c) => !c.essential && c.mean >= 100 && !ctx.repository.budgets.any((b) => b.category == c.category && b.monthlyLimit > 0))
+        .toList();
+    if (uncovered.isNotEmpty) {
+      actions.add('**Crie limites** para ${uncovered.map((c) => '${CesarText.categoryName(c.category, ctx.repository.budgets)} (sugiro ${CesarText.money((c.median / 10).round() * 10.0)})').join(', ')} '
+          '— eu aviso quando chegar a 80%.');
+    }
+    final over = ctx.repository.budgets.where((b) => b.isOverBudget).map((b) => b.name).toList();
+    if (over.isNotEmpty) actions.add('**Orçamento estourado** este mês: ${over.join(', ')}. Segure essas categorias até o fim do mês.');
+    final debts = ctx.repository.openBills.fold(0.0, (a, b) => a + (b.amount ?? 0));
+    if (debts > 0) actions.add('**Quite as dívidas mais caras primeiro** (você deve ${CesarText.money(debts)}): juros pagos são dinheiro que não fica com você.');
+    if (p.savingsRate < 0.2 && p.avgIncome > 0) {
+      actions.add('Hoje você guarda **${_pctLabel(p.savingsRate)}** da renda; a referência comum é 20%. Faltam ${CesarText.money(max(0.0, p.avgIncome * 0.2 - p.avgNet))} por mês para chegar lá.');
+    }
+    final impact = coach.goalImpact(total).where((g) => g.before.isFinite && g.before - g.after >= 0.5).take(2).toList();
+    final goals = impact.isEmpty ? '' : '\n\n🎯 Aplicando os cortes, ${impact.map((g) => '**${g.goal.title}** chega ${(g.before - g.after).round()} meses antes').join(' e ')}.';
+    final t = 'Hoje sobram uns ${CesarText.money(max(0.0, p.avgNet))} por mês (${_pctLabel(p.savingsRate)} da renda). Para guardar mais:';
+    return PlannerReply('💡 $t\n${[for (var i = 0; i < actions.length; i++) '${i + 1}. ${actions[i]}'].join('\n')}$goals${_dataNote(ctx)}', 'planner:save_more',
+        spoken: '$t ${cuts.isNotEmpty ? 'O que mais rende é cortar ${cuts.first.title}.' : ''}');
+  }
+
+  static String _pctLabel(double r) => '${(r * 100).round()}%';
+
+  PlannerReply? _howAmIDoing(String s) {
+    if (!RegExp(r'\bcomo\s+(?:eu\s+)?(?:estou|to|tou|ando)\s+(?:me\s+saindo|indo)\b|\bcomo\s+(?:estao|tao|andam)\s+(?:as\s+|minhas\s+|nossas\s+)?metas\b|'
+            r'\b(?:vou|consigo|vamos)\s+(?:bater|alcancar|atingir|cumprir|chegar\s+n?as)\s+(?:as\s+|minhas\s+|nossas\s+)?metas?\b|\b(?:to|estou)\s+no\s+caminho\s+certo\b|\bprogresso\s+(?:das?\s+)?(?:minhas\s+)?metas?\b|\bminhas\s+metas\s+(?:estao|tao)\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    final ctx = _ctx;
+    final rep = GoalTracker(ctx).report();
+    final lines = <String>[
+      '- Você guarda **${_pctLabel(rep.savingsRate)}** da renda por mês (referência: 20%).',
+      if (rep.budgetsTotal > 0) '- Orçamentos: ${rep.budgetsOver == 0 ? 'todos dentro do limite 👏' : '${rep.budgetsOver} de ${rep.budgetsTotal} estourados este mês'}.',
+    ];
+    for (final g in rep.goals) {
+      final saved = '${CesarText.money(g.goal.savedAmount)} de ${CesarText.money(g.goal.targetAmount)}';
+      if (g.onTrack == null) {
+        lines.add('- 🎯 **${g.goal.title}**: $saved${g.projected != null ? '; no seu ritmo, chega em ${CesarText.ddmm(g.projected!)}/${g.projected!.year}' : '; ainda sem aportes'}.');
+      } else if (g.onTrack!) {
+        lines.add('- ✅ **${g.goal.title}**: $saved — no ritmo! Previsão ${CesarText.ddmm(g.projected!)}/${g.projected!.year}, '
+            'chance de bater o prazo: **${_pctLabel(g.chance ?? 1)}**.');
+      } else {
+        final need = g.requiredMonthly ?? 0;
+        lines.add('- ⚠️ **${g.goal.title}**: $saved — fora do ritmo. Precisa de ${CesarText.money(need)}/mês até ${CesarText.ddmm(g.goal.targetDate!)}/${g.goal.targetDate!.year} '
+            '(hoje: ${CesarText.money(g.pace)}/mês); chance: **${_pctLabel(g.chance ?? 0)}**. '
+            '${need > max(0.0, ctx.profile.avgNet) ? 'Isso passa do que sobra por mês: estique o prazo ou corte gastos ("o que eu devo cortar?").' : 'Aumente o aporte para chegar lá.'}');
+      }
+    }
+    if (rep.goals.isEmpty) lines.add('- Você ainda não tem metas. Diga, por exemplo, "quero juntar 5000 pra uma viagem até dezembro".');
+    final t = 'Nota **${rep.score}/100** — você está ${rep.label}';
+    return PlannerReply('📈 $t\n${lines.join('\n')}${_dataNote(ctx)}', 'planner:goals_report',
+        spoken: 'Sua nota é ${rep.score} de 100. Você guarda ${_pctLabel(rep.savingsRate)} da renda.');
+  }
+
+  /// "se eu economizar nisso, em quanto tempo compro um notebook de 2000?",
+  /// "se eu cortar o delivery, quando consigo comprar um celular de 3 mil?",
+  /// "se eu guardar 300 por mês, em quanto tempo tenho 5 mil?"
+  PlannerReply? _scenario(String s) {
+    final cond = RegExp(r'\bse\s+(?:eu\s+)?(?:economizar|cortar|guardar|poupar|reduzir|parar\s+de|deixar\s+de|seguir|fizer|aplicar|juntar|separar)\b').firstMatch(s);
+    if (cond == null) return null;
+    if (!RegExp(r'\b(?:quanto\s+tempo|quando|quantos\s+meses|que\s+mes|em\s+que\s+mes)\b').hasMatch(s)) return null;
+    if (!RegExp(r'\b(?:comprar|ter\s+(?:o\s+)?dinheiro|juntar|ter\s+(?:r\s*)?\d|trocar|pagar|quitar)\b').hasMatch(s)) return null;
+    // The monthly amount ("300 por mês") and the price (the other value).
+    final perMonthM = RegExp(r'(\d[\d.,]*(?:\s*mil)?)\s*(?:reais\s+)?(?:por|ao|todo|cada|no)\s+mes\b').firstMatch(s);
+    final perMonthSaid = perMonthM == null ? null : money(perMonthM.group(1)!);
+    final rest = perMonthM == null ? s : s.replaceFirst(perMonthM.group(0)!, ' ');
+    final price = money(rest);
+    if (price == null) return null;
+    final item = RegExp(r'\b(?:comprar|trocar\s+de|ter)\s+(?:(?:um|uma|o|a|meu|minha)\s+)?([a-z]{3,})').firstMatch(rest)?.group(1);
+    final title = item == null || item == 'dinheiro' ? 'isso' : item;
+    final ctx = _ctx;
+    final coach = SavingsCoach(ctx);
+    double extra;
+    String what;
+    if (perMonthSaid != null) {
+      // "se eu guardar 300 por mês": that is the whole monthly saving.
+      extra = perMonthSaid - max(0.0, ctx.profile.avgNet);
+      what = 'guardando ${CesarText.money(perMonthSaid)} por mês';
+    } else if (RegExp(r'\b(?:nisso|isso|disso|nesses?|nessas?|esses?|essas?|os\s+cortes|tudo\s+isso|essas\s+dicas)\b').hasMatch(s)) {
+      if (_lastCuts.isEmpty) _lastCuts = coach.cuts();
+      extra = _lastCuts.fold(0.0, (a, c) => a + c.monthly);
+      what = _lastCuts.isEmpty ? 'com os cortes' : 'com os cortes que sugeri (${_lastCuts.map((c) => c.title).join(', ')}: +${CesarText.money(extra)}/mês)';
+    } else {
+      // "se eu cortar o delivery": that suggestion, or the category's spending.
+      final target = cond.end < s.length ? s.substring(cond.end) : '';
+      final cuts = _lastCuts.isEmpty ? coach.cuts() : _lastCuts;
+      final match = cuts.where((c) => target.contains(CesarText.fold(c.title).split(' ').first) || target.contains(c.category)).firstOrNull;
+      if (match != null) {
+        extra = match.monthly;
+        what = 'cortando ${match.title} (+${CesarText.money(extra)}/mês)';
+      } else if (RegExp(r'\b(?:delivery|ifood)\b').hasMatch(target)) {
+        final d = ctx.repository.transactions.where((t) => FinancialProfile.deliveryTitles.hasMatch(CesarText.fold(t.title)) && t.date.isAfter(ctx.now.subtract(const Duration(days: 90))));
+        extra = d.fold(0.0, (a, t) => a + t.amount) / 3;
+        what = 'sem delivery (+${CesarText.money(extra)}/mês)';
+      } else {
+        extra = 0;
+        what = 'com esse corte';
+      }
+    }
+    final base = coach.timeToAfford(price);
+    final withCut = coach.timeToAfford(price, extraMonthly: extra);
+    String line(({int months, double perMonth, double chance})? r, String label) {
+      if (r == null) return '- $label: hoje não sobra dinheiro no fim do mês, então não chega lá sem mudar algo.';
+      if (r.months == 0) return '- $label: **já dá** — você tem isso acima da sua reserva mínima.';
+      return '- $label: **${coach.monthsLabel(r.months)}** (${coach.whenLabel(r.months)}), juntando ${CesarText.money(r.perMonth)}/mês — chance de ter o dinheiro até lá: ${_pctLabel(r.chance)}.';
+    }
+    final gain = base != null && withCut != null ? base.months - withCut.months : null;
+    final label = title == 'isso' ? '' : ' (${title[0].toUpperCase()}${title.substring(1)})';
+    final t = 'Para ter ${CesarText.money(price)}$label:';
+    final lines = [
+      line(base, 'No seu ritmo atual'),
+      if (extra.abs() >= 1) line(withCut, what[0].toUpperCase() + what.substring(1)),
+    ];
+    // Already affordable: how long only with what is left each month, so the
+    // balance stays untouched.
+    if (base != null && base.months == 0) {
+      final net = max(0.0, ctx.profile.avgNet);
+      final onlySavings = net > 0 ? (price / net).ceil() : null;
+      final onlyWithCut = net + extra > 0 ? (price / (net + extra)).ceil() : null;
+      if (onlySavings != null) {
+        lines.add('- Sem mexer no saldo, só com o que sobra por mês: **${coach.monthsLabel(onlySavings)}**'
+            '${extra.abs() >= 1 && onlyWithCut != null && onlyWithCut < onlySavings ? '; ${what.replaceFirst(RegExp(r'\s*\(.*$'), '')}: **${coach.monthsLabel(onlyWithCut)}**' : ''}.');
+      }
+    }
+    final summary = gain != null && gain > 0
+        ? '\n\nO corte adianta a compra em **${coach.monthsLabel(gain)}**.'
+        : (withCut != null && withCut.months > 0 ? '' : '');
+    final months = withCut?.months ?? base?.months;
+    if (months != null && months > 0) {
+      final flow = _GoalFlow(title == 'isso' ? 'Objetivo' : title[0].toUpperCase() + title.substring(1))
+        ..price = price
+        ..perMonth = withCut?.perMonth ?? base?.perMonth
+        ..months = months
+        ..awaitingConfirm = true;
+      _flow = flow;
+      return PlannerReply('🧮 $t\n${lines.join('\n')}$summary\n\nQuer que eu crie a meta **${flow.item}** com esse plano? (sim/não)${_dataNote(ctx)}', 'planner:scenario',
+          spoken: '${withCut != null && extra.abs() >= 1 ? 'Com o corte, em ${coach.monthsLabel(withCut.months)}' : 'Em ${coach.monthsLabel(months)}'}. Crio a meta?');
+    }
+    return PlannerReply('🧮 $t\n${lines.join('\n')}$summary${_dataNote(ctx)}', 'planner:scenario', spoken: lines.first.replaceAll('**', ''));
+  }
+
+  /// "posso comprar um notebook?" with no price: ask it, then simulate.
+  PlannerReply? _purchaseAsk(String s, String text) {
+    if (!AffordabilityAnalyzer.isAffordabilityQuestion(text) || money(s) != null) return null;
+    final item = RegExp(r'\b(?:comprar|bancar)\s+(?:(?:um|uma|o|a|meu|minha|esse|essa)\s+)?([a-z]{3,}(?:\s+[a-z]{3,})?)').firstMatch(s)?.group(1);
+    if (item == null) return null;
+    _flow = _PurchaseFlow(item);
+    return PlannerReply('🛍️ Quanto custa ${item.startsWith(RegExp('[aeiou]')) ? 'o' : 'o'} **$item**? (ex.: "2500" ou "3000 em 10x") Eu simulo o seu caixa com e sem a compra.',
+        'planner:purchase_ask', spoken: 'Quanto custa?');
+  }
+
+  PlannerReply? _purchaseContinue(_PurchaseFlow f, String s, String text) {
+    final price = money(s.replaceAll(RegExp(r'\b\d{1,2}\s*x\b|\bem\s+\d{1,2}\s+(?:vezes|parcelas)\b'), ' '));
+    _flow = null;
+    if (price == null) return null;
+    final result = AffordabilityAnalyzer(repository: repository, now: _clock).analyze('posso comprar ${f.item} de $price reais ${RegExp(r'\b\d{1,2}\s*x\b|\bem\s+\d{1,2}\s+(?:vezes|parcelas)\b').firstMatch(s)?.group(0) ?? ''}');
+    if (result == null) return null;
+    return PlannerReply(result.formattedText.trim(), 'afford:${result.verdict.name}', spoken: result.spokenText);
   }
 }

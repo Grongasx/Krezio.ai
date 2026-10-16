@@ -124,6 +124,13 @@
 - **Correção importante no #80:** a `MainActivity` estava em `com.example.krezio_ai`, mas o manifest resolve
   `com.krezio.ai.MainActivity` — o app quebrava ao abrir no Android. Movida para `android/app/src/main/kotlin/com/krezio/ai/`.
 - **Placar do César:** aceite 264/272 (P0: 1, `pm3`, por decisão), conversa 221/267.
+- **Planejador (`lib/ai/cesar_planner.dart`):** agenda, cobranças, dívidas com parcelas, metas de compra, plano do
+  salário, conceitos, conversa; fluxos de vários passos com "desfaz". Baterias de linguagem natural em
+  `test/_qa/natural_probe*_test.dart` (a terceira entra no CI via `test/cesar_planner_test.dart`).
+- **Análise e previsão (`lib/ai/analytics/`):** `FinancialProfile` (séries mensais, tendência, recorrentes detectados),
+  `CashFlowForecast` (saldo dia a dia, 400 cenários por bootstrap dos gastos diários, semente fixa), e
+  `PurchaseAdvisor` / `GoalTracker` / `SavingsCoach`. Só entram com ≥ 30 dias de histórico (antes disso, as regras antigas).
+  Histórico sintético de 6 meses para testes: `test/analytics_test.dart` (`history()`, `repo()`).
 - **Armadilha:** não use heredoc de Python no Bash com regex: `\b` vira backspace. Escreva o script com a
   ferramenta Write e rode o arquivo, ou edite com Edit.
 - Web local: `flutter build web` e servir `build/web` na porta 8091 (`.claude/launch.json` → `krezio-web`);

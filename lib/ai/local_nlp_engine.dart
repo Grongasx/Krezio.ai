@@ -1999,8 +1999,10 @@ class LocalFinancialNlpEngine {
       }
     }
     // "camiseta por 80 no crédito em 2x cada um": the how comes before the
-    // quantifier — it is the group piece "cada um no crédito em 2x".
-    final before = RegExp(r'^(.*?\d[\d.,]*(?:\s*(?:reais|real|conto|contos))?)\s+((?:no|na|em|via|pelo|pela|parcelad[oa]s?)\s+[^\d]*?(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*?)?)\s*,?\s+'
+    // quantifier — it is the group piece "cada um no crédito em 2x". (Only
+    // pieces ending with a quantifier pay for the long pattern below.)
+    final endsWithGroup = RegExp(r'\b(?:ambos|ambas|os\s+dois|as\s+duas|todos|todas|cada\s+um|cada\s+uma)\s*$').hasMatch(f);
+    final before = !endsWithGroup ? null : RegExp(r'^(.*?\d[\d.,]*(?:\s*(?:reais|real|conto|contos))?)\s+((?:no|na|em|via|pelo|pela|parcelad[oa]s?)\s+[^\d]*?(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*?)?)\s*,?\s+'
             r'(ambos|ambas|os\s+dois|as\s+duas|todos|todas|cada\s+um|cada\s+uma)\s*$')
         .firstMatch(f);
     if (before != null && _groupModifier('${before.group(3)} ${before.group(2)}') != null) {
