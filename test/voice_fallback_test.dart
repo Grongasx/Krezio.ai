@@ -74,4 +74,46 @@ void main() {
       }
     });
   });
+
+  group('voz masculina no celular', () {
+    // Vozes como o Android do Redmi (Google TTS) e o Windows as listam.
+    final android = [
+      {'name': 'pt-br-x-afs-local', 'locale': 'pt-BR', 'network_required': '0', 'features': ''},
+      {'name': 'pt-br-x-pte-network', 'locale': 'pt-BR', 'network_required': '1', 'features': ''},
+      {'name': 'pt-br-x-ptd-network', 'locale': 'pt-BR', 'network_required': '1', 'features': ''},
+      {'name': 'pt-br-x-ptd-local', 'locale': 'pt-BR', 'network_required': '0', 'features': ''},
+      {'name': 'pt-pt-x-jmn-local', 'locale': 'pt-PT', 'network_required': '0', 'features': ''},
+      {'name': 'en-us-x-iol-local', 'locale': 'en-US', 'network_required': '0', 'features': ''},
+      {'name': 'pt-br-x-ptc-local', 'locale': 'pt-BR', 'network_required': '0', 'features': 'notInstalled'},
+    ];
+
+    test('escolhe uma voz masculina brasileira, local de preferência', () {
+      final voices = VoicePicker.portuguese(android);
+      expect(voices.any((v) => v.locale.startsWith('en')), isFalse);
+      expect(voices.any((v) => v.name.contains('ptc')), isFalse, reason: 'voz não instalada fica de fora');
+      expect(VoicePicker.choose(voices)!.name, 'pt-br-x-ptd-local');
+      expect(voices.where((v) => v.male).map((v) => v.name), isNot(contains('pt-br-x-afs-local')));
+    });
+
+    test('a escolha do usuário vale mais que a automática', () {
+      final voices = VoicePicker.portuguese(android);
+      expect(VoicePicker.choose(voices, chosen: 'pt-br-x-afs-local')!.name, 'pt-br-x-afs-local');
+      expect(VoicePicker.choose(voices, chosen: 'nao-existe')!.name, 'pt-br-x-ptd-local');
+    });
+
+    test('Windows e iOS dizem o gênero', () {
+      final voices = VoicePicker.portuguese([
+        {'name': 'Microsoft Maria - Portuguese (Brazil)', 'locale': 'pt-BR', 'gender': 'female'},
+        {'name': 'Microsoft Daniel - Portuguese (Brazil)', 'locale': 'pt-BR', 'gender': 'male'},
+      ]);
+      expect(VoicePicker.choose(voices)!.name, contains('Daniel'));
+    });
+
+    test('sem voz masculina: nenhuma escolhida (o tom fica mais grave)', () {
+      expect(VoicePicker.choose(VoicePicker.portuguese([
+        {'name': 'pt-br-x-afs-local', 'locale': 'pt-BR'},
+      ])), isNull);
+      expect(FlutterNativeTts.fallbackPitch, lessThan(1));
+    });
+  });
 }

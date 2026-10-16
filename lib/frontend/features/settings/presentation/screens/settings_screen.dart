@@ -59,6 +59,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           ProfileSection(repository: repository),
           AppearanceSection(repository: repository),
+          const VoiceSection(),
           SecuritySection(lock: PinLock(PrefsPinStore()), biometric: BiometricAuth()),
           PrivacySection(repository: repository, userEmail: userEmail, onDeleteAccount: onDeleteAccount),
           ToolsSection(repository: repository),
