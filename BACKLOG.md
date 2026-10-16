@@ -296,14 +296,14 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `ML` Criar a voz do César com ONNX/Piper (modelo de voz masculina em pt-BR, servidor local → primeira palavra em menos de 1 s)
 - [x] `ML` Converter o texto para fala (R$ 1.948,40 → "mil novecentos e quarenta e oito reais e quarenta centavos", 29/09 → "vinte e nove de setembro", sem Markdown → nada de "asterisco" falado)
 - [x] `Frontend` Criar o player de áudio em streaming (toca enquanto o resto ainda é gerado, com botão de parar → funciona no Android e na web)
-- [ ] `Frontend` Usar a voz nativa do sistema como alternativa (`flutter_tts` quando o servidor ONNX não responde em 1 s → o César sempre fala, mesmo sem o servidor)
+- [x] `Frontend` Usar a voz nativa do sistema como alternativa (`flutter_tts` quando o servidor ONNX não responde em 1 s → o César sempre fala, mesmo sem o servidor)
 - [ ] `DevOps` Liberar a voz no celular sem depender do PC (modelo embarcado ou TTS nativo como padrão no Android → teste no Redmi Note 11 com o PC desligado)
 
 ### 6.3 Conversa por voz
 `50 pts` · 🟡 **Baixa** · `ML` `Frontend`
 - [x] `ML` Criar o controlador de conversa por voz com as mesmas regras do chat (mesmos rascunhos, confirmações e comandos → qualquer frase dá o mesmo resultado falada ou digitada)
-- [ ] `Frontend` Criar o modo mãos-livres (depois de responder, volta a escutar; "tchau César" ou 10 s de silêncio encerram → indicador claro de que está ouvindo) — ⚠️ parcial: conversa contínua no modal de voz, sem encerramento por silêncio
-- [ ] `Frontend` Permitir interromper o César enquanto ele fala (falar ou tocar para a voz parar na hora → a frase do usuário é processada normalmente)
+- [x] `Frontend` Criar o modo mãos-livres (depois de responder, volta a escutar; "tchau César" ou 10 s de silêncio encerram → indicador claro de que está ouvindo)
+- [x] `Frontend` Permitir interromper o César enquanto ele fala (falar ou tocar para a voz parar na hora → a frase do usuário é processada normalmente)
 
 ---
 
