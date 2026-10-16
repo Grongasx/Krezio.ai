@@ -5,6 +5,7 @@ import '../../../../../ai/chat_draft_tracker.dart';
 import '../../../../../ai/transaction_code.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
+import '../../../../../backend/services/feedback_service.dart';
 import '../../../../../backend/models/financial_reminder.dart';
 import '../../../../../backend/models/budget_category.dart';
 import '../../../../../backend/services/calendar_service.dart';
@@ -97,6 +98,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
   /// Which card each draft belongs to, and what it was saved as.
   final ChatDraftTracker _drafts = ChatDraftTracker();
+
+  /// "Isso ajudou?" votes already given, per message id.
+  final Map<String, bool> _rated = {};
   double _lastLatencyMs = 0.0;
 
   late final VoiceSynthesisService _voiceSynthesis = VoiceSynthesisService();
@@ -1577,6 +1581,33 @@ class _ChatScreenState extends State<ChatScreen> {
               ],
             ],
           ),
+
+          // "Isso ajudou?" on César's answers (not on entry cards or the greeting).
+          if (!isUser && msg.draft == null && msg.id != 'welcome' && widget.repository != null)
+            Padding(
+              padding: const EdgeInsets.only(left: KrezioSpace.xxxl, top: KrezioSpace.xs),
+              child: _rated.containsKey(msg.id)
+                  ? Text('Obrigado pelo retorno!',
+                      style: TextStyle(fontSize: KrezioFont.caption, color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText))
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Isso ajudou?',
+                            style: TextStyle(fontSize: KrezioFont.caption, color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText)),
+                        for (final up in const [true, false])
+                          IconButton(
+                            icon: Icon(up ? Icons.thumb_up_alt_outlined : Icons.thumb_down_alt_outlined, size: 14),
+                            tooltip: up ? 'Ajudou' : 'Não ajudou',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                            onPressed: () {
+                              FeedbackService(widget.repository!).rateAnswer(helpful: up);
+                              setState(() => _rated[msg.id] = up);
+                            },
+                          ),
+                      ],
+                    ),
+            ),
 
           // Contextual Quick Action Chips for Missing Slots
           if (!isUser && msg.draft != null && !msg.draft!.isComplete) ...[

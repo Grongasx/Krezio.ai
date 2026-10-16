@@ -45,3 +45,9 @@ models/voice/*.onnx
 models/voice/**/*.onnx
 models/voice/vits-piper-*/espeak-ng-data/
 models/voice/*.wav
+
+# Assinatura do release: nunca no git (ver RELEASING.md)
+android/key.properties
+*.jks
+*.keystore
+/build/symbols/
