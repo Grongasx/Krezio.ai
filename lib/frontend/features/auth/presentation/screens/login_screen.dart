@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../widgets/krezio_components.dart';
 import '../../../legal/legal_documents.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/services/auth_service.dart';
@@ -227,23 +228,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                     const SizedBox(height: KrezioSpace.xxl),
-                    ElevatedButton(
-                      onPressed: (_isLoading || !_canSubmit) ? null : _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: KrezioColors.aiPurple,
-                        padding: const EdgeInsets.symmetric(vertical: KrezioSpace.lg),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : Text(
-                              _isSignUp ? 'Criar conta' : 'Entrar',
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                            ),
+                    KrezioButton(
+                      label: _isSignUp ? 'Criar conta' : 'Entrar',
+                      expand: true,
+                      loading: _isLoading,
+                      onPressed: _canSubmit ? _submit : null,
                     ),
                     const SizedBox(height: KrezioSpace.md),
                     if (!_isSignUp)

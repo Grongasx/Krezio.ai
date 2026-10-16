@@ -207,13 +207,8 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: KrezioSpace.lg),
 
           // Privacy & AI Info Card
-          Container(
+          KrezioCard(
             padding: const EdgeInsets.all(KrezioSpace.lg),
-            decoration: BoxDecoration(
-              color: bgSurface,
-              borderRadius: KrezioTheme.borderRadius,
-              border: Border.all(color: borderColor),
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -240,13 +235,8 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: KrezioSpace.lg),
 
           if (userEmail != null) ...[
-            Container(
+            KrezioCard(
               padding: const EdgeInsets.all(KrezioSpace.lg),
-              decoration: BoxDecoration(
-                color: bgSurface,
-                borderRadius: KrezioTheme.borderRadius,
-                border: Border.all(color: borderColor),
-              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -286,13 +276,8 @@ class SettingsScreen extends StatelessWidget {
           ],
 
           // Data Management Card
-          Container(
+          KrezioCard(
             padding: const EdgeInsets.all(KrezioSpace.lg),
-            decoration: BoxDecoration(
-              color: bgSurface,
-              borderRadius: KrezioTheme.borderRadius,
-              border: Border.all(color: borderColor),
-            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

@@ -121,13 +121,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       padding: const EdgeInsets.all(KrezioSpace.lg),
       children: [
         // Overall Monthly Budget Hero Card
-        Container(
+        KrezioCard(
           padding: const EdgeInsets.all(KrezioSpace.lg),
-          decoration: BoxDecoration(
-            color: bgSurface,
-            borderRadius: KrezioTheme.borderRadius,
-            border: Border.all(color: borderColor),
-          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -196,14 +191,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final progress = b.percentage.clamp(0.0, 1.0);
     final statusColor = _levelColor(b.level);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: KrezioSpace.md),
-      padding: const EdgeInsets.all(KrezioSpace.lg),
-      decoration: BoxDecoration(
-        color: bgSurface,
-        borderRadius: KrezioTheme.borderRadius,
-        border: Border.all(color: borderColor),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: KrezioSpace.md),
+      child: KrezioCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -273,6 +263,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 

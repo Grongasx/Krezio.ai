@@ -64,6 +64,10 @@ class FinancialRepository extends ChangeNotifier {
   final PersistenceService _persistence;
   bool _isInitialized = false;
 
+  /// False only while [initialize] is reading the saved data.
+  bool get isLoaded => _loaded;
+  bool _loaded = true;
+
   /// Every write goes through this chain so persistence operations always
   /// complete in the same order they were called, even though mutation
   /// methods fire-and-forget their `_persistAll()` call rather than awaiting
@@ -114,6 +118,7 @@ class FinancialRepository extends ChangeNotifier {
   Future<void> initialize() async {
     if (_isInitialized) return;
     _isInitialized = true;
+    _loaded = false;
 
     // Writes asked for while loading wait until the load is done: before,
     // an addTransaction() during initialize() wrote seed + new record over
@@ -185,6 +190,7 @@ class FinancialRepository extends ChangeNotifier {
       notifyListeners();
     } finally {
       if (!loaded.isCompleted) loaded.complete();
+      _loaded = true;
     }
   }
 

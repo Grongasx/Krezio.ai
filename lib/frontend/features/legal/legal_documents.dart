@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../theme/krezio_theme.dart';
+import '../../widgets/krezio_components.dart';
 
 /// Terms of use and privacy policy, bundled with the app (assets/legal).
 class LegalDocuments {
@@ -38,7 +39,10 @@ class LegalDocumentScreen extends StatelessWidget {
       body: FutureBuilder<String>(
         future: rootBundle.loadString(asset),
         builder: (context, snap) {
-          if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+          if (snap.hasError) {
+            return KrezioErrorState(message: 'Não consegui abrir o documento.', onRetry: () => (context as Element).markNeedsBuild());
+          }
+          if (!snap.hasData) return const KrezioSkeletonList(rows: 8);
           return ListView(
             padding: const EdgeInsets.all(KrezioSpace.lg),
             children: [for (final line in snap.data!.split('\n')) _line(context, line)],

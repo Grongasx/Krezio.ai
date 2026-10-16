@@ -26,6 +26,7 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
   bool _expensesPositive = false;
   String _accountId = FinancialAccount.mainId;
   String? _error;
+  bool _reading = false;
 
   FinancialRepository get repo => widget.repository;
 
@@ -33,6 +34,7 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
     final files = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['ofx', 'csv', 'txt']);
     if (files.isEmpty) return;
     final f = files.first;
+    setState(() => _reading = true);
     final bytes = await f.xFile.readAsBytes();
     String content;
     try {
@@ -43,6 +45,7 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
     setState(() {
       _fileName = f.name;
       _raw = content;
+      _reading = false;
     });
     _parse();
   }
@@ -112,6 +115,7 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
               onChanged: (v) => setState(() => _accountId = v ?? _accountId),
             ),
           ],
+          if (_reading) const SizedBox(height: 240, child: KrezioSkeletonList(rows: 4)),
           if (_error != null) ...[
             const SizedBox(height: KrezioSpace.md),
             Text(_error!, style: const TextStyle(color: KrezioColors.budgetOver)),

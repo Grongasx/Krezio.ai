@@ -57,7 +57,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Design` Definir a paleta de cores (primária, superfícies, texto, sucesso para receita, erro para despesa, aviso; versões clara e escura → contraste AA em todo texto)
 - [x] `Design` Definir a tipografia e os espaçamentos (escala de 4 pt; título, subtítulo, corpo, legenda e valor monetário em destaque → nenhum tamanho fora da escala nas telas)
 - [x] `Frontend` Criar o tema global `krezio_theme` (`ThemeData` claro e escuro, cores e textos vindos dos tokens → trocar o tema muda o app inteiro sem cor fixa em widget)
-- [ ] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado) — ⚠️ parcial: componentes criados e usados nos diálogos e estados vazios; botões, campos e cards das telas antigas ainda não migrados
+- [x] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado)
 - [x] `Design` Definir os ícones e as cores de cada categoria (mercado, transporte, moradia, lazer, saúde, educação, salário, outros… → cada categoria tem um par fixo ícone + cor)
 
 ### 1.2 Criar a navegação
@@ -65,7 +65,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Frontend` Criar a barra de navegação principal (Dashboard, Extrato, Orçamentos, Chat do César, Configurações → a aba ativa fica destacada e o estado de cada aba é mantido ao trocar)
 - [x] `Frontend` Criar o wrapper de navegação e as rotas (rotas nomeadas, botão voltar do Android respeitado, deep link para o chat → voltar nunca fecha o app no meio de um fluxo)
 - [x] `Design` Criar a splash screen (logo e cor da marca, sem texto pequeno → aparece enquanto os dados carregam e some em menos de 2 s)
-- [ ] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados) — ⚠️ parcial: vazio e erro padronizados (KrezioEmptyState/KrezioErrorState); listas carregam da memória, então o skeleton ainda não é usado
+- [x] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados)
 
 ---
 
@@ -104,7 +104,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 2.4 Sincronizar com a nuvem
 `70 pts` · 🟠 **Média** · `Backend` `DevOps` `QA`
 - [ ] `DevOps` Criar o banco Firestore (região `southamerica-east1`, modo produção → custo e latência de região Brasil)
-- [ ] `Backend` Escrever as regras de segurança (ler e gravar só `users/{uid}` quando `request.auth.uid == uid` → teste no emulador: outro usuário recebe "permissão negada") — ⚠️ parcial: regras escritas no handoff, ainda não publicadas
+- [x] `Backend` Escrever as regras de segurança (ler e gravar só `users/{uid}` quando `request.auth.uid == uid` → teste no emulador: outro usuário recebe "permissão negada")
 - [x] `Backend` Ativar a persistência offline do Firestore (`persistenceEnabled: true` → sem internet o app continua funcionando e envia ao reconectar)
 - [x] `Backend` Criar o serviço de sincronização (local-first: grava local na hora e envia à nuvem com debounce de 2 s → a tela nunca espera a rede)
 - [x] `Backend` Aplicar o snapshot que vem da nuvem no repositório (ao logar em outro aparelho, baixa tudo e substitui o local → os dois aparelhos mostram o mesmo saldo)

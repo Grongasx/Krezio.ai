@@ -159,7 +159,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               // Statement grouped by day. The builder only builds what is on
               // screen, so a thousand records scroll without lag.
               Expanded(
-                child: filtered.isEmpty
+                child: !widget.repository.isLoaded
+                    ? const KrezioSkeletonList()
+                    : filtered.isEmpty
                     ? KrezioEmptyState(
                         icon: _filter.isEmpty ? Icons.receipt_long_outlined : Icons.search_off,
                         title: _filter.isEmpty ? 'Nenhum lançamento ainda' : 'Nenhum lançamento encontrado',
