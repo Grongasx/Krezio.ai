@@ -4,6 +4,7 @@ import '../models/financial_transaction.dart';
 import '../models/financial_reminder.dart';
 import '../models/budget_category.dart';
 import '../models/financial_goal.dart';
+import '../models/financial_account.dart';
 
 /// Persists the app's financial state to local device storage (via
 /// shared_preferences — backed by localStorage on web, and native prefs on
@@ -16,6 +17,8 @@ class PersistenceService {
   static const _kBudgets = 'krezio_budgets_v1';
   static const _kGoals = 'krezio_goals_v1';
   static const _kCategoryOverrides = 'krezio_category_overrides_v1';
+  static const _kAccounts = 'krezio_accounts_v1';
+  static const _kPreferences = 'krezio_preferences_v1';
   static const _kHasSeeded = 'krezio_has_seeded_v1';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
@@ -97,6 +100,31 @@ class PersistenceService {
     return map.map((k, v) => MapEntry(k, v as String));
   }
 
+  Future<void> saveAccounts(List<FinancialAccount> items) async {
+    final prefs = await _prefs;
+    await prefs.setString(_kAccounts, jsonEncode(items.map((a) => a.toJson()).toList()));
+  }
+
+  Future<List<FinancialAccount>> loadAccounts() async {
+    final prefs = await _prefs;
+    final raw = prefs.getString(_kAccounts);
+    if (raw == null) return [];
+    final list = jsonDecode(raw) as List;
+    return list.map((e) => FinancialAccount.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> savePreferences(Map<String, String> prefs) async {
+    final p = await _prefs;
+    await p.setString(_kPreferences, jsonEncode(prefs));
+  }
+
+  Future<Map<String, String>> loadPreferences() async {
+    final p = await _prefs;
+    final raw = p.getString(_kPreferences);
+    if (raw == null) return {};
+    return (jsonDecode(raw) as Map<String, dynamic>).map((k, v) => MapEntry(k, v.toString()));
+  }
+
   /// Wipes all persisted app data (used by the "Limpar Histórico de Testes"
   /// action in Ajustes / Homologação).
   Future<void> clearAll() async {
@@ -107,6 +135,8 @@ class PersistenceService {
       prefs.remove(_kBudgets),
       prefs.remove(_kGoals),
       prefs.remove(_kCategoryOverrides),
+      prefs.remove(_kAccounts),
+      prefs.remove(_kPreferences),
     ]);
     // An emptied app is real (empty) data, not a first run: removing this
     // flag made the next start seed the demo transactions again

@@ -277,6 +277,23 @@ class EntrySafetyGate {
       final i = others.indexWhere((o) => (o - n).abs() < 0.005);
       if (i >= 0) others = [...others]..removeAt(i);
     }
+    // "comprei um PS5 por 5000 em 7x de 714,29": the value of each
+    // installment is explained when N × it is a value taken (cents of
+    // rounding aside) — it is the same money, split.
+    final split = LocalFinancialNlpEngine.installmentValueSaid(s);
+    if (split != null && used.any((u) => (split.value * split.count - u).abs() <= 0.01 * split.count + 0.005)) {
+      final i = others.indexWhere((o) => (o - split.value).abs() < 0.005);
+      if (i >= 0) others = [...others]..removeAt(i);
+    }
+    // "2 pizzas de 40 cada uma": the unit price is explained when the count
+    // times it is a value taken — it is the same money, per unit.
+    for (final m in RegExp(r'\b(\d{1,2})\s+[a-z]{3,}(?:\s+[a-z]+){0,2}?\s+(?:de|por|a)\s+(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)').allMatches(s)) {
+      final n = int.parse(m.group(1)!);
+      final v = LocalFinancialNlpEngine.cleanAndParseAmount(m.group(2));
+      if (v == null || n < 2 || !used.any((u) => (u - n * v).abs() < 0.005)) continue;
+      final i = others.indexWhere((o) => (o - v).abs() < 0.005);
+      if (i >= 0) others = [...others]..removeAt(i);
+    }
     // A discount said next to the price paid ("ganhei 40 de desconto e paguei
     // 260") is explained: it is what was not paid (ACC-C-014).
     for (final m in RegExp(r'(\d+(?:[.,]\d{1,2})?)\s*(?:reais|real|conto|contos)?\s*(?:de\s+)?(?:desconto|abatimento)\b').allMatches(s)) {
@@ -437,6 +454,8 @@ class EntrySafetyGate {
         if (dayN != null) {
           final n = int.parse(dayN.group(1)!);
           if (_dueBefore.hasMatch(s.substring(0, m.start)) || (draft.isRecurrent && (draft.dueDay == n || draft.billingDay == n))) continue;
+          // "…em 6x pra pagar dia 20": the installments' due day.
+          if (draft.installmentDueDay == n) continue;
         }
         markers.add(t);
       }

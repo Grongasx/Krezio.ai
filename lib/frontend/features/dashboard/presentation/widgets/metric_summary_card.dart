@@ -26,7 +26,7 @@ class MetricSummaryCard extends StatelessWidget {
     final amountStr = 'R\$ ${amount.toStringAsFixed(2).replaceAll('.', ',')}';
 
     return Container(
-      padding: EdgeInsets.all(isLarge ? 20 : 14),
+      padding: EdgeInsets.all(isLarge ? KrezioSpace.xl : KrezioSpace.lg),
       decoration: BoxDecoration(
         color: bgSurface,
         borderRadius: KrezioTheme.borderRadius,
@@ -56,7 +56,7 @@ class MetricSummaryCard extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.all(6),
+                padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(
                   color: iconColor.withOpacity(0.12),
                   shape: BoxShape.circle,
