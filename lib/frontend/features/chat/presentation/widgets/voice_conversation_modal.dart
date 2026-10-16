@@ -57,6 +57,10 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
       duration: const Duration(seconds: 10),
     )..repeat();
 
+    // "tchau César" or 10 s of silence in hands-free close the conversation.
+    widget.controller.onConversationEnded = () {
+      if (mounted) Navigator.of(context).maybePop();
+    };
     widget.controller.initialize().then((_) {
       if (mounted) {
         widget.controller.startConversation(speakGreeting: true);
@@ -115,9 +119,9 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   ),
                 ),
                 _buildTranscriptionPanel(),
-                const SizedBox(height: 20),
+                const SizedBox(height: KrezioSpace.xl),
                 _buildControlsBar(context),
-                const SizedBox(height: 24),
+                const SizedBox(height: KrezioSpace.xxl),
               ],
             ),
           ],
@@ -128,14 +132,14 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
 
   Widget _buildHeader(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xl, vertical: KrezioSpace.lg),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [KrezioColors.aiPurple, Color(0xFF6366F1)],
@@ -150,7 +154,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                 ),
                 child: const Icon(Icons.record_voice_over, color: Colors.white, size: 20),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: KrezioSpace.md),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -158,7 +162,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                     'César • Modo Conversa',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: KrezioFont.bodyLarge,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 0.3,
                     ),
@@ -173,12 +177,12 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                           shape: BoxShape.circle,
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: KrezioSpace.sm),
                       Text(
                         '100% ON-DEVICE • PRIVACIDADE TOTAL',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.6),
-                          fontSize: 10,
+                          fontSize: KrezioFont.micro,
                           fontWeight: FontWeight.w600,
                           letterSpacing: 0.5,
                         ),
@@ -197,7 +201,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   borderRadius: BorderRadius.circular(20),
                   onTap: () => _showVoiceTuningSheet(context),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.sm),
                     decoration: BoxDecoration(
                       color: KrezioColors.aiPurple.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
@@ -207,12 +211,12 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.memory, color: Color(0xFFA78BFA), size: 14),
-                        SizedBox(width: 6),
+                        SizedBox(width: KrezioSpace.sm),
                         Text(
                           'ONNX Piper',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 11,
+                            fontSize: KrezioFont.caption,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -221,7 +225,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   ),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: KrezioSpace.sm),
               IconButton(
                 icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 26),
                 tooltip: 'Encerrar conversa',
@@ -246,7 +250,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
           builder: (context, setSheetState) {
             final tts = widget.controller.voiceSynthesis;
             return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xl, vertical: KrezioSpace.xl),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,19 +261,19 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(8),
+                            padding: const EdgeInsets.all(KrezioSpace.sm),
                             decoration: BoxDecoration(
                               color: KrezioColors.aiPurple.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: const Icon(Icons.memory, color: Color(0xFFA78BFA), size: 20),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: KrezioSpace.md),
                           const Text(
                             'Modelo Neural On-Device (ONNX)',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 17,
+                              fontSize: KrezioFont.title,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -281,11 +285,11 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                       ),
                     ],
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: KrezioSpace.lg),
                   // On-Device Neural ONNX Model Status Card
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(KrezioSpace.lg),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -302,22 +306,22 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.all(6),
+                              padding: const EdgeInsets.all(KrezioSpace.sm),
                               decoration: BoxDecoration(
                                 color: KrezioColors.aiPurple.withOpacity(0.3),
                                 shape: BoxShape.circle,
                               ),
                               child: const Icon(Icons.psychology, color: Color(0xFFA78BFA), size: 18),
                             ),
-                            const SizedBox(width: 10),
+                            const SizedBox(width: KrezioSpace.md),
                             const Expanded(
                               child: Text(
                                 'Piper VITS • pt_BR-faber-medium',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: KrezioFont.bodySmall),
                               ),
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
                               decoration: BoxDecoration(
                                 color: KrezioColors.emeraldGreen.withOpacity(0.25),
                                 borderRadius: BorderRadius.circular(6),
@@ -325,27 +329,27 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                               ),
                               child: const Text(
                                 'ONNX ATIVO',
-                                style: TextStyle(color: KrezioColors.emeraldGreen, fontSize: 9, fontWeight: FontWeight.bold),
+                                style: TextStyle(color: KrezioColors.emeraldGreen, fontSize: KrezioFont.micro, fontWeight: FontWeight.bold),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: KrezioSpace.sm),
                         Text(
                           'Tamanho: 60.3 MB local • Taxa: 22.050 Hz\nPersona: Consultor financeiro maduro, acolhedor e seguro',
-                          style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 11, height: 1.4),
+                          style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: KrezioFont.caption, height: 1.4),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: KrezioSpace.lg),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Cadência Neural / Velocidade', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                      const Text('Cadência Neural / Velocidade', style: TextStyle(color: Colors.white70, fontSize: KrezioFont.bodySmall)),
                       Text(
                         '${(tts.speechRate).toStringAsFixed(2)}x',
-                        style: const TextStyle(color: KrezioColors.emeraldGreen, fontWeight: FontWeight.bold, fontSize: 12),
+                        style: const TextStyle(color: KrezioColors.emeraldGreen, fontWeight: FontWeight.bold, fontSize: KrezioFont.small),
                       ),
                     ],
                   ),
@@ -361,14 +365,14 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                       setSheetState(() {});
                     },
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: KrezioSpace.md),
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: KrezioColors.aiPurple,
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        padding: const EdgeInsets.symmetric(vertical: KrezioSpace.lg),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                       icon: const Icon(Icons.play_arrow_rounded),
@@ -412,7 +416,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   primaryGlow = const Color(0xFF06B6D4); // Cyan Neon
                   secondaryGlow = const Color(0xFF3B82F6); // Electric Blue
                   accentCore = const Color(0xFF67E8F9);
-                  statusLabel = 'Ouvindo você...';
+                  statusLabel = 'Ouvindo você... (diga "tchau César" para encerrar)';
                 } else if (state == VoiceState.thinking) {
                   primaryGlow = KrezioColors.aiPurple; // Deep AI Purple
                   secondaryGlow = const Color(0xFFEC4899); // Hot Pink
@@ -639,11 +643,11 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: KrezioSpace.xxl),
 
                     // Futuristic Glassmorphic State Indicator Capsule
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
                       decoration: BoxDecoration(
                         color: const Color(0xFF141A26).withValues(alpha: 0.85),
                         borderRadius: BorderRadius.circular(30),
@@ -678,12 +682,12 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                               ],
                             ),
                           ),
-                          const SizedBox(width: 10),
+                          const SizedBox(width: KrezioSpace.md),
                           Text(
                             statusLabel,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 13,
+                              fontSize: KrezioFont.bodySmall,
                               fontWeight: FontWeight.w600,
                               letterSpacing: 0.3,
                             ),
@@ -691,7 +695,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                         ],
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: KrezioSpace.md),
                     Text(
                       state == VoiceState.listening
                           ? (widget.controller.userTranscriptNotifier.value.trim().isNotEmpty
@@ -700,7 +704,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                           : (state == VoiceState.speaking ? 'Toque na esfera para interromper' : ''),
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.45),
-                        fontSize: 11,
+                        fontSize: KrezioFont.caption,
                         fontStyle: FontStyle.italic,
                       ),
                     ),
@@ -763,7 +767,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
       children: bars.map((heightFactor) {
         final clampedHeight = (heightFactor.clamp(0.25, 1.2) * 36.0);
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2.5),
+          margin: const EdgeInsets.symmetric(horizontal: KrezioSpace.hair),
           width: 4.5,
           height: clampedHeight,
           decoration: BoxDecoration(
@@ -792,11 +796,11 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
 
   Widget _buildTranscriptionPanel() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xxl),
       child: Container(
         width: double.infinity,
         constraints: const BoxConstraints(minHeight: 110, maxHeight: 160),
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(KrezioSpace.lg),
         decoration: BoxDecoration(
           color: const Color(0xFF141923).withOpacity(0.85),
           borderRadius: BorderRadius.circular(20),
@@ -822,20 +826,20 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                 builder: (context, userText, _) {
                   if (userText.isEmpty) return const SizedBox.shrink();
                   return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.only(bottom: KrezioSpace.md),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('🗣️ ', style: TextStyle(fontSize: 14)),
+                            const Text('🗣️ ', style: TextStyle(fontSize: KrezioFont.body)),
                             Expanded(
                               child: Text(
                                 userText,
                                 style: const TextStyle(
                                   color: Color(0xFFE2E8F0),
-                                  fontSize: 14,
+                                  fontSize: KrezioFont.body,
                                   fontWeight: FontWeight.w500,
                                   height: 1.35,
                                 ),
@@ -843,14 +847,14 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                             ),
                           ],
                         ),
-                        const SizedBox(height: 6),
+                        const SizedBox(height: KrezioSpace.sm),
                         Align(
                           alignment: Alignment.centerRight,
                           child: InkWell(
                             onTap: () => widget.controller.manualCommitSpeech(),
                             borderRadius: BorderRadius.circular(14),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
                               decoration: BoxDecoration(
                                 color: const Color(0xFF06B6D4).withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(14),
@@ -863,12 +867,12 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(Icons.send_rounded, color: Color(0xFF06B6D4), size: 12),
-                                  SizedBox(width: 4),
+                                  SizedBox(width: KrezioSpace.xs),
                                   Text(
                                     'Enviar fala agora ➔',
                                     style: TextStyle(
                                       color: Color(0xFF67E8F9),
-                                      fontSize: 11,
+                                      fontSize: KrezioFont.caption,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
@@ -897,7 +901,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                               : 'Conectado ao César.',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.4),
-                            fontSize: 13,
+                            fontSize: KrezioFont.bodySmall,
                             fontStyle: FontStyle.italic,
                           ),
                         );
@@ -907,13 +911,13 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('🟣 ', style: TextStyle(fontSize: 14)),
+                      const Text('🟣 ', style: TextStyle(fontSize: KrezioFont.body)),
                       Expanded(
                         child: Text(
                           cesarText,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 14,
+                            fontSize: KrezioFont.body,
                             fontWeight: FontWeight.w600,
                             height: 1.4,
                           ),
@@ -932,7 +936,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
 
   Widget _buildControlsBar(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xxl),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -957,7 +961,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                 borderRadius: BorderRadius.circular(24),
                 onTap: () => widget.controller.toggleHandsFree(),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
                   decoration: BoxDecoration(
                     color: isHandsFree ? KrezioColors.aiPurple.withOpacity(0.25) : Colors.white10,
                     borderRadius: BorderRadius.circular(24),
@@ -973,12 +977,12 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                         color: isHandsFree ? KrezioColors.aiPurple : Colors.white70,
                         size: 18,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: KrezioSpace.sm),
                       Text(
                         isHandsFree ? 'MÃOS LIVRES' : 'MANUAL',
                         style: TextStyle(
                           color: isHandsFree ? Colors.white : Colors.white70,
-                          fontSize: 12,
+                          fontSize: KrezioFont.small,
                           fontWeight: FontWeight.bold,
                           letterSpacing: 0.5,
                         ),

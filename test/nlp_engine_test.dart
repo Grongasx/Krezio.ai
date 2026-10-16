@@ -1568,9 +1568,13 @@ void main() {
       final b = engine.parse('comprei uma tv de 3000 parcelado em 10x no credito');
       expect(b.amount, 3000.0);
       expect(b.installments, 10);
+      // "3x de 100" is 3 installments of R$ 100: the purchase is R$ 300
+      // (feedback 2026-10-16: "7 parcelas de 714,29" = 7 × 714,29), and the
+      // math is said — it is no "3 × 100 itens".
       final c = engine.parse('paguei 3x de 100 no credito');
-      expect(c.amount, 100.0);
+      expect(c.amount, 300.0);
       expect(c.installments, 3);
+      expect(c.assumptionNote, contains('3 × R\$ 100,00 = R\$ 300,00'));
     });
 
     test('"por" indica total — não multiplica', () {
@@ -2204,7 +2208,9 @@ void main() {
 
     test('mensalidade não é chamada de "assinatura"', () {
       for (final p in [
-        'paguei a mensalidade da faculdade de 780 no boleto',
+        // (Not "paguei a mensalidade…": a fee said paid in the past, with no
+        // word of recurrence, is one payment — feedback 2026-10-16.)
+        'mensalidade da faculdade de 780 no boleto',
         'Registre, por favor, o pagamento da mensalidade da faculdade: R\$ 780,00 no boleto.',
       ]) {
         final d = engine.parse(p);
