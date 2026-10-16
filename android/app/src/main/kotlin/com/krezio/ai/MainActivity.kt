@@ -1,4 +1,4 @@
-package com.example.krezio_ai
+package com.krezio.ai
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 
