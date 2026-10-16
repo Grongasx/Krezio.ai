@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Thin wrapper around FirebaseAuth — translates Firebase's error codes into
@@ -17,7 +18,7 @@ class AuthService {
         await credential.user?.updateDisplayName(displayName.trim());
       }
     } on FirebaseAuthException catch (e) {
-      throw AuthFailure(_friendlyMessage(e));
+      throw AuthFailure(friendlyMessage(e.code));
     }
   }
 
@@ -25,22 +26,43 @@ class AuthService {
     try {
       await _auth.signInWithEmailAndPassword(email: email, password: password);
     } on FirebaseAuthException catch (e) {
-      throw AuthFailure(_friendlyMessage(e));
+      throw AuthFailure(friendlyMessage(e.code));
     }
   }
 
+  /// The screen always answers "if the e-mail exists, we sent a link", so a
+  /// stranger can't use this to find out who has an account: an unknown e-mail
+  /// is treated as success. Real problems (no internet, too many tries) still fail.
   Future<void> sendPasswordResetEmail(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
     } on FirebaseAuthException catch (e) {
-      throw AuthFailure(_friendlyMessage(e));
+      if (e.code == 'user-not-found' || e.code == 'invalid-email') return;
+      throw AuthFailure(friendlyMessage(e.code));
     }
   }
 
   Future<void> signOut() => _auth.signOut();
 
-  String _friendlyMessage(FirebaseAuthException e) {
-    switch (e.code) {
+  /// Deletes the account (LGPD): first the user's data in Firestore
+  /// (`users/{uid}`), then the login itself. Firebase asks for a recent login
+  /// for this; when it does, the user is told to sign in again.
+  Future<void> deleteAccount({FirebaseFirestore? firestore}) async {
+    final user = _auth.currentUser;
+    if (user == null) throw const AuthFailure('Nenhuma conta conectada.');
+    try {
+      await (firestore ?? FirebaseFirestore.instance).collection('users').doc(user.uid).delete();
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      throw AuthFailure(friendlyMessage(e.code));
+    } on FirebaseException catch (e) {
+      throw AuthFailure('Não foi possível apagar os dados da nuvem (${e.code}). Tente de novo com internet.');
+    }
+  }
+
+  /// Portuguese message for a FirebaseAuth error [code]. Never shows English.
+  static String friendlyMessage(String code) {
+    switch (code) {
       case 'invalid-email':
         return 'E-mail inválido.';
       case 'user-disabled':
@@ -51,15 +73,17 @@ class AuthService {
       case 'invalid-credential':
         return 'E-mail ou senha incorretos.';
       case 'email-already-in-use':
-        return 'Já existe uma conta com esse e-mail.';
+        return 'Esse e-mail já tem conta. Quer entrar?';
       case 'weak-password':
-        return 'A senha precisa ter pelo menos 6 caracteres.';
+        return 'Senha fraca: use pelo menos 8 caracteres, com letras e números.';
       case 'network-request-failed':
         return 'Sem conexão com a internet. Tente novamente.';
+      case 'requires-recent-login':
+        return 'Por segurança, saia e entre de novo na conta antes de excluí-la.';
       case 'too-many-requests':
         return 'Muitas tentativas. Aguarde um momento e tente de novo.';
       default:
-        return 'Não foi possível completar a operação (${e.code}).';
+        return 'Não foi possível completar a operação ($code).';
     }
   }
 }

@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'audio_stream_player.dart';
+import 'native_tts.dart';
 
-/// Service responsible for Text-to-Speech (TTS) synthesis 100% via the On-Device ONNX Neural Model (Piper VITS).
-/// Completely removes legacy Windows/browser speech synthesis engines.
+/// César's voice: the neural ONNX model (Piper VITS) when its server answers,
+/// the system voice otherwise (and by default on phones).
 class VoiceSynthesisService {
   static final VoiceSynthesisService _instance = VoiceSynthesisService._internal();
   factory VoiceSynthesisService() => _instance;
@@ -77,7 +78,28 @@ class VoiceSynthesisService {
     return text.trim();
   }
 
-  /// Speaks the provided text using EXCLUSIVELY the On-Device ONNX model.
+  /// The system voice, used when the neural voice server doesn't answer.
+  NativeTts? _native;
+  NativeTts get nativeTts => _native ??= FlutterNativeTts();
+  set nativeTts(NativeTts tts) => _native = tts;
+
+  /// Plays a neural voice stream; swappable in tests.
+  Future<bool> Function(String url, {void Function()? onCompletion, void Function(dynamic)? onError}) onnxPlayer =
+      AudioStreamPlayer.playUrl;
+
+  /// How long the neural voice has to start before César falls back to the
+  /// system voice.
+  Duration onnxTimeout = const Duration(seconds: 1);
+
+  /// On a phone the neural server (on the PC) isn't reachable: the system
+  /// voice is the default there. Settable by the user.
+  bool preferNative = !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+
+  int _speechId = 0;
+
+  /// Speaks [text] with the neural ONNX voice (Piper, served on the PC) or,
+  /// when it doesn't start within [onnxTimeout] — or on a phone — with the
+  /// system voice. César always speaks.
   Future<void> speak(String text) async {
     if (text.trim().isEmpty) return;
 
@@ -86,44 +108,60 @@ class VoiceSynthesisService {
     }
 
     final speechReadyText = preprocessTextForSpeech(text);
+    final id = ++_speechId;
+    currentSpokenTextNotifier.value = speechReadyText;
+    isSpeakingNotifier.value = true;
+    onStart?.call();
 
-    try {
-      final encoded = Uri.encodeComponent(speechReadyText);
-      final onnxUrl = 'http://127.0.0.1:8088/synthesize?text=$encoded';
+    if (preferNative) {
+      await _speakNative(speechReadyText, id);
+      return;
+    }
 
-      currentSpokenTextNotifier.value = speechReadyText;
-      isSpeakingNotifier.value = true;
-      onStart?.call();
-
-      final played = await AudioStreamPlayer.playUrl(
-        onnxUrl,
-        onCompletion: () {
-          isSpeakingNotifier.value = false;
-          currentSpokenTextNotifier.value = null;
-          onCompletion?.call();
-        },
-        onError: (e) {
-          debugPrint('[VoiceSynthesisService] ONNX audio stream error: $e');
-          isSpeakingNotifier.value = false;
-          currentSpokenTextNotifier.value = null;
-          onError?.call(e);
-          onCompletion?.call();
-        },
-      );
-
-      if (!played) {
-        debugPrint('[VoiceSynthesisService] Could not play ONNX audio stream.');
-        isSpeakingNotifier.value = false;
-        currentSpokenTextNotifier.value = null;
-        onCompletion?.call();
-      }
-    } catch (e) {
-      debugPrint('[VoiceSynthesisService] ONNX Speak error: $e');
+    var finished = false;
+    void finish() {
+      if (finished || id != _speechId) return;
+      finished = true;
       isSpeakingNotifier.value = false;
       currentSpokenTextNotifier.value = null;
-      onError?.call(e);
       onCompletion?.call();
     }
+
+    bool played;
+    try {
+      final onnxUrl = 'http://127.0.0.1:8088/synthesize?text=${Uri.encodeComponent(speechReadyText)}';
+      played = await onnxPlayer(
+        onnxUrl,
+        onCompletion: finish,
+        onError: (e) {
+          debugPrint('[VoiceSynthesisService] ONNX audio stream error: $e');
+          finish();
+        },
+      ).timeout(onnxTimeout, onTimeout: () => false);
+    } catch (e) {
+      debugPrint('[VoiceSynthesisService] ONNX speak error: $e');
+      played = false;
+    }
+    if (played || id != _speechId) return;
+
+    // No neural voice: the system voice says it.
+    finished = true;
+    AudioStreamPlayer.stop();
+    await _speakNative(speechReadyText, id);
+  }
+
+  Future<void> _speakNative(String text, int id) async {
+    activeVoiceNameNotifier.value = 'Voz do sistema';
+    try {
+      await nativeTts.speak(text, rate: _speechRate, volume: _volume);
+    } catch (e) {
+      debugPrint('[VoiceSynthesisService] native voice error: $e');
+      onError?.call(e);
+    }
+    if (id != _speechId) return; // stopped or replaced meanwhile
+    isSpeakingNotifier.value = false;
+    currentSpokenTextNotifier.value = null;
+    onCompletion?.call();
   }
 
   /// Adjusts speech rate (0.5 to 1.5).
@@ -138,8 +176,10 @@ class VoiceSynthesisService {
 
   /// Stops current speech immediately.
   Future<void> stop() async {
+    _speechId++;
     try {
       AudioStreamPlayer.stop();
+      await _native?.stop();
       isSpeakingNotifier.value = false;
       currentSpokenTextNotifier.value = null;
     } catch (e) {
