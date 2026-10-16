@@ -7,6 +7,7 @@ import 'package:krezio_ai/backend/models/financial_reminder.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 
 import '_qa/chaos_r3_support.dart';
+import '_qa/natural_probe3_test.dart' as probe3 show cases;
 
 /// Linguagem natural do dono do produto (2026-10-16): agenda, cobranças,
 /// dívidas, ajuda, investir, metas e plano do salário — com várias falas.
@@ -163,6 +164,15 @@ void main() {
     final c = chat();
     expect(c.sim.send('me lembra de pagar o aluguel dia 5').text, contains('R\$ 1.400,00'));
     expect(c.repo.reminders.first.targetDate.day, 5);
+  });
+
+  test('gíria, abreviação e sem acento (terceira onda)', () {
+    for (final e in probe3.cases.entries) {
+      final c = chat();
+      if (e.key.contains('parcela')) c.sim.send('fiz um empréstimo de 3000 em 12x de 300 todo dia 15');
+      final r = c.sim.send(e.key).route;
+      expect(e.value.split('|').any(r.startsWith), isTrue, reason: '${e.key} => $r');
+    }
   });
 
   test('o fluxo não prende a conversa: outra frase segue normal', () {

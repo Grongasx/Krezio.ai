@@ -102,8 +102,19 @@ class CesarPlanner {
   // ───────────────────────── entry points ─────────────────────────
 
   /// A new request this planner answers, or null.
+  /// Chat shorthand spelled out: "oq tem pra hj" → "o que tem pra hoje".
+  static String expandShorthand(String s) {
+    const words = {
+      'oq': 'o que', 'oque': 'o que', 'hj': 'hoje', 'q': 'que', 'qnto': 'quanto', 'qnt': 'quanto', 'qto': 'quanto', 'qnta': 'quanta',
+      'vc': 'voce', 'vcs': 'voces', 'tb': 'tambem', 'tbm': 'tambem', 'msm': 'mesmo', 'pq': 'porque', 'td': 'tudo', 'tds': 'todos',
+      'mt': 'muito', 'mto': 'muito', 'mta': 'muita', 'dps': 'depois', 'amnh': 'amanha', 'blz': 'beleza', 'obg': 'obrigado', 'vlw': 'valeu',
+      'cmg': 'comigo', 'ctg': 'contigo', 'p': 'pra', 'pf': 'por favor', 'pfv': 'por favor', 'sla': 'sei la', 'ngm': 'ninguem', 'qd': 'quando', 'qdo': 'quando',
+    };
+    return s.split(' ').map((w) => words[w] ?? w).join(' ');
+  }
+
   PlannerReply? start(String text) {
-    final s = CesarText.simplify(text);
+    final s = expandShorthand(CesarText.simplify(text));
     if (s.isEmpty) return null;
     return _howTo(s) ??
         _appHelp(s) ??
@@ -120,12 +131,13 @@ class CesarPlanner {
         _profit(s) ??
         _canPay(s) ??
         _agenda(s) ??
+        _weekReview(s) ??
         _monthReview(s) ??
         _noMoney(s) ??
         _canGoOut(s) ??
         _goalVariants(s) ??
-        _saveMonthly(s) ??
         _goalStart(s, text) ??
+        _saveMonthly(s) ??
         _budgetStart(s, text) ??
         _invest(s);
   }
@@ -218,6 +230,9 @@ class CesarPlanner {
             RegExp(r'\b(?:hoje|amanha|semana)\b').hasMatch(s)) ||
         RegExp(r'\bresumo\s+(?:do|de)\s+(?:dia|hoje|que|semana)\b').hasMatch(s) ||
         RegExp(r'\b(?:conta|contas|boleto|boletos)\s+(?:atrasad\w*|vencid\w*)\b').hasMatch(s) ||
+        // "tem boleto vencendo amanhã", "o que vence hoje" (with a day).
+        (RegExp(r'\b(?:conta|contas|boleto|boletos|algo|alguma\s+coisa)\s+(?:vencendo|pra\s+vencer|a\s+vencer|que\s+vence\w*)\b|\bo\s+que\s+vence\b').hasMatch(s) &&
+            RegExp(r'\b(?:hoje|amanha|semana|mes)\b').hasMatch(s)) ||
         RegExp(r'\bcomo\s+(?:estao|esta|tao|ta)\s+(?:as\s+coisas|tudo|minhas\s+financas|minha\s+vida\s+financeira)\b').hasMatch(s);
     if (!asksAgenda) return null;
     // Questions with a measure of their own ("o que eu tenho de saldo") are
@@ -279,6 +294,30 @@ class CesarPlanner {
     return PlannerReply('🗓️ $head\n${lines.join('\n')}$money', 'planner:agenda', spoken: spoken);
   }
 
+  PlannerReply? _weekReview(String s) {
+    if (!RegExp(r'\bcomo\s+(?:foi|ta|esta|anda)\s+(?:a\s+)?(?:minha\s+)?semana\b|\bbalanco\s+da\s+semana\b|\bgastos?\s+da\s+semana\b').hasMatch(s)) return null;
+    final now = _clock();
+    final weekAgo = _today.subtract(const Duration(days: 6));
+    final prevStart = weekAgo.subtract(const Duration(days: 7));
+    double sum(DateTime a, DateTime b) => _tx
+        .where((t) => t.type == TransactionType.expense && !t.date.isBefore(a) && t.date.isBefore(b) && !t.date.isAfter(now))
+        .fold(0.0, (x, t) => x + t.amount);
+    final week = sum(weekAgo, now.add(const Duration(seconds: 1)));
+    final prev = sum(prevStart, weekAgo);
+    final byCat = <String, double>{};
+    for (final t in _tx.where((t) => t.type == TransactionType.expense && !t.date.isBefore(weekAgo) && !t.date.isAfter(now))) {
+      byCat[t.category] = (byCat[t.category] ?? 0) + t.amount;
+    }
+    if (week <= 0) {
+      const t = 'Nos últimos 7 dias você não registrou nenhum gasto. 👏';
+      return const PlannerReply('🗓️ $t', 'planner:week', spoken: t);
+    }
+    final top = byCat.entries.reduce((a, b) => a.value >= b.value ? a : b);
+    final cmp = prev > 0 ? ' (${((week - prev) / prev * 100).round().abs()}% ${week >= prev ? 'a mais' : 'a menos'} que nos 7 dias antes)' : '';
+    final t = 'Nos últimos 7 dias você gastou ${CesarText.money(week)}$cmp, mais em ${CesarText.categoryName(top.key, repository.budgets)} (${CesarText.money(top.value)}).';
+    return PlannerReply('🗓️ $t', 'planner:week', spoken: t);
+  }
+
   PlannerReply? _monthReview(String s) {
     if (!RegExp(r'\bcomo\s+(?:foi|ta|esta|anda)\s+(?:o\s+)?(?:meu\s+)?mes\b|\bpanorama\s+(?:do|deste|desse)\s+mes\b|\bbalanco\s+do\s+mes\b|\bresumo\s+do\s+mes\b').hasMatch(s)) {
       return null;
@@ -333,7 +372,7 @@ class CesarPlanner {
 
   /// Bills the user owes to someone (created by [_newDebt]) and other open bills.
   PlannerReply? _myDebts(String s) {
-    if (!RegExp(r'^(?:e\s+)?(?:eu\s+)?(?:tenho|to\s+com|estou\s+com)\s+(?:alguma\s+)?dividas?\b|^(?:e\s+)?(?:quanto|qto)\s+(?:eu\s+)?(?:ainda\s+)?devo\b|\b(?:pra|para|a)\s+quem\s+(?:eu\s+)?devo\b|\bminhas\s+dividas\b|\bquais\s+(?:sao\s+)?(?:as\s+)?minhas\s+dividas\b|\bquanto\s+falta\s+(?:pra|para)\s+(?:quitar|pagar)\b')
+    if (!RegExp(r'^(?:e\s+)?(?:eu\s+)?(?:tenho|to\s+com|estou\s+com)\s+(?:alguma\s+)?dividas?\b|^(?:e\s+)?(?:quanto|qto)\s+(?:eu\s+)?(?:ainda\s+)?(?:devo|(?:to|tou|estou)\s+devendo)\b|\b(?:pra|para|a)\s+quem\s+(?:eu\s+)?devo\b|\bminhas\s+dividas\b|\bquais\s+(?:sao\s+)?(?:as\s+)?minhas\s+dividas\b|\bquanto\s+falta\s+(?:pra|para)\s+(?:quitar|pagar)\b')
         .hasMatch(s)) {
       return null;
     }
@@ -418,7 +457,7 @@ class CesarPlanner {
       final day = spoken?.day;
       if (day != null && day.start.isAfter(_today)) f.due = CesarText.dayOnly(day.start);
     }
-    final who = RegExp(r'\b(?:com(?:\s+(?:o|a|meu|minha))?|pro|pra|para(?:\s+(?:o|a))?|do|da|ao)\s+((?:irmao|irma|mae|pai|tio|tia|primo|prima|amigo|amiga|chefe|banco|vo|vizinho|vizinha|sogro|sogra|cunhado|cunhada|[a-z]{3,}))\b')
+    final who = RegExp(r'\b(?:com|pro|pra|para|do|da|ao|na|no)(?:\s+(?:o|a|meu|minha|seu|sua))?(?:\s+(?:meu|minha))?\s+((?:irmao|irma|mae|pai|tio|tia|primo|prima|amigo|amiga|chefe|banco|vo|vizinho|vizinha|sogro|sogra|cunhado|cunhada|[a-z]{3,}))\b')
         .allMatches(s)
         .map((m) => m.group(1)!)
         .where((w) => !const {
@@ -625,12 +664,14 @@ class CesarPlanner {
 
   static final _goalWords = RegExp(
       r'\b(?:quero|queria|pretendo|preciso|to\s+querendo|estou\s+querendo|tô\s+querendo|vou|sonho\s+em)\s+(?:comprar|trocar\s+(?:de|o|a|meu|minha)|ter|fazer)\s+(?:(?:um|uma|o|a|meu|minha|de)\s+)?([a-z]{3,}(?:\s+(?:novo|nova|zero|usado|usada|proprio|propria))?)|'
-      r'\b(?:me\s+)?ajud\w*\s+a\s+(?:economizar|juntar|guardar|planejar)\s+(?:pra|para)\s+(?:comprar\s+)?(?:(?:um|uma|o|a|meu|minha)\s+)?([a-z]{3,})');
+      r'\b(?:me\s+)?ajud\w*\s+a\s+(?:economizar|juntar|guardar|planejar)\s+(?:pra|para)\s+(?:comprar\s+)?(?:(?:um|uma|o|a|meu|minha)\s+)?([a-z]{3,})|'
+      // "quero juntar grana pra comprar uma casa"
+      r'\b(?:quero|preciso|vou|pretendo)\s+(?:juntar|guardar|economizar|poupar)\s+(?:(?:grana|dinheiro)\s+)?(?:pra|para)\s+(?:comprar\s+|trocar\s+de\s+|ter\s+)?(?:(?:um|uma|o|a|meu|minha)\s+)?([a-z]{3,})');
 
   PlannerReply? _goalStart(String s, String text) {
     final m = _goalWords.firstMatch(s);
     if (m == null) return null;
-    final item = (m.group(1) ?? m.group(2))?.trim();
+    final item = (m.group(1) ?? m.group(2) ?? m.group(3))?.trim();
     if (item == null || item.length < 3 || const {'dinheiro', 'isso', 'algo', 'coisa', 'gasto', 'pix', 'compra', 'reserva', 'uma', 'meu', 'minha', 'divida', 'dividas'}.contains(item)) return null;
     // A purchase being told ("quero registrar que comprei…") is not a plan:
     // only with a planning word or no past purchase verb.
@@ -1175,7 +1216,9 @@ class CesarPlanner {
   };
 
   PlannerReply? _knowledge(String s) {
-    if (!RegExp(r'^(?:o\s+que\s+(?:e|sao|significa)|oque\s+e|que\s+e|como\s+funciona[m]?|me\s+explica|explica|vale\s+a\s+pena|e\s+bom|compensa)\b|\bvale\s+a\s+pena\b|\bcompensa\b').hasMatch(s)) {
+    if (!RegExp(r'^(?:o\s+que\s+(?:e|sao|significa)|oque\s+e|que\s+e|como\s+funciona[m]?|me\s+explica|explica|vale\s+a\s+pena|e\s+bom|compensa)\b|\bvale\s+a\s+pena\b|\bcompensa\b|'
+            r'\be\s+(?:ruim|bom|boa|perigos[oa]|car[oa]|seguro|segura|confiavel)\b|\bdevo\s+usar\b|\bpor\s+que\s+(?:evitar|fugir)\b')
+        .hasMatch(s)) {
       return null;
     }
     for (final e in _glossary.entries) {
@@ -1218,7 +1261,7 @@ class CesarPlanner {
       return PlannerReply('🫂 $t\n\nPosso te ajudar a: ver o que vence ("o que tenho essa semana?"), achar onde cortar ("onde posso economizar?") '
           'ou montar um plano ("me ajuda a dividir meu salário").', 'planner:feelings', spoken: t);
     }
-    if (RegExp(r'^(?:valeu|obrigad[oa]|brigad[oa]|muito\s+obrigad[oa]|show|top|perfeito|massa)\b.*\b(?:ajudou|ajuda|salvou|demais|muito)\b').hasMatch(s)) {
+    if (RegExp(r'^(?:valeu|obrigad\w*|brigad\w*|muito\s+obrigad\w*|show|top|perfeito|massa)\b.*\b(?:ajudou|ajuda|salvou|demais|muito)\b').hasMatch(s)) {
       return const PlannerReply('Que bom que ajudou! Tô por aqui sempre que precisar. 💜', 'smalltalk');
     }
     if (RegExp(r'\b(?:conta|conte|fala|me\s+fala)\s+(?:uma\s+)?piada\b').hasMatch(s)) {
