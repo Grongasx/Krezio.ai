@@ -1,4 +1,5 @@
 import '../backend/models/budget_category.dart';
+import 'cesar_planner.dart';
 import 'bill_split_parser.dart';
 import '../backend/models/financial_reminder.dart';
 import 'cesar_advisor.dart';
@@ -112,6 +113,30 @@ class CesarAssistant {
 
   FinancialQaEngine get _qa => FinancialQaEngine(repository: repository, now: _clock);
   CesarAdvisor get _advisor => CesarAdvisor(repository: repository, now: _clock);
+
+  /// Agenda, debts, planning — with its multi-turn flows (kept across turns).
+  late final CesarPlanner _planner = CesarPlanner(repository: repository, now: _clock);
+
+  /// A planner reply, with "desfaz" for whatever it created.
+  AssistantReply _fromPlanner(PlannerReply r) {
+    final reminders = r.createdReminderIds;
+    final goal = r.createdGoalId;
+    final budgets = r.previousBudgets;
+    final extra = r.undo;
+    if (reminders.isNotEmpty || goal != null || budgets.isNotEmpty || extra != null) {
+      history.push(ChatAction.custom((repo) {
+        if (extra != null && !extra(repo)) return false;
+        for (final id in reminders) {
+          repo.removeReminder(id);
+        }
+        if (goal != null) repo.deleteGoal(goal);
+        budgets.forEach(repo.setBudgetLimit);
+        return true;
+      }, 'Desfiz o que eu tinha criado.'));
+      _lastMutationTurn = _turn;
+    }
+    return AssistantReply(r.text, spokenText: r.spokenText, route: r.route);
+  }
 
   /// How César calls the user ("Gustavo"), or null.
   String? get userName => repository.preference(FinancialRepository.prefUserName);
@@ -249,6 +274,11 @@ class CesarAssistant {
   /// questions. [hasPendingDraft]: the chat is still asking about a new
   /// entry — then only answers to César's pending question are taken here.
   AssistantReply? handleCommand(String text, {bool hasPendingDraft = false}) {
+    // An answer inside a planning flow ("40 mil", "sim", "internet 100").
+    if (_planner.hasFlow && !TransactionCommandParser.isUndo(text)) {
+      final r = _planner.continueFlow(text);
+      if (r != null) return _fromPlanner(r);
+    }
     final pending = _pending;
     if (pending != null) {
       final reply = _answerPending(pending, text);
@@ -1419,6 +1449,9 @@ class CesarAssistant {
   AssistantReply? handleQuestion(String text) {
     final pref = _preferenceCommand(text);
     if (pref != null) return pref;
+
+    final plan = _planner.start(text);
+    if (plan != null) return _fromPlanner(plan);
 
     final talk = CesarSmallTalk.reply(text, now: _clock());
     if (talk != null) return AssistantReply(talk.text, spokenText: talk.spokenText, route: talk.kind == 'help' || talk.kind == 'howto' ? 'help' : 'smalltalk');

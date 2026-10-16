@@ -126,7 +126,7 @@ class FinancialQaEngine {
     return s.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
-  static const _fillers = r'(?:ate\s+agora|ate\s+hoje|no\s+total|ao\s+todo|por\s+enquanto|la|mesmo|ai|afinal|entao|cesar)';
+  static const _fillers = r'(?:ate\s+agora|ate\s+hoje|no\s+total|ao\s+todo|por\s+enquanto|la|mesmo|ai|afinal|entao|cesar|muito|demais|tanto|bastante)';
 
   /// Cleans a filter term: drops periods, fillers and leading prepositions/articles.
   static String _cleanTerm(String raw) {

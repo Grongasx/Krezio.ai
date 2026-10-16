@@ -48,6 +48,13 @@ class AffordabilityAnalyzer {
 
   AffordabilityResult? analyze(String text) {
     if (!isAffordabilityQuestion(text)) return null;
+    // "consigo comprar uma moto de 15 mil até o fim do ano?": a plan with a
+    // deadline — César's planner answers how to get there.
+    if (RegExp(r'\b(?:at[eé]\s+(?:o\s+)?(?:fim|final)|at[eé]\s+(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)|'
+            r'ano\s+que\s+vem|pr[oó]ximo\s+ano|em\s+\d{1,2}\s+(?:meses|m[eê]s|anos?)|quanto\s+tempo)\b', caseSensitive: false)
+        .hasMatch(text)) {
+      return null;
+    }
 
     final amount = _extractAmount(text);
     if (amount == null || amount <= 0) return null;
@@ -149,7 +156,9 @@ class AffordabilityAnalyzer {
   }
 
   double? _extractAmount(String text) {
-    final lower = text.toLowerCase();
+    // "15 mil", "1,5 mil", "3k" (the 15 alone was the price: R$ 15).
+    final lower = text.toLowerCase().replaceAllMapped(RegExp(r'(\d+(?:[.,]\d+)?)\s*(?:mil|k)\b'),
+        (m) => '${(double.parse(m.group(1)!.replaceAll('.', '').replaceAll(',', '.')) * 1000).round()} reais');
     final patterns = [
       RegExp(r'r\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)'),
       RegExp(r'(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(?:reais|real|conto|contos|pila|pilas)\b'),

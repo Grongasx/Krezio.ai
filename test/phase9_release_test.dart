@@ -11,6 +11,15 @@ void main() {
     expect(line.trim(), 'version: ${AppVersion.name}+${AppVersion.build}');
   });
 
+  test('nenhum caractere de controle no código (\\b virado backspace por script)', () {
+    final bad = <String>[];
+    for (final f in Directory('lib').listSync(recursive: true).whereType<File>().where((f) => f.path.endsWith('.dart'))) {
+      final text = f.readAsStringSync();
+      if (RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F]').hasMatch(text)) bad.add(f.path);
+    }
+    expect(bad, isEmpty);
+  });
+
   test('feedback: conta votos e manda a versão, sem o texto das respostas', () {
     final repo = FinancialRepository();
     final f = FeedbackService(repo);
