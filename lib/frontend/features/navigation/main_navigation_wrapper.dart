@@ -17,6 +17,7 @@ class MainNavigationWrapper extends StatefulWidget {
   final bool isDark;
   final String? userEmail;
   final Future<void> Function()? onSignOut;
+  final Future<void> Function()? onDeleteAccount;
 
   /// Tab to open first (from the deep link / initial route).
   final int initialIndex;
@@ -29,6 +30,7 @@ class MainNavigationWrapper extends StatefulWidget {
     required this.isDark,
     this.userEmail,
     this.onSignOut,
+    this.onDeleteAccount,
     this.initialIndex = 0,
   });
 
@@ -79,6 +81,7 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         onToggleTheme: widget.onToggleTheme,
         userEmail: widget.userEmail,
         onSignOut: widget.onSignOut,
+        onDeleteAccount: widget.onDeleteAccount,
       ),
     ];
 

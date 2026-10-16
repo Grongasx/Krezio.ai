@@ -13,6 +13,13 @@ import 'frontend/features/navigation/main_navigation_wrapper.dart';
 import 'frontend/features/auth/presentation/screens/login_screen.dart';
 import 'frontend/navigation/krezio_routes.dart';
 import 'frontend/widgets/krezio_components.dart';
+import 'frontend/theme/theme_controller.dart';
+import 'frontend/features/onboarding/onboarding_screen.dart';
+import 'frontend/features/legal/legal_documents.dart';
+import 'frontend/features/security/app_lock_gate.dart';
+import 'frontend/features/security/biometric_auth.dart';
+import 'backend/services/pin_lock.dart';
+import 'backend/services/pin_store_prefs.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,8 +33,12 @@ class KrezioApp extends StatefulWidget {
   State<KrezioApp> createState() => _KrezioAppState();
 }
 
-class _KrezioAppState extends State<KrezioApp> {
-  ThemeMode _themeMode = ThemeMode.dark;
+class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
+  ThemeMode get _themeMode => ThemeController.mode.value;
+  bool get _isDark => ThemeController.isDark(_themeMode, WidgetsBinding.instance.platformDispatcher.platformBrightness);
+  final PinLock _pinLock = PinLock(PrefsPinStore());
+  final BiometricAuth _biometric = BiometricAuth();
+  bool _onboardingDone = true;
   LocalFinancialNlpEngine? _engine;
   final FinancialRepository _repository = FinancialRepository();
   bool _isRepositoryReady = false;
@@ -47,6 +58,8 @@ class _KrezioAppState extends State<KrezioApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ThemeController.mode.addListener(_onThemeChanged);
     _loadNlpEngine();
     _loadRepository();
     _initFirebase();
@@ -70,9 +83,12 @@ class _KrezioAppState extends State<KrezioApp> {
     // Restores transactions, reminders, budgets, goals and category memory from
     // the last session; on the very first run it just persists the seed data.
     await _repository.initialize();
+    final savedTheme = _repository.preference(ThemeController.pref);
+    if (savedTheme != null) ThemeController.mode.value = ThemeController.parse(savedTheme);
     if (mounted) {
       setState(() {
         _isRepositoryReady = true;
+        _onboardingDone = _repository.preference(OnboardingScreen.donePref) != null;
       });
     }
   }
@@ -120,14 +136,33 @@ class _KrezioAppState extends State<KrezioApp> {
     await _authService?.signOut();
   }
 
+  /// Stops syncing first: signing out would push the local data back up.
+  Future<void> _deleteAccount() async {
+    _cloudSync?.dispose();
+    _cloudSync = null;
+    await _authService!.deleteAccount();
+  }
+
   void _toggleTheme() {
-    setState(() {
-      _themeMode = _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-    });
+    final next = _isDark ? ThemeMode.light : ThemeMode.dark;
+    ThemeController.mode.value = next;
+    _repository.setPreference(ThemeController.pref, ThemeController.nameOf(next));
+  }
+
+  void _onThemeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// "Seguir o sistema" follows the phone switching light/dark.
+  @override
+  void didChangePlatformBrightness() {
+    if (_themeMode == ThemeMode.system) setState(() {});
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    ThemeController.mode.removeListener(_onThemeChanged);
     _cloudSync?.dispose();
     super.dispose();
   }
@@ -162,18 +197,34 @@ class _KrezioAppState extends State<KrezioApp> {
     }
 
     // Login is only enforced once Firebase is actually configured and reachable.
-    if (_firebaseReady && _currentUser == null) {
-      return LoginScreen(authService: _authService!, isDark: _themeMode == ThemeMode.dark);
+    if (!_onboardingDone) {
+      return OnboardingScreen(
+        repository: _repository,
+        onDone: () => setState(() => _onboardingDone = true),
+      );
     }
 
-    return MainNavigationWrapper(
-      engine: _engine!,
-      repository: _repository,
-      onToggleTheme: _toggleTheme,
-      isDark: _themeMode == ThemeMode.dark,
-      userEmail: _currentUser?.email,
-      onSignOut: (_firebaseReady && _currentUser != null) ? _signOut : null,
-      initialIndex: _initialTab,
+    if (_firebaseReady && _currentUser == null) {
+      return LoginScreen(
+        authService: _authService!,
+        isDark: _isDark,
+        onTermsAccepted: () => _repository.setPreference(LegalDocuments.acceptedPref, LegalDocuments.acceptedValue(DateTime.now())),
+      );
+    }
+
+    return AppLockGate(
+      lock: _pinLock,
+      biometric: _biometric.authenticate,
+      child: MainNavigationWrapper(
+        engine: _engine!,
+        repository: _repository,
+        onToggleTheme: _toggleTheme,
+        isDark: _isDark,
+        userEmail: _currentUser?.email,
+        onSignOut: (_firebaseReady && _currentUser != null) ? _signOut : null,
+        onDeleteAccount: (_firebaseReady && _currentUser != null) ? _deleteAccount : null,
+        initialIndex: _initialTab,
+      ),
     );
   }
 }

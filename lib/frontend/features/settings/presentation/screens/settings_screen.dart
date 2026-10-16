@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import '../widgets/settings_sections.dart';
+import '../../../security/biometric_auth.dart';
+import '../../../../../backend/services/pin_lock.dart';
+import '../../../../../backend/services/pin_store_prefs.dart';
 import '../../../accounts/presentation/screens/accounts_screen.dart';
 import '../../../reminders/presentation/screens/open_items_screen.dart';
 import '../../../../theme/krezio_theme.dart';
@@ -20,6 +24,9 @@ class SettingsScreen extends StatelessWidget {
   final String? userEmail;
   final Future<void> Function()? onSignOut;
 
+  /// Deletes the signed-in account and its cloud data (null without an account).
+  final Future<void> Function()? onDeleteAccount;
+
   const SettingsScreen({
     super.key,
     required this.repository,
@@ -28,6 +35,7 @@ class SettingsScreen extends StatelessWidget {
     required this.onToggleTheme,
     this.userEmail,
     this.onSignOut,
+    this.onDeleteAccount,
   });
 
   @override
@@ -49,48 +57,11 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(KrezioSpace.lg),
         children: [
-          // Theme Section
-          Container(
-            padding: const EdgeInsets.all(KrezioSpace.lg),
-            decoration: BoxDecoration(
-              color: bgSurface,
-              borderRadius: KrezioTheme.borderRadius,
-              border: Border.all(color: borderColor),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
-                      color: KrezioColors.aiPurple,
-                    ),
-                    const SizedBox(width: KrezioSpace.md),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Aparência / Tema',
-                          style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
-                        ),
-                        Text(
-                          isDark ? 'Modo Escuro Ativo' : 'Modo Claro Ativo',
-                          style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                Switch(
-                  value: isDark,
-                  activeColor: KrezioColors.aiPurple,
-                  onChanged: (_) => onToggleTheme(),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: KrezioSpace.lg),
+          ProfileSection(repository: repository),
+          AppearanceSection(repository: repository),
+          SecuritySection(lock: PinLock(PrefsPinStore()), biometric: BiometricAuth()),
+          PrivacySection(repository: repository, userEmail: userEmail, onDeleteAccount: onDeleteAccount),
+
 
           // Money: accounts and open bills/debtors
           KrezioCard(
@@ -328,17 +299,6 @@ class SettingsScreen extends StatelessWidget {
                   style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                 ),
                 const SizedBox(height: KrezioSpace.md),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.file_download_outlined, color: KrezioColors.aiPurple),
-                  title: const Text('Exportar Extrato (CSV)', style: TextStyle(fontSize: KrezioFont.bodySmall)),
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Exportação concluída! Dados salvos localmente.')),
-                    );
-                  },
-                ),
-                const Divider(height: 1),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.delete_sweep_outlined, color: KrezioColors.friendlyOrange),

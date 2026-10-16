@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Thin wrapper around FirebaseAuth — translates Firebase's error codes into
@@ -43,6 +44,22 @@ class AuthService {
 
   Future<void> signOut() => _auth.signOut();
 
+  /// Deletes the account (LGPD): first the user's data in Firestore
+  /// (`users/{uid}`), then the login itself. Firebase asks for a recent login
+  /// for this; when it does, the user is told to sign in again.
+  Future<void> deleteAccount({FirebaseFirestore? firestore}) async {
+    final user = _auth.currentUser;
+    if (user == null) throw const AuthFailure('Nenhuma conta conectada.');
+    try {
+      await (firestore ?? FirebaseFirestore.instance).collection('users').doc(user.uid).delete();
+      await user.delete();
+    } on FirebaseAuthException catch (e) {
+      throw AuthFailure(friendlyMessage(e.code));
+    } on FirebaseException catch (e) {
+      throw AuthFailure('Não foi possível apagar os dados da nuvem (${e.code}). Tente de novo com internet.');
+    }
+  }
+
   /// Portuguese message for a FirebaseAuth error [code]. Never shows English.
   static String friendlyMessage(String code) {
     switch (code) {
@@ -61,6 +78,8 @@ class AuthService {
         return 'Senha fraca: use pelo menos 8 caracteres, com letras e números.';
       case 'network-request-failed':
         return 'Sem conexão com a internet. Tente novamente.';
+      case 'requires-recent-login':
+        return 'Por segurança, saia e entre de novo na conta antes de excluí-la.';
       case 'too-many-requests':
         return 'Muitas tentativas. Aguarde um momento e tente de novo.';
       default:

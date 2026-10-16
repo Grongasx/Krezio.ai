@@ -94,7 +94,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [ ] `DevOps` Criar o projeto no Firebase e rodar `flutterfire configure` (plataformas web, Android e Windows → `lib/firebase_options.dart` sem `REPLACE_ME`)
 - [ ] `DevOps` Ativar o login por e-mail e senha no console do Firebase (Authentication → Métodos de login → E-mail/senha → cadastro de teste funciona no console)
 - [x] `Frontend` Criar a tela de login (e-mail + senha, mostrar/ocultar senha, botão desabilitado até os campos serem válidos, carregando durante o envio → erro em PT, ex.: "E-mail ou senha incorretos")
-- [ ] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos) — ⚠️ parcial: nome, e-mail, senha e confirmação prontos; falta o aceite dos termos, que depende dos documentos do card 7.3
+- [x] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos)
 - [x] `Frontend` Criar o fluxo "esqueci minha senha" (pede o e-mail e envia o link do Firebase → sempre mostra "Se o e-mail existir, enviamos um link", sem revelar se a conta existe)
 - [x] `Backend` Criar a lógica de login e as validações (e-mail com formato válido, senha não vazia, códigos do Firebase traduzidos: usuário não encontrado, senha errada, muitas tentativas, sem internet → nenhuma mensagem em inglês)
 - [x] `Backend` Criar a lógica de cadastro e as validações (senha com 8+ caracteres, com letra e número; e-mail já usado → "Esse e-mail já tem conta. Quer entrar?")
@@ -312,28 +312,28 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 7.1 Configurações e perfil
 `30 pts` · 🟠 **Média** · `Frontend` `Design`
 - [x] `Frontend` Criar a tela de configurações (seções Conta, Aparência, Segurança, Dados e privacidade, Sobre → cada opção com descrição curta)
-- [ ] `Frontend` Criar o perfil do usuário (nome usado pelo César, foto opcional, moeda padrão R$ → o César chama o usuário pelo nome)
-- [ ] `Design` Criar a troca de tema (claro, escuro, seguir o sistema → a escolha fica salva e vale ao reabrir) — ⚠️ parcial: alterna claro/escuro, sem "seguir o sistema"
+- [x] `Frontend` Criar o perfil do usuário (nome usado pelo César, foto opcional, moeda padrão R$ → o César chama o usuário pelo nome)
+- [x] `Design` Criar a troca de tema (claro, escuro, seguir o sistema → a escolha fica salva e vale ao reabrir)
 - [x] `Frontend` Criar a seção "Conta" (e-mail logado, trocar senha, sair; no modo local: "Criar conta para sincronizar" → só aparece o que vale para o modo atual)
 
 ### 7.2 Segurança do app
 `40 pts` · 🟠 **Média** · `Frontend` `Backend`
-- [ ] `Frontend` Criar o bloqueio por PIN (4 a 6 dígitos, confirmação ao criar, 5 erros pedem espera de 30 s → o PIN é guardado com hash, nunca em texto)
-- [ ] `Frontend` Criar o bloqueio por biometria (digital ou rosto com `local_auth`, PIN como alternativa → aparelho sem biometria só mostra o PIN)
-- [ ] `Backend` Criar o bloqueio automático ao sair do app (bloquear depois de 1 minuto em segundo plano, configurável; ocultar o conteúdo na tela de apps recentes → nenhum valor visível na troca de apps)
+- [x] `Frontend` Criar o bloqueio por PIN (4 a 6 dígitos, confirmação ao criar, 5 erros pedem espera de 30 s → o PIN é guardado com hash, nunca em texto)
+- [x] `Frontend` Criar o bloqueio por biometria (digital ou rosto com `local_auth`, PIN como alternativa → aparelho sem biometria só mostra o PIN)
+- [x] `Backend` Criar o bloqueio automático ao sair do app (bloquear depois de 1 minuto em segundo plano, configurável; ocultar o conteúdo na tela de apps recentes → nenhum valor visível na troca de apps)
 
 ### 7.3 Privacidade e LGPD
 `50 pts` · 🔴 **Alta** · `Produto` `Backend` `Frontend`
-- [ ] `Produto` Escrever os termos de uso (o que o app faz e não faz, sem aconselhamento financeiro profissional, responsabilidades → linguagem simples, em português)
-- [ ] `Produto` Escrever a política de privacidade (o César roda no aparelho; o que vai para a nuvem só com conta; nenhum dado vendido; direitos da LGPD → link na loja e no app) — ⚠️ parcial: texto de privacidade nas Configurações; falta a política formal
-- [ ] `Backend` Criar a exportação dos meus dados (JSON completo e CSV de lançamentos, compartilhável → o arquivo abre no Excel com acentos corretos)
-- [ ] `Backend` Criar a exclusão de conta (confirmação digitando "EXCLUIR", apaga `users/{uid}` no Firestore e a conta no Auth → em seguida o app volta ao estado de primeiro uso)
-- [ ] `Frontend` Criar as telas de aceite e de acesso aos documentos (aceite obrigatório no cadastro; termos e política sempre acessíveis em Configurações → guardar a versão aceita e a data)
+- [x] `Produto` Escrever os termos de uso (o que o app faz e não faz, sem aconselhamento financeiro profissional, responsabilidades → linguagem simples, em português)
+- [x] `Produto` Escrever a política de privacidade (o César roda no aparelho; o que vai para a nuvem só com conta; nenhum dado vendido; direitos da LGPD → link na loja e no app)
+- [x] `Backend` Criar a exportação dos meus dados (JSON completo e CSV de lançamentos, compartilhável → o arquivo abre no Excel com acentos corretos)
+- [x] `Backend` Criar a exclusão de conta (confirmação digitando "EXCLUIR", apaga `users/{uid}` no Firestore e a conta no Auth → em seguida o app volta ao estado de primeiro uso)
+- [x] `Frontend` Criar as telas de aceite e de acesso aos documentos (aceite obrigatório no cadastro; termos e política sempre acessíveis em Configurações → guardar a versão aceita e a data)
 
 ### 7.4 Primeiro uso
 `30 pts` · 🟡 **Baixa** · `Design` `Frontend`
-- [ ] `Design` Criar o onboarding (3 telas: o que o app faz, "fale com o César como fala com um amigo" com exemplos, privacidade no aparelho → pode pular a qualquer momento)
-- [ ] `Frontend` Criar a configuração inicial (renda mensal, categorias principais, primeiro orçamento sugerido → tudo opcional e editável depois)
+- [x] `Design` Criar o onboarding (3 telas: o que o app faz, "fale com o César como fala com um amigo" com exemplos, privacidade no aparelho → pode pular a qualquer momento)
+- [x] `Frontend` Criar a configuração inicial (renda mensal, categorias principais, primeiro orçamento sugerido → tudo opcional e editável depois)
 
 ---
 
