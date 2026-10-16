@@ -144,9 +144,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     children: [
                       Text('${filtered.length} lançamento${filtered.length == 1 ? '' : 's'}',
                           style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor)),
-                      const Spacer(),
-                      Text('Total: ${_signedMoney(StatementQuery.net(filtered))}',
-                          style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: primaryTextColor)),
+                      const SizedBox(width: KrezioSpace.sm),
+                      Expanded(
+                        child: Text('Total: ${_signedMoney(StatementQuery.net(filtered))}',
+                            textAlign: TextAlign.right,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: primaryTextColor)),
+                      ),
                     ],
                   ),
                 ),

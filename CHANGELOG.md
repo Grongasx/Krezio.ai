@@ -18,11 +18,34 @@ O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
   não-eventos (`HypothesisDetector`), datas faladas, vários lançamentos numa frase, edição, exclusão e desfazer por conversa.
 - Firebase Auth + Firestore codificados (login, cadastro, sincronização local-first), ainda sem configurar.
 - Backlog do produto (`BACKLOG.md`) sincronizado com as issues e o GitHub Project.
+- Extrato agrupado por dia com total do dia, filtros combináveis (período, tipo, categoria, forma de pagamento) e
+  busca sem acento.
+- Contas e carteiras com saldo por conta, transferência entre contas próprias e fatura do cartão de crédito
+  (fechamento, vencimento e parcelas por fatura).
+- Tela de contas em aberto e devedores; pagar uma conta cria a despesa.
+- Orçamento com faixas verde/amarela/vermelha e "Faltam/Passou R$ X".
+- César: código de cada lançamento (`#4821`), consultas a lançamentos antigos ("lembra do restaurante?"),
+  vários ajustes numa frase, chips presos ao card, parcelado com dia de vencimento, quinto dia útil com sábado.
+- César consultor: "onde posso economizar?", "como vou fechar o mês?", "quanto vem a luz?", assinaturas,
+  simulações "e se…?", média diária real, resumo semanal e aviso de gasto fora do padrão.
+- Preferências: nome do usuário e forma de pagamento mais usada como sugestão.
+- Voz do sistema como alternativa à voz neural (padrão no celular) e encerramento do mãos-livres por
+  "tchau César" ou silêncio.
+- Perfil, tema claro/escuro/sistema, bloqueio por PIN e biometria, bloqueio automático, termos de uso,
+  política de privacidade, exportação JSON/CSV, exclusão de conta, onboarding e configuração inicial.
+- Testes de widget das telas principais em tela de 360 px.
 
 ### Changed
+- "desfaz" depois de uma correção também esquece a memória de categoria.
+- Criar uma categoria com o nome interno de uma nativa ("Supermarket") reaproveita a nativa.
+- Apagar uma categoria pergunta para onde mover os lançamentos.
+
 - `lib/` reorganizado em `ai/`, `backend/` e `frontend/` (antes `core/` e `features/`).
 - Nome do app padronizado como "Krezio.ai" no iOS e na web.
 - `.gitignore` passa a excluir o modelo de voz Piper (~139 MB) e os áudios temporários.
+
+### Fixed
+- Overflows de layout em celular de 360 px: barra do chat, formulário de lançamento, card do extrato e total filtrado.
 
 ## [v0.4.0] - 2026-09-03
 

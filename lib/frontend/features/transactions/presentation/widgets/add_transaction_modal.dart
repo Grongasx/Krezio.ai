@@ -169,12 +169,15 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _isEditing ? 'Editar Lançamento' : 'Novo Lançamento',
-                  style: TextStyle(
-                    fontSize: KrezioFont.title,
-                    fontWeight: FontWeight.bold,
-                    color: primaryTextColor,
+                Expanded(
+                  child: Text(
+                    _isEditing ? 'Editar Lançamento' : 'Novo Lançamento',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: KrezioFont.title,
+                      fontWeight: FontWeight.bold,
+                      color: primaryTextColor,
+                    ),
                   ),
                 ),
                 IconButton(
