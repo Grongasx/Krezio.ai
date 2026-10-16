@@ -285,6 +285,15 @@ class EntrySafetyGate {
       final i = others.indexWhere((o) => (o - split.value).abs() < 0.005);
       if (i >= 0) others = [...others]..removeAt(i);
     }
+    // "2 pizzas de 40 cada uma": the unit price is explained when the count
+    // times it is a value taken — it is the same money, per unit.
+    for (final m in RegExp(r'\b(\d{1,2})\s+[a-z]{3,}(?:\s+[a-z]+){0,2}?\s+(?:de|por|a)\s+(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)').allMatches(s)) {
+      final n = int.parse(m.group(1)!);
+      final v = LocalFinancialNlpEngine.cleanAndParseAmount(m.group(2));
+      if (v == null || n < 2 || !used.any((u) => (u - n * v).abs() < 0.005)) continue;
+      final i = others.indexWhere((o) => (o - v).abs() < 0.005);
+      if (i >= 0) others = [...others]..removeAt(i);
+    }
     // A discount said next to the price paid ("ganhei 40 de desconto e paguei
     // 260") is explained: it is what was not paid (ACC-C-014).
     for (final m in RegExp(r'(\d+(?:[.,]\d{1,2})?)\s*(?:reais|real|conto|contos)?\s*(?:de\s+)?(?:desconto|abatimento)\b').allMatches(s)) {
