@@ -41,22 +41,21 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
-    messagingSenderId: 'REPLACE_ME',
-    projectId: 'REPLACE_ME',
-    authDomain: 'REPLACE_ME',
-    storageBucket: 'REPLACE_ME',
+    apiKey: 'AIzaSyCdNEbC8xYfxC9ZwVBK3-pXFtnCTmJgeSo',
+    appId: '1:676221048408:web:28da0a880d443efbcddc2d',
+    messagingSenderId: '676221048408',
+    projectId: 'krezio-ai',
+    authDomain: 'krezio-ai.firebaseapp.com',
+    storageBucket: 'krezio-ai.firebasestorage.app',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
-    messagingSenderId: 'REPLACE_ME',
-    projectId: 'REPLACE_ME',
-    storageBucket: 'REPLACE_ME',
+    apiKey: 'AIzaSyDSg1JdiMadoszzx2lYL6iHIcHVGXSeMz8',
+    appId: '1:676221048408:android:d6c9d59ee73ce095cddc2d',
+    messagingSenderId: '676221048408',
+    projectId: 'krezio-ai',
+    storageBucket: 'krezio-ai.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'REPLACE_ME',
     appId: 'REPLACE_ME',
@@ -76,10 +75,11 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'REPLACE_ME',
-    appId: 'REPLACE_ME',
-    messagingSenderId: 'REPLACE_ME',
-    projectId: 'REPLACE_ME',
-    storageBucket: 'REPLACE_ME',
+    apiKey: 'AIzaSyCdNEbC8xYfxC9ZwVBK3-pXFtnCTmJgeSo',
+    appId: '1:676221048408:web:9853dddd8c86debccddc2d',
+    messagingSenderId: '676221048408',
+    projectId: 'krezio-ai',
+    authDomain: 'krezio-ai.firebaseapp.com',
+    storageBucket: 'krezio-ai.firebasestorage.app',
   );
 }
