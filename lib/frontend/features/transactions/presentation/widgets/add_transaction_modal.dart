@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 import '../../../../../backend/models/budget_category.dart';
+import '../../../../../backend/models/financial_account.dart';
 import '../../../../../ai/local_nlp_engine.dart';
 
 class AddTransactionModal extends StatefulWidget {
@@ -15,12 +16,16 @@ class AddTransactionModal extends StatefulWidget {
   /// User-created categories, offered as chips next to the built-in ones.
   final List<BudgetCategory> customCategories;
 
+  /// Accounts to pick from; the picker shows when there is more than one.
+  final List<FinancialAccount> accounts;
+
   const AddTransactionModal({
     super.key,
     required this.isDark,
     required this.onAdd,
     this.initialTransaction,
     this.customCategories = const [],
+    this.accounts = const [],
   });
 
   @override
@@ -36,6 +41,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
   int _installments = 1;
   bool _isRecurrent = false;
   int? _dueDay;
+  String _accountId = FinancialAccount.mainId;
   late DateTime _date;
 
   bool get _isEditing => widget.initialTransaction != null;
@@ -54,6 +60,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
     _installments = tx.installments ?? 1;
     _isRecurrent = tx.isRecurrent;
     _dueDay = tx.dueDay;
+    _accountId = tx.account;
   }
 
   @override
@@ -129,6 +136,8 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
       recurrenceDuration: _isRecurrent ? original?.recurrenceDuration : null,
       bankSource: original?.bankSource,
       notes: original?.notes,
+      accountId: _accountId == FinancialAccount.mainId ? null : _accountId,
+      toAccountId: original?.toAccountId,
     );
 
     widget.onAdd(tx);
@@ -160,12 +169,15 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _isEditing ? 'Editar Lançamento' : 'Novo Lançamento',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: primaryTextColor,
+                Expanded(
+                  child: Text(
+                    _isEditing ? 'Editar Lançamento' : 'Novo Lançamento',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: KrezioFont.title,
+                      fontWeight: FontWeight.bold,
+                      color: primaryTextColor,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -174,19 +186,19 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: KrezioSpace.lg),
 
             // Type Selector (Despesa, Receita, Transferência)
             Row(
               children: [
                 _buildTypeButton(TransactionType.expense, 'Despesa', KrezioColors.friendlyOrange),
-                const SizedBox(width: 8),
+                const SizedBox(width: KrezioSpace.sm),
                 _buildTypeButton(TransactionType.income, 'Receita', KrezioColors.emeraldGreen),
-                const SizedBox(width: 8),
+                const SizedBox(width: KrezioSpace.sm),
                 _buildTypeButton(TransactionType.transfer, 'Transferência', KrezioColors.aiPurple),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: KrezioSpace.lg),
 
             // Title Field
             TextField(
@@ -197,7 +209,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                 border: OutlineInputBorder(borderRadius: KrezioTheme.borderRadius),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: KrezioSpace.md),
 
             // Amount Field
             TextField(
@@ -210,7 +222,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                 border: OutlineInputBorder(borderRadius: KrezioTheme.borderRadius),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: KrezioSpace.md),
 
             // Date
             InkWell(
@@ -228,15 +240,15 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: KrezioSpace.lg),
 
             // Category Chips (if expense)
             if (_selectedType == TransactionType.expense) ...[
               Text(
                 'Categoria',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: secondaryTextColor),
+                style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: secondaryTextColor),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: KrezioSpace.sm),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
@@ -244,7 +256,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                   final isSelected = _selectedCategory == c['id'];
                   return ChoiceChip(
                     avatar: Icon(c['icon'] as IconData, size: 14, color: isSelected ? Colors.white : primaryTextColor),
-                    label: Text(c['label'] as String, style: const TextStyle(fontSize: 12)),
+                    label: Text(c['label'] as String, style: const TextStyle(fontSize: KrezioFont.small)),
                     selected: isSelected,
                     selectedColor: KrezioColors.aiPurple,
                     onSelected: (val) {
@@ -253,21 +265,21 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: KrezioSpace.lg),
             ],
 
             // Payment Method Selector
             Text(
               'Forma de Pagamento',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: secondaryTextColor),
+              style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: secondaryTextColor),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: KrezioSpace.sm),
             Wrap(
               spacing: 6,
               children: _paymentMethods.map((p) {
                 final isSelected = _selectedPaymentMethod == p['id'];
                 return ChoiceChip(
-                  label: Text(p['label']!, style: const TextStyle(fontSize: 12)),
+                  label: Text(p['label']!, style: const TextStyle(fontSize: KrezioFont.small)),
                   selected: isSelected,
                   selectedColor: KrezioColors.aiPurple,
                   onSelected: (val) {
@@ -276,14 +288,49 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                 );
               }).toList(),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: KrezioSpace.lg),
+
+            // Account
+            if (widget.accounts.length > 1) ...[
+              Text(
+                'Conta',
+                style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: secondaryTextColor),
+              ),
+              const SizedBox(height: KrezioSpace.sm),
+              Wrap(
+                spacing: 6,
+                children: widget.accounts.map((a) {
+                  return ChoiceChip(
+                    label: Text(a.name, style: const TextStyle(fontSize: KrezioFont.small)),
+                    selected: _accountId == a.id,
+                    selectedColor: KrezioColors.aiPurple,
+                    onSelected: (val) {
+                      if (!val) return;
+                      setState(() {
+                        _accountId = a.id;
+                        // A purchase on a card account is a credit purchase.
+                        if (a.isCreditCard) _selectedPaymentMethod = 'credit_card';
+                      });
+                    },
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: KrezioSpace.lg),
+            ],
 
             // Credit Card Installments
             if (_selectedPaymentMethod == 'credit_card') ...[
+              if (_isEditing && (widget.initialTransaction!.installments ?? 1) > 1) ...[
+                Text(
+                  'Compra parcelada: a mudança vale para todas as parcelas.',
+                  style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
+                ),
+                const SizedBox(height: KrezioSpace.xs),
+              ],
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Parcelamento:', style: TextStyle(color: secondaryTextColor, fontSize: 13)),
+                  Text('Parcelamento:', style: TextStyle(color: secondaryTextColor, fontSize: KrezioFont.bodySmall)),
                   DropdownButton<int>(
                     value: _installments,
                     items: List.generate(24, (i) => i + 1).map((n) {
@@ -298,22 +345,22 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: KrezioSpace.md),
             ],
 
             // Recurrence Toggle
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Despesa Recorrente / Mensal', style: TextStyle(fontSize: 13)),
+              title: const Text('Despesa Recorrente / Mensal', style: TextStyle(fontSize: KrezioFont.bodySmall)),
               subtitle: Text(
                 _isRecurrent ? 'Será computada todo mês automaticamente' : 'Lançamento pontual único',
-                style: TextStyle(fontSize: 11, color: secondaryTextColor),
+                style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
               ),
               value: _isRecurrent,
               activeColor: KrezioColors.emeraldGreen,
               onChanged: (val) => setState(() => _isRecurrent = val),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: KrezioSpace.xl),
 
             // Submit Button
             SizedBox(
@@ -327,7 +374,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                 ),
                 child: Text(
                   _isEditing ? 'Salvar Alterações' : 'Salvar Lançamento',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                  style: const TextStyle(fontSize: KrezioFont.bodyLarge, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
               ),
             ),
@@ -356,7 +403,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
         onTap: () => setState(() => _selectedType = type),
         borderRadius: KrezioTheme.borderRadius,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: KrezioSpace.sm),
           decoration: BoxDecoration(
             color: isSelected ? color.withOpacity(0.18) : Colors.transparent,
             borderRadius: KrezioTheme.borderRadius,
@@ -369,7 +416,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
           child: Text(
             label,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: KrezioFont.small,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               color: isSelected ? color : (widget.isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText),
             ),

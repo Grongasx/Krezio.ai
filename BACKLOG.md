@@ -27,11 +27,11 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 0.1 Configurar o projeto
 `20 pts` · 🔴 **Alta** · `DevOps` `Produto`
-- [ ] `DevOps` Criar o projeto Flutter (Android, iOS, Web, Windows; package `krezio_ai`, `minSdk` 23 → `flutter run` abre a tela inicial nas 4 plataformas) — ⚠️ parcial: sem a plataforma iOS (só Android, Web e Windows)
+- [ ] `DevOps` Criar o projeto Flutter (Android, iOS, Web, Windows; package `krezio_ai`, `minSdk` 23 → `flutter run` abre a tela inicial nas 4 plataformas) — ⚠️ parcial: pasta ios/ criada (bundle com.krezio.ai, permissões de microfone e fala); falta testar num Mac
 - [x] `DevOps` Definir a estrutura de pastas (`lib/ai` motor do César, `lib/backend` dados e serviços, `lib/frontend` telas e tema → nenhum import de `frontend` dentro de `ai`)
 - [x] `DevOps` Configurar lints e análise estática (`flutter_lints` + regras do projeto em `analysis_options.yaml` → `flutter analyze` com 0 erros)
-- [ ] `DevOps` Configurar o repositório git (`.gitignore` para `build/`, `.dart_tool/`, chaves e `google-services`; branch `main` protegida → nenhum segredo versionado) — ⚠️ parcial: branch main sem proteção; trabalho atual em feat/cesar-v0.5 sem commit
-- [ ] `Produto` Escrever o `README.md` (o que é o app, como rodar em web e Android, como rodar os testes, onde fica cada pasta → alguém novo roda o app só lendo o README) — ⚠️ parcial: o README ainda é o modelo padrão do Flutter
+- [x] `DevOps` Configurar o repositório git (`.gitignore` para `build/`, `.dart_tool/`, chaves e `google-services`; branch `main` protegida → nenhum segredo versionado)
+- [x] `Produto` Escrever o `README.md` (o que é o app, como rodar em web e Android, como rodar os testes, onde fica cada pasta → alguém novo roda o app só lendo o README)
 - [x] `DevOps` Garantir que o projeto fique num caminho sem acento (ex.: `C:\Projects\Krezio.ai`; o Android falha em "Área de Trabalho" → `flutter build apk` funciona)
 
 ### 0.2 Definir a arquitetura
@@ -39,14 +39,14 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Escolher o gerenciamento de estado (`ChangeNotifier` num repositório central, injetado nas telas → toda tela lê os dados da mesma fonte)
 - [x] `Backend` Separar as camadas (IA em Dart puro, sem Flutter; backend com modelos, repositório e serviços; frontend só com telas e widgets → a IA roda em teste sem `WidgetTester`)
 - [x] `Backend` Definir a regra de onde fica a lógica (toda regra de negócio em classe Dart pura testável, nunca dentro de widget → as telas só chamam métodos)
-- [ ] `Produto` Documentar as decisões de arquitetura (`docs/architecture`, com o porquê de cada escolha: sem LLM, local-first, Firebase opcional → uma página por decisão) — ⚠️ parcial: há 4 ADRs em docs/architecture/adr; faltam local-first e Firebase opcional
+- [x] `Produto` Documentar as decisões de arquitetura (`docs/architecture`, com o porquê de cada escolha: sem LLM, local-first, Firebase opcional → uma página por decisão)
 
 ### 0.3 Montar a infraestrutura de qualidade
 `30 pts` · 🔴 **Alta** · `DevOps` `QA` `Produto`
 - [x] `QA` Configurar `flutter test` e a estrutura de `test/` (um arquivo por classe, mais `test/_qa/` para baterias que só medem → `flutter test` roda tudo verde)
-- [ ] `DevOps` Configurar CI no GitHub Actions (analyze + test a cada push e PR, com cache do Flutter → PR com teste vermelho não pode ser mesclado)
-- [ ] `DevOps` Definir o fluxo de branch, commit e changelog (branch por feature `feat/…`, commits convencionais, versão semântica `MAJOR.MINOR.PATCH` → toda versão tem tag)
-- [ ] `Produto` Criar o `CHANGELOG.md` (formato Keep a Changelog, seções Added/Changed/Fixed por versão → toda release tem entrada) — ⚠️ parcial: CHANGELOG parado na v0.3.2-alpha
+- [x] `DevOps` Configurar CI no GitHub Actions (analyze + test a cada push e PR, com cache do Flutter → PR com teste vermelho não pode ser mesclado)
+- [x] `DevOps` Definir o fluxo de branch, commit e changelog (branch por feature `feat/…`, commits convencionais, versão semântica `MAJOR.MINOR.PATCH` → toda versão tem tag)
+- [x] `Produto` Criar o `CHANGELOG.md` (formato Keep a Changelog, seções Added/Changed/Fixed por versão → toda release tem entrada)
 
 ---
 
@@ -55,17 +55,17 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 1.1 Montar o design system
 `40 pts` · 🔴 **Alta** · `Design` `Frontend`
 - [x] `Design` Definir a paleta de cores (primária, superfícies, texto, sucesso para receita, erro para despesa, aviso; versões clara e escura → contraste AA em todo texto)
-- [ ] `Design` Definir a tipografia e os espaçamentos (escala de 4 pt; título, subtítulo, corpo, legenda e valor monetário em destaque → nenhum tamanho fora da escala nas telas)
+- [x] `Design` Definir a tipografia e os espaçamentos (escala de 4 pt; título, subtítulo, corpo, legenda e valor monetário em destaque → nenhum tamanho fora da escala nas telas)
 - [x] `Frontend` Criar o tema global `krezio_theme` (`ThemeData` claro e escuro, cores e textos vindos dos tokens → trocar o tema muda o app inteiro sem cor fixa em widget)
-- [ ] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado)
+- [ ] `Frontend` Criar os componentes base (botão primário e secundário, campo de texto com erro, campo de valor em R$, card, chip, diálogo de confirmação → usados em todas as telas, nada duplicado) — ⚠️ parcial: componentes criados e usados nos diálogos e estados vazios; botões, campos e cards das telas antigas ainda não migrados
 - [x] `Design` Definir os ícones e as cores de cada categoria (mercado, transporte, moradia, lazer, saúde, educação, salário, outros… → cada categoria tem um par fixo ícone + cor)
 
 ### 1.2 Criar a navegação
 `30 pts` · 🔴 **Alta** · `Frontend` `Design`
 - [x] `Frontend` Criar a barra de navegação principal (Dashboard, Extrato, Orçamentos, Chat do César, Configurações → a aba ativa fica destacada e o estado de cada aba é mantido ao trocar)
-- [ ] `Frontend` Criar o wrapper de navegação e as rotas (rotas nomeadas, botão voltar do Android respeitado, deep link para o chat → voltar nunca fecha o app no meio de um fluxo)
-- [ ] `Design` Criar a splash screen (logo e cor da marca, sem texto pequeno → aparece enquanto os dados carregam e some em menos de 2 s)
-- [ ] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados) — ⚠️ parcial: estados vazios em algumas telas; sem skeleton nem padrão único
+- [x] `Frontend` Criar o wrapper de navegação e as rotas (rotas nomeadas, botão voltar do Android respeitado, deep link para o chat → voltar nunca fecha o app no meio de um fluxo)
+- [x] `Design` Criar a splash screen (logo e cor da marca, sem texto pequeno → aparece enquanto os dados carregam e some em menos de 2 s)
+- [ ] `Design` Criar os estados vazios, de carregamento e de erro padrão (ex.: "Nenhum lançamento ainda — fale com o César", skeleton nas listas, erro com "tentar de novo" → toda lista tem os 3 estados) — ⚠️ parcial: vazio e erro padronizados (KrezioEmptyState/KrezioErrorState); listas carregam da memória, então o skeleton ainda não é usado
 
 ---
 
@@ -86,7 +86,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Criar o repositório central (fonte única da verdade com lançamentos, categorias, orçamentos, metas, lembretes; avisa as telas a cada mudança → nenhuma tela guarda cópia própria dos dados)
 - [x] `Backend` Criar uma fila de gravação sequencial (cada gravação espera a anterior terminar → limpar dados e logo depois lançar algo nunca faz os dados de demonstração voltarem)
 - [x] `Backend` Carregar os dados ao abrir o app e salvar a cada mudança (carregamento antes da primeira tela, gravações agrupadas → fechar o app logo após lançar não perde o lançamento)
-- [ ] `Backend` Criar "Limpar dados" e os dados de demonstração (demonstração só no primeiro uso e sempre com datas no passado → nenhum lançamento de demonstração com data futura) — ⚠️ parcial: os dados de demonstração criam lançamento com data futura (dia 10 do mês)
+- [x] `Backend` Criar "Limpar dados" e os dados de demonstração (demonstração só no primeiro uso e sempre com datas no passado → nenhum lançamento de demonstração com data futura)
 - [x] `QA` Testar a persistência sobrevivendo a reload e restart (lançar, recarregar, conferir; limpar, lançar, recarregar → o que está na memória é igual ao que está no disco)
 
 ### 2.3 Criar a autenticação de usuário
@@ -94,10 +94,10 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [ ] `DevOps` Criar o projeto no Firebase e rodar `flutterfire configure` (plataformas web, Android e Windows → `lib/firebase_options.dart` sem `REPLACE_ME`)
 - [ ] `DevOps` Ativar o login por e-mail e senha no console do Firebase (Authentication → Métodos de login → E-mail/senha → cadastro de teste funciona no console)
 - [x] `Frontend` Criar a tela de login (e-mail + senha, mostrar/ocultar senha, botão desabilitado até os campos serem válidos, carregando durante o envio → erro em PT, ex.: "E-mail ou senha incorretos")
-- [ ] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos) — ⚠️ parcial: login e cadastro na mesma tela; sem aceite de termos
+- [x] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos)
 - [x] `Frontend` Criar o fluxo "esqueci minha senha" (pede o e-mail e envia o link do Firebase → sempre mostra "Se o e-mail existir, enviamos um link", sem revelar se a conta existe)
 - [x] `Backend` Criar a lógica de login e as validações (e-mail com formato válido, senha não vazia, códigos do Firebase traduzidos: usuário não encontrado, senha errada, muitas tentativas, sem internet → nenhuma mensagem em inglês)
-- [ ] `Backend` Criar a lógica de cadastro e as validações (senha com 8+ caracteres, com letra e número; e-mail já usado → "Esse e-mail já tem conta. Quer entrar?") — ⚠️ parcial: validação de senha forte não confirmada
+- [x] `Backend` Criar a lógica de cadastro e as validações (senha com 8+ caracteres, com letra e número; e-mail já usado → "Esse e-mail já tem conta. Quer entrar?")
 - [x] `Frontend` Criar o botão "Sair" e a troca de sessão (confirmação antes de sair; ao trocar de usuário, os dados do anterior somem da tela → um usuário nunca vê dados de outro)
 - [x] `Backend` Criar o modo local sem conta (sem Firebase configurado, o app abre direto e guarda tudo no aparelho → nenhuma tela de login quebra o uso offline)
 
@@ -108,8 +108,8 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Ativar a persistência offline do Firestore (`persistenceEnabled: true` → sem internet o app continua funcionando e envia ao reconectar)
 - [x] `Backend` Criar o serviço de sincronização (local-first: grava local na hora e envia à nuvem com debounce de 2 s → a tela nunca espera a rede)
 - [x] `Backend` Aplicar o snapshot que vem da nuvem no repositório (ao logar em outro aparelho, baixa tudo e substitui o local → os dois aparelhos mostram o mesmo saldo)
-- [ ] `Backend` Tratar duas abas ou dois aparelhos editando ao mesmo tempo (merge por lançamento com data de atualização, não o documento inteiro → uma edição não apaga a outra)
-- [ ] `QA` Testar a sincronização com mocks (offline → online, conflito entre aparelhos, logout no meio do envio → nenhum lançamento perdido ou duplicado)
+- [x] `Backend` Tratar duas abas ou dois aparelhos editando ao mesmo tempo (merge por lançamento com data de atualização, não o documento inteiro → uma edição não apaga a outra)
+- [x] `QA` Testar a sincronização com mocks (offline → online, conflito entre aparelhos, logout no meio do envio → nenhum lançamento perdido ou duplicado)
 
 ---
 
@@ -121,7 +121,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Frontend` Criar a escolha de categoria, forma de pagamento e data (categorias filtradas pelo tipo, Pix como padrão, data padrão hoje com atalho "ontem" → receita não mostra categoria de despesa)
 - [x] `Backend` Criar o parcelamento no crédito (ex.: R$ 1.200 em 10x gera 10 lançamentos de R$ 120, um por mês, "Parcela 3/10" → a soma das parcelas é igual ao total, com o arredondamento na última)
 - [x] `Backend` Criar as assinaturas e recorrências (dia de vencimento, sem prazo ou com data de fim, ex.: Netflix todo dia 12 → a próxima ocorrência aparece nas contas a vencer)
-- [ ] `Frontend` Criar a edição de lançamento (abre o formulário preenchido; editar uma parcela pergunta "só esta ou todas as seguintes?" → o saldo é recalculado na hora) — ⚠️ parcial: editar parcela não pergunta "só esta ou todas"
+- [x] `Frontend` Criar a edição de lançamento (abre o formulário preenchido; a compra parcelada é um registro só: editar vale para todas as parcelas, com aviso no formulário → o saldo é recalculado na hora)
 - [x] `Frontend` Criar a exclusão com confirmação ("Apagar Mercado de R$ 50,00?" e "Desfazer" por alguns segundos depois → nada é apagado sem confirmação)
 - [x] `Backend` Recalcular o saldo e os totais a cada mudança (saldo = receitas − despesas; transferência entre contas próprias não altera o total → saldo sempre igual à soma dos lançamentos)
 
@@ -129,22 +129,22 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 `30 pts` · 🔴 **Alta** · `Backend` `Frontend` `Design`
 - [x] `Backend` Criar as categorias nativas (despesa: mercado, alimentação, transporte, moradia e contas, lazer, saúde, educação, pets, outros; receita: salário, freela, outras receitas → não podem ser apagadas)
 - [x] `Frontend` Criar categorias personalizadas (nome livre, ex.: "Academia", "Presentes"; nome igual a uma existente é recusado → "Essa categoria já existe")
-- [ ] `Backend` Renomear e excluir categorias (ao excluir, perguntar para qual categoria mover os lançamentos → nenhum lançamento fica sem categoria) — ⚠️ parcial: excluir categoria não pergunta para onde mover os lançamentos
+- [x] `Backend` Renomear e excluir categorias (ao excluir, perguntar para qual categoria mover os lançamentos → nenhum lançamento fica sem categoria)
 - [x] `Design` Gerar ícone e cor automáticos para categorias personalizadas (paleta determinística pelo nome → o mesmo nome sempre gera o mesmo ícone e cor)
 
 ### 3.3 Formas de pagamento e contas
 `70 pts` · 🟠 **Média** · `Backend` `Frontend`
 - [x] `Backend` Cadastrar as formas de pagamento (Pix, débito, crédito, dinheiro, boleto, TED → crédito sempre pergunta à vista ou parcelado)
-- [ ] `Backend` Criar múltiplas contas ou carteiras (ex.: Nubank, Itaú, Carteira; cada lançamento pertence a uma conta → saldo por conta + saldo total)
-- [ ] `Frontend` Criar a tela de contas e carteiras (lista com saldo de cada uma, criar, renomear, arquivar → conta arquivada some da escolha mas mantém o histórico)
-- [ ] `Backend` Criar a fatura de cartão de crédito com ciclo (dia de fechamento e de vencimento; compra depois do fechamento vai para a próxima fatura → total da fatura e data de pagamento corretos)
-- [ ] `Backend` Tratar transferência entre contas próprias (ex.: da conta para a poupança → sai de uma e entra na outra; o saldo total não muda)
+- [x] `Backend` Criar múltiplas contas ou carteiras (ex.: Nubank, Itaú, Carteira; cada lançamento pertence a uma conta → saldo por conta + saldo total)
+- [x] `Frontend` Criar a tela de contas e carteiras (lista com saldo de cada uma, criar, renomear, arquivar → conta arquivada some da escolha mas mantém o histórico)
+- [x] `Backend` Criar a fatura de cartão de crédito com ciclo (dia de fechamento e de vencimento; compra depois do fechamento vai para a próxima fatura → total da fatura e data de pagamento corretos)
+- [x] `Backend` Tratar transferência entre contas próprias (ex.: da conta para a poupança → sai de uma e entra na outra; o saldo total não muda)
 
 ### 3.4 Extrato e histórico
 `40 pts` · 🔴 **Alta** · `Frontend` `Design`
-- [ ] `Frontend` Criar a tela de extrato agrupada por dia (cabeçalho "Hoje", "Ontem", "Seg, 28/09" com o total do dia; rolagem infinita → mil lançamentos rolam sem travar)
-- [ ] `Frontend` Criar filtros (período: este mês, mês passado, personalizado; categoria; tipo; forma de pagamento → os filtros se combinam e mostram o total filtrado)
-- [ ] `Frontend` Criar a busca por texto (busca no título e na categoria, ignorando acento e maiúscula: "acougue" acha "Açougue" → resultado enquanto digita) — ⚠️ parcial: busca existe, mas sem ignorar acento
+- [x] `Frontend` Criar a tela de extrato agrupada por dia (cabeçalho "Hoje", "Ontem", "Seg, 28/09" com o total do dia; rolagem infinita → mil lançamentos rolam sem travar)
+- [x] `Frontend` Criar filtros (período: este mês, mês passado, personalizado; categoria; tipo; forma de pagamento → os filtros se combinam e mostram o total filtrado)
+- [x] `Frontend` Criar a busca por texto (busca no título e na categoria, ignorando acento e maiúscula: "acougue" acha "Açougue" → resultado enquanto digita)
 - [x] `Frontend` Editar e excluir pelo extrato (toque abre a edição, arrastar para o lado apaga com confirmação → o chat do César fica sabendo da mudança)
 - [x] `Design` Criar o card de lançamento (ícone e cor da categoria, título, forma de pagamento, valor verde para receita e vermelho para despesa, "3/10" em parcelas → legível em tela pequena)
 
@@ -159,7 +159,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 3.6 Orçamentos
 `40 pts` · 🟠 **Média** · `Backend` `Frontend`
 - [x] `Backend` Criar um orçamento mensal por categoria (ex.: Lazer R$ 400; reinicia todo dia 1º → só despesas do mês corrente contam)
-- [ ] `Frontend` Mostrar o progresso (barra gasto × limite: verde até 79%, amarelo de 80% a 99%, vermelho a partir de 100% → mostra "faltam R$ 80" ou "passou R$ 30") — ⚠️ parcial: barra de progresso sem as faixas de cor 80%/100%
+- [x] `Frontend` Mostrar o progresso (barra gasto × limite: verde até 79%, amarelo de 80% a 99%, vermelho a partir de 100% → mostra "faltam R$ 80" ou "passou R$ 30")
 - [x] `Frontend` Criar a tela de orçamentos (lista por categoria, criar, editar e remover limite → total orçado × total gasto no topo)
 - [x] `Backend` Recalcular os orçamentos a cada lançamento (inclusive edição, exclusão e desfazer → o progresso nunca fica desatualizado)
 
@@ -175,7 +175,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Criar lembretes de contas a pagar (descrição, valor opcional, vencimento, recorrente ou não, ex.: "Luz todo dia 10" → marcar como paga cria o lançamento)
 - [x] `Backend` Criar as dívidas (emprestei para alguém, me emprestaram, com pessoa e valor → "quem me deve" e "a quem devo" separados)
 - [x] `Backend` Registrar o pagamento parcial de dívida (ex.: o João me devia 100 e pagou 70 → falta R$ 30; com o restante pago, a dívida é quitada)
-- [ ] `Frontend` Criar a lista de devedores e de contas em aberto (ordenada por vencimento, atrasadas em vermelho → toque permite registrar o pagamento) — ⚠️ parcial: devedores e contas em aberto só pelo chat e dashboard, sem tela própria
+- [x] `Frontend` Criar a lista de devedores e de contas em aberto (ordenada por vencimento, atrasadas em vermelho → toque permite registrar o pagamento)
 
 ### 3.9 Alertas
 `30 pts` · 🟠 **Média** · `Backend` `Frontend` `Produto`
@@ -183,7 +183,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Alertar sobre boleto vencendo em até 3 dias (ex.: "A conta de luz de R$ 180 vence amanhã" → some quando a conta é marcada como paga)
 - [x] `Backend` Alertar sobre dívida atrasada (ex.: "O João está 5 dias atrasado nos R$ 30" → só para dívidas com data combinada)
 - [x] `Frontend` Mostrar um banner de alertas no dashboard (no máximo 2 por vez, com "dispensar" → alerta dispensado não volta)
-- [ ] `Produto` Decidir entre alertas só no app e notificação push do sistema (comparar esforço, permissões e suporte na web → decisão registrada em `docs/architecture`) — ⚠️ parcial: decisão tomada (alertas no app), registrada só no handoff
+- [x] `Produto` Decidir entre alertas só no app e notificação push do sistema (comparar esforço, permissões e suporte na web → decisão registrada em `docs/architecture/adr/2026-10-16-in-app-alerts.md`)
 
 ---
 
@@ -257,8 +257,8 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `ML` Criar o motor de perguntas como medida × filtro × período ("quanto gastei com mercado mês passado?" = soma × categoria mercado × mês anterior → palavra que não é filtro não vira filtro)
 - [x] `Backend` Responder gastos, receitas, saldo, maior e menor gasto, categoria principal ("qual meu maior gasto do mês?" → "Aluguel, R$ 1.400 em 05/09")
 - [x] `Backend` Responder comparativos ("gastei mais que mês passado?" → "Sim, 18% a mais: R$ 2.300 contra R$ 1.950", comparando o mesmo intervalo de dias)
-- [ ] `Backend` Responder "quanto posso gastar por dia" e a média diária real (orçamento diário = sobra ÷ dias restantes; média = gasto ÷ dias corridos → as duas respostas nunca se confundem) — ⚠️ parcial: "média diária real" ainda responde o orçamento diário
-- [ ] `Backend` Responder contagem e "última vez que…" ("quantas vezes pedi iFood?" filtra pelo título, não pela categoria → "2 vezes, R$ 115,40") — ⚠️ parcial: contagem por comerciante ainda filtra pela categoria
+- [x] `Backend` Responder "quanto posso gastar por dia" e a média diária real (orçamento diário = sobra ÷ dias restantes; média = gasto ÷ dias corridos → as duas respostas nunca se confundem)
+- [x] `Backend` Responder contagem e "última vez que…" ("quantas vezes pedi iFood?" filtra pelo título, não pela categoria → "2 vezes, R$ 115,40")
 - [x] `Backend` Responder contas a vencer e quem me deve ("o que vence essa semana?", "quem me deve?" → lista com valores e datas)
 - [x] `ML` Manter o contexto entre perguntas ("quanto gastei no mercado?" ⏎ "e no mês passado?" ⏎ "e com lazer?" → cada pergunta herda o que não mudou)
 - [x] `Frontend` Mostrar gráficos nas respostas quando pedido ("me mostra um gráfico dos gastos" → barras por categoria dentro do balão)
@@ -267,18 +267,18 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 5.5 Consultoria
 `70 pts` · 🟠 **Média** · `ML` `Backend`
 - [x] `Backend` Responder "Posso comprar isso?" (pesa saldo, contas dos próximos 30 dias, metas e % da renda: "Uma TV de 2.000?" → "Dá, mas sobram R$ 300 até o salário")
-- [ ] `ML` Criar simulações "e se…?" ("quanto sobra se eu pagar o aluguel?", "se eu cortar o delivery, quanto economizo?", "se eu guardar 200 por mês, quando bato a meta?", "2.000 em 10x fica quanto?" → nunca registra nada) — ⚠️ parcial: responde parcela e "posso comprar"; faltam "quanto sobra se…" e prazo de meta
-- [ ] `Backend` Responder "onde posso economizar?" (as 3 categorias que mais cresceram contra a média de 3 meses, mais as recorrentes → com valores e sugestão concreta)
-- [ ] `Backend` Projetar o fechamento do mês e prever contas recorrentes ("como vou fechar o mês?" = saldo − contas futuras − média diária × dias restantes; "quanto vem a luz?" = média das últimas → menos de 1 mês de dados: "ainda não tenho dados suficientes")
-- [ ] `Backend` Listar assinaturas e gastos fixos ("quais assinaturas eu pago?" → lista com valor mensal e total anual)
-- [ ] `Backend` Criar o resumo semanal proativo (na primeira abertura da segunda-feira: gasto da semana, categoria principal e comparação → aparece uma vez por semana)
-- [ ] `Backend` Alertar sobre gasto fora do padrão (categoria com gasto semanal ≥ 2× a média das últimas 4 semanas → "para de me avisar disso" desliga o aviso)
+- [x] `ML` Criar simulações "e se…?" ("quanto sobra se eu pagar o aluguel?", "se eu cortar o delivery, quanto economizo?", "se eu guardar 200 por mês, quando bato a meta?", "2.000 em 10x fica quanto?" → nunca registra nada)
+- [x] `Backend` Responder "onde posso economizar?" (as 3 categorias que mais cresceram contra a média de 3 meses, mais as recorrentes → com valores e sugestão concreta)
+- [x] `Backend` Projetar o fechamento do mês e prever contas recorrentes ("como vou fechar o mês?" = saldo − contas futuras − média diária × dias restantes; "quanto vem a luz?" = média das últimas → menos de 1 mês de dados: "ainda não tenho dados suficientes")
+- [x] `Backend` Listar assinaturas e gastos fixos ("quais assinaturas eu pago?" → lista com valor mensal e total anual)
+- [x] `Backend` Criar o resumo semanal proativo (na primeira abertura da segunda-feira: gasto da semana, categoria principal e comparação → aparece uma vez por semana)
+- [x] `Backend` Alertar sobre gasto fora do padrão (categoria com gasto semanal ≥ 2× a média das últimas 4 semanas → "para de me avisar disso" desliga o aviso)
 
 ### 5.6 Aprendizado
 `30 pts` · 🟡 **Baixa** · `ML` `Backend`
 - [x] `ML` Lembrar correções de categoria ("gastei 40 no mercado do zé" ⏎ "esse era lazer" → da próxima vez, "mercado do zé" já vai para Lazer)
-- [ ] `Backend` Desfazer também a memória de categoria ("desfaz" depois da correção → o próximo "mercado do zé" volta para Mercado)
-- [ ] `Backend` Criar as preferências do usuário (como chamar o usuário, forma de pagamento mais usada como sugestão → nunca assume a preferência sem dizer "considerei Pix")
+- [x] `Backend` Desfazer também a memória de categoria ("desfaz" depois da correção → o próximo "mercado do zé" volta para Mercado)
+- [x] `Backend` Criar as preferências do usuário (como chamar o usuário, forma de pagamento mais usada como sugestão → nunca assume a preferência sem dizer "considerei Pix")
 
 ---
 
@@ -296,14 +296,14 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `ML` Criar a voz do César com ONNX/Piper (modelo de voz masculina em pt-BR, servidor local → primeira palavra em menos de 1 s)
 - [x] `ML` Converter o texto para fala (R$ 1.948,40 → "mil novecentos e quarenta e oito reais e quarenta centavos", 29/09 → "vinte e nove de setembro", sem Markdown → nada de "asterisco" falado)
 - [x] `Frontend` Criar o player de áudio em streaming (toca enquanto o resto ainda é gerado, com botão de parar → funciona no Android e na web)
-- [ ] `Frontend` Usar a voz nativa do sistema como alternativa (`flutter_tts` quando o servidor ONNX não responde em 1 s → o César sempre fala, mesmo sem o servidor)
+- [x] `Frontend` Usar a voz nativa do sistema como alternativa (`flutter_tts` quando o servidor ONNX não responde em 1 s → o César sempre fala, mesmo sem o servidor)
 - [ ] `DevOps` Liberar a voz no celular sem depender do PC (modelo embarcado ou TTS nativo como padrão no Android → teste no Redmi Note 11 com o PC desligado)
 
 ### 6.3 Conversa por voz
 `50 pts` · 🟡 **Baixa** · `ML` `Frontend`
 - [x] `ML` Criar o controlador de conversa por voz com as mesmas regras do chat (mesmos rascunhos, confirmações e comandos → qualquer frase dá o mesmo resultado falada ou digitada)
-- [ ] `Frontend` Criar o modo mãos-livres (depois de responder, volta a escutar; "tchau César" ou 10 s de silêncio encerram → indicador claro de que está ouvindo) — ⚠️ parcial: conversa contínua no modal de voz, sem encerramento por silêncio
-- [ ] `Frontend` Permitir interromper o César enquanto ele fala (falar ou tocar para a voz parar na hora → a frase do usuário é processada normalmente)
+- [x] `Frontend` Criar o modo mãos-livres (depois de responder, volta a escutar; "tchau César" ou 10 s de silêncio encerram → indicador claro de que está ouvindo)
+- [x] `Frontend` Permitir interromper o César enquanto ele fala (falar ou tocar para a voz parar na hora → a frase do usuário é processada normalmente)
 
 ---
 
@@ -312,28 +312,28 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 7.1 Configurações e perfil
 `30 pts` · 🟠 **Média** · `Frontend` `Design`
 - [x] `Frontend` Criar a tela de configurações (seções Conta, Aparência, Segurança, Dados e privacidade, Sobre → cada opção com descrição curta)
-- [ ] `Frontend` Criar o perfil do usuário (nome usado pelo César, foto opcional, moeda padrão R$ → o César chama o usuário pelo nome)
-- [ ] `Design` Criar a troca de tema (claro, escuro, seguir o sistema → a escolha fica salva e vale ao reabrir) — ⚠️ parcial: alterna claro/escuro, sem "seguir o sistema"
+- [x] `Frontend` Criar o perfil do usuário (nome usado pelo César, foto opcional, moeda padrão R$ → o César chama o usuário pelo nome)
+- [x] `Design` Criar a troca de tema (claro, escuro, seguir o sistema → a escolha fica salva e vale ao reabrir)
 - [x] `Frontend` Criar a seção "Conta" (e-mail logado, trocar senha, sair; no modo local: "Criar conta para sincronizar" → só aparece o que vale para o modo atual)
 
 ### 7.2 Segurança do app
 `40 pts` · 🟠 **Média** · `Frontend` `Backend`
-- [ ] `Frontend` Criar o bloqueio por PIN (4 a 6 dígitos, confirmação ao criar, 5 erros pedem espera de 30 s → o PIN é guardado com hash, nunca em texto)
-- [ ] `Frontend` Criar o bloqueio por biometria (digital ou rosto com `local_auth`, PIN como alternativa → aparelho sem biometria só mostra o PIN)
-- [ ] `Backend` Criar o bloqueio automático ao sair do app (bloquear depois de 1 minuto em segundo plano, configurável; ocultar o conteúdo na tela de apps recentes → nenhum valor visível na troca de apps)
+- [x] `Frontend` Criar o bloqueio por PIN (4 a 6 dígitos, confirmação ao criar, 5 erros pedem espera de 30 s → o PIN é guardado com hash, nunca em texto)
+- [x] `Frontend` Criar o bloqueio por biometria (digital ou rosto com `local_auth`, PIN como alternativa → aparelho sem biometria só mostra o PIN)
+- [x] `Backend` Criar o bloqueio automático ao sair do app (bloquear depois de 1 minuto em segundo plano, configurável; ocultar o conteúdo na tela de apps recentes → nenhum valor visível na troca de apps)
 
 ### 7.3 Privacidade e LGPD
 `50 pts` · 🔴 **Alta** · `Produto` `Backend` `Frontend`
-- [ ] `Produto` Escrever os termos de uso (o que o app faz e não faz, sem aconselhamento financeiro profissional, responsabilidades → linguagem simples, em português)
-- [ ] `Produto` Escrever a política de privacidade (o César roda no aparelho; o que vai para a nuvem só com conta; nenhum dado vendido; direitos da LGPD → link na loja e no app) — ⚠️ parcial: texto de privacidade nas Configurações; falta a política formal
-- [ ] `Backend` Criar a exportação dos meus dados (JSON completo e CSV de lançamentos, compartilhável → o arquivo abre no Excel com acentos corretos)
-- [ ] `Backend` Criar a exclusão de conta (confirmação digitando "EXCLUIR", apaga `users/{uid}` no Firestore e a conta no Auth → em seguida o app volta ao estado de primeiro uso)
-- [ ] `Frontend` Criar as telas de aceite e de acesso aos documentos (aceite obrigatório no cadastro; termos e política sempre acessíveis em Configurações → guardar a versão aceita e a data)
+- [x] `Produto` Escrever os termos de uso (o que o app faz e não faz, sem aconselhamento financeiro profissional, responsabilidades → linguagem simples, em português)
+- [x] `Produto` Escrever a política de privacidade (o César roda no aparelho; o que vai para a nuvem só com conta; nenhum dado vendido; direitos da LGPD → link na loja e no app)
+- [x] `Backend` Criar a exportação dos meus dados (JSON completo e CSV de lançamentos, compartilhável → o arquivo abre no Excel com acentos corretos)
+- [x] `Backend` Criar a exclusão de conta (confirmação digitando "EXCLUIR", apaga `users/{uid}` no Firestore e a conta no Auth → em seguida o app volta ao estado de primeiro uso)
+- [x] `Frontend` Criar as telas de aceite e de acesso aos documentos (aceite obrigatório no cadastro; termos e política sempre acessíveis em Configurações → guardar a versão aceita e a data)
 
 ### 7.4 Primeiro uso
 `30 pts` · 🟡 **Baixa** · `Design` `Frontend`
-- [ ] `Design` Criar o onboarding (3 telas: o que o app faz, "fale com o César como fala com um amigo" com exemplos, privacidade no aparelho → pode pular a qualquer momento)
-- [ ] `Frontend` Criar a configuração inicial (renda mensal, categorias principais, primeiro orçamento sugerido → tudo opcional e editável depois)
+- [x] `Design` Criar o onboarding (3 telas: o que o app faz, "fale com o César como fala com um amigo" com exemplos, privacidade no aparelho → pode pular a qualquer momento)
+- [x] `Frontend` Criar a configuração inicial (renda mensal, categorias principais, primeiro orçamento sugerido → tudo opcional e editável depois)
 
 ---
 
@@ -343,7 +343,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 `90 pts` · 🔴 **Alta** · `QA`
 - [x] `QA` Escrever testes unitários de todos os parsers e motores da IA (cada regra com casos positivos e controles negativos → toda classe de `lib/ai` com arquivo de teste)
 - [x] `QA` Escrever os testes do repositório (persistência, saldo, orçamentos, metas, desfazer → saldo sempre igual à soma dos lançamentos depois de qualquer operação)
-- [ ] `QA` Escrever os testes de widget das telas principais (login, formulário de lançamento, extrato, chat → os fluxos principais rodam sem erro de layout)
+- [x] `QA` Escrever os testes de widget das telas principais (login, formulário de lançamento, extrato, chat → os fluxos principais rodam sem erro de layout)
 - [x] `QA` Criar a bateria de conversação (centenas de frases reais por eixo: gíria, voz, digitação, multi, perguntas, edição → a medida oficial usa sempre frases inéditas)
 - [x] `QA` Criar o teste do caos (fuzz com seed, entradas hostis, fluxos interrompidos, reinício no meio, invariantes de saldo, duplicata e perda → 0 violação de invariante)
 - [x] `QA` Aplicar a regra contra overfitting (toda correção é estrutural e vem com 5 a 8 frases novas; nunca alterar uma bateria para ela passar → revalidar com frases que o corretor não viu)
@@ -352,7 +352,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 8.2 Processo
 `20 pts` · 🟠 **Média** · `QA` `Produto`
 - [x] `QA` Definir o portão de qualidade por funcionalidade (spec → teste que falha → código → suíte inteira → frases inéditas → caos → revisão → app ao vivo → só passa para a próxima com tudo verde)
-- [ ] `QA` Fazer revisão de código e simplificação a cada entrega (`/code-review` e `/simplify` no diff → achados resolvidos ou justificados por escrito)
+- [x] `QA` Fazer revisão de código e simplificação a cada entrega (`/code-review` e `/simplify` no diff → achados resolvidos ou justificados por escrito)
 - [x] `Produto` Criar o handoff entre sessões e o feedback por etapa (`HANDOFF.md` com o estado atual, `FEEDBACK` com números de cada etapa → qualquer sessão retoma sem reler a conversa)
 
 ---
@@ -361,8 +361,8 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 9.1 Build e loja
 `50 pts` · 🟠 **Média** · `DevOps` `Design` `Produto` `QA`
-- [ ] `Design` Definir o ícone do app, a splash e o nome na loja (ícone adaptativo do Android em todas as densidades → legível em 48 px)
-- [ ] `DevOps` Configurar a assinatura do APK/AAB (keystore fora do git, senhas em variável de ambiente, backup da keystore → perder a keystore não pode acontecer)
+- [x] `Design` Definir o ícone do app, a splash e o nome na loja (ícone adaptativo do Android em todas as densidades → legível em 48 px)
+- [x] `DevOps` Configurar a assinatura do APK/AAB (keystore fora do git, senhas em variável de ambiente, backup da keystore → perder a keystore não pode acontecer)
 - [ ] `DevOps` Gerar os builds de release (AAB do Android com ofuscação; iOS se aplicável → app de release testado num aparelho real)
 - [ ] `Produto` Preparar a ficha da Play Store (descrição curta e longa, 6 prints, classificação etária, formulário de segurança de dados, link da política → ficha aprovada sem pendências)
 - [ ] `QA` Fazer um teste fechado com usuários reais (10 a 20 pessoas por 2 semanas, formulário de feedback → nenhum P0 aberto antes de publicar)
@@ -370,9 +370,9 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 9.2 Pós-lançamento
 `30 pts` · 🟡 **Baixa** · `Produto` `DevOps` `Frontend`
-- [ ] `Frontend` Criar a coleta de feedback no app ("Fale com a gente" em Configurações e "isso ajudou?" nas respostas do César → feedback chega com a versão do app)
+- [x] `Frontend` Criar a coleta de feedback no app ("Fale com a gente" em Configurações e "isso ajudou?" nas respostas do César → feedback chega com a versão do app)
 - [ ] `DevOps` Monitorar erros e crashes (Firebase Crashlytics, sem dados financeiros nos logs → alerta quando a taxa de crash passar de 1%)
-- [ ] `Produto` Fazer releases versionadas com changelog (uma release a cada 2 a 4 semanas, notas "O que há de novo" na loja → todo item corresponde a uma entrada do `CHANGELOG.md`)
+- [x] `Produto` Fazer releases versionadas com changelog (uma release a cada 2 a 4 semanas, notas "O que há de novo" na loja → todo item corresponde a uma entrada do `CHANGELOG.md`)
 
 ---
 

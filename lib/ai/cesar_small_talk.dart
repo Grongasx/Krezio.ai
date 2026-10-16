@@ -24,10 +24,12 @@ class CesarSmallTalk {
       '"quanto posso gastar por dia até o fim do mês?" — e depois "e no mês passado?"\n'
       '- **Planejar**: metas ("quero juntar 5000 para uma viagem"), orçamentos ("meu limite de lazer é 800"), '
       'categorias ("cria a categoria Pets"), "posso comprar um celular de 2000?"\n'
-      '- **Lembrar**: contas a vencer, quem te deve, empréstimos ("emprestei 100 pro João")';
+      '- **Consultar**: "onde posso economizar?", "como vou fechar o mês?", "quanto vem a luz?", "quais assinaturas eu pago?", '
+      '"se eu cortar o delivery, quanto economizo?", "se eu guardar 200 por mês, quando bato a meta?"\n'
+      '- **Lembrar**: contas a vencer, quem te deve, empréstimos ("emprestei 100 pro João"), lançamentos antigos ("lembra do restaurante?", "apaga o #4821")';
 
   static const _capabilitiesSpoken = 'Eu registro gastos e receitas, corrijo e apago lançamentos, desfaço o que fiz, '
-      'respondo perguntas como quanto você gastou ou qual seu maior gasto, e cuido de metas, orçamentos, categorias e lembretes. '
+      'respondo perguntas como quanto você gastou ou qual seu maior gasto, mostro onde dá para economizar, e cuido de metas, orçamentos, categorias e lembretes. '
       'É só falar naturalmente.';
 
   static final Map<RegExp, String> _howTo = {

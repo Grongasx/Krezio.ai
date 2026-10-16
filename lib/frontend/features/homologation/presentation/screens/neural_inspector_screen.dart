@@ -86,7 +86,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [KrezioColors.aiPurple, Color(0xFF6366F1)],
@@ -97,11 +97,11 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.hub, color: Colors.white, size: 16),
-                  SizedBox(width: 6),
+                  SizedBox(width: KrezioSpace.sm),
                   Text(
                     'REDE NEURAL ON-DEVICE',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: KrezioFont.caption,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                       letterSpacing: 0.5,
@@ -110,9 +110,9 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                 ],
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: KrezioSpace.md),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
               decoration: BoxDecoration(
                 color: KrezioColors.friendlyOrange.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
@@ -124,7 +124,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
               child: const Text(
                 'HOMOLOGAÇÃO',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: KrezioFont.micro,
                   fontWeight: FontWeight.bold,
                   color: KrezioColors.friendlyOrange,
                 ),
@@ -158,7 +158,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
 
   Widget _buildInputBar(Color surface, Color primaryText, Color secondaryText, Color border) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(KrezioSpace.lg, KrezioSpace.md, KrezioSpace.lg, KrezioSpace.sm),
       color: surface,
       child: Container(
         decoration: BoxDecoration(
@@ -169,16 +169,16 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
         child: Row(
           children: [
             const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14),
+              padding: EdgeInsets.symmetric(horizontal: KrezioSpace.lg),
               child: Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 20),
             ),
             Expanded(
               child: TextField(
                 controller: _textController,
-                style: TextStyle(color: primaryText, fontSize: 14, fontWeight: FontWeight.w500),
+                style: TextStyle(color: primaryText, fontSize: KrezioFont.body, fontWeight: FontWeight.w500),
                 decoration: InputDecoration(
                   hintText: 'Digite ou edite qualquer frase para testar a IA...',
-                  hintStyle: TextStyle(color: secondaryText, fontSize: 13),
+                  hintStyle: TextStyle(color: secondaryText, fontSize: KrezioFont.bodySmall),
                   border: InputBorder.none,
                 ),
                 onChanged: _runInference,
@@ -208,7 +208,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     return Container(
       width: double.infinity,
       color: surface,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(KrezioSpace.lg, 0, KrezioSpace.lg, KrezioSpace.md),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
@@ -221,7 +221,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
             if (isMonthlySub) tagColor = KrezioColors.emeraldGreen;
 
             return Padding(
-              padding: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.only(right: KrezioSpace.sm),
               child: InkWell(
                 borderRadius: BorderRadius.circular(20),
                 onTap: () {
@@ -229,7 +229,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                   _runInference(phrase);
                 },
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.sm),
                   decoration: BoxDecoration(
                     color: isSelected
                         ? tagColor.withOpacity(0.18)
@@ -251,11 +251,11 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                           color: tagColor,
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: KrezioSpace.sm),
                       Text(
                         phrase,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: KrezioFont.small,
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                           color: isSelected ? primaryText : secondaryText,
                         ),
@@ -276,7 +276,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     final trace = _currentTrace!;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
       decoration: BoxDecoration(
         color: widget.isDark ? const Color(0xFF18181B) : const Color(0xFFF9FAFB),
         border: Border(
@@ -334,15 +334,15 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
+        const SizedBox(width: KrezioSpace.xs),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(label, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+            Text(label, style: const TextStyle(fontSize: KrezioFont.micro, color: Colors.grey)),
             Text(
               value,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+              style: TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.bold, color: color),
             ),
           ],
         ),
@@ -371,7 +371,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
             child: InkWell(
               onTap: () => setState(() => _selectedTab = idx),
               child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
+                padding: const EdgeInsets.symmetric(vertical: KrezioSpace.md),
                 decoration: BoxDecoration(
                   border: Border(
                     bottom: BorderSide(
@@ -388,11 +388,11 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                       size: 16,
                       color: isSelected ? KrezioColors.aiPurple : secondaryText,
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: KrezioSpace.sm),
                     Text(
                       item['label'] as String,
                       style: TextStyle(
-                        fontSize: 11.5,
+                        fontSize: KrezioFont.small,
                         fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
                         color: isSelected ? KrezioColors.aiPurple : secondaryText,
                       ),
@@ -430,11 +430,11 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
       animation: _pulseController,
       builder: (context, child) {
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(KrezioSpace.lg),
           child: Column(
             children: [
               _buildSubscriptionNoticeBanner(trace, surface, primaryText, border),
-              const SizedBox(height: 12),
+              const SizedBox(height: KrezioSpace.md),
               Expanded(
                 child: Container(
                   width: double.infinity,
@@ -491,7 +491,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     }
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(KrezioSpace.md),
       decoration: BoxDecoration(
         color: bannerColor.withOpacity(0.12),
         borderRadius: BorderRadius.circular(14),
@@ -501,7 +501,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(bannerIcon, color: bannerColor, size: 22),
-          const SizedBox(width: 10),
+          const SizedBox(width: KrezioSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,16 +509,16 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 13,
+                    fontSize: KrezioFont.bodySmall,
                     fontWeight: FontWeight.bold,
                     color: bannerColor,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: KrezioSpace.xs),
                 Text(
                   desc,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: KrezioFont.small,
                     color: primaryText.withOpacity(0.85),
                     height: 1.35,
                   ),
@@ -535,7 +535,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     final trace = _currentTrace!;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       children: [
         _buildClassifierCard(
           title: 'Classificador de Intenção (Intent)',
@@ -546,7 +546,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
           secondaryText: secondaryText,
           border: border,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: KrezioSpace.lg),
         _buildClassifierCard(
           title: 'Classificador de Categoria (Category)',
           modelTrace: trace.categoryModel,
@@ -556,7 +556,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
           secondaryText: secondaryText,
           border: border,
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: KrezioSpace.lg),
         _buildClassifierCard(
           title: 'Classificador de Meio de Pagamento (Payment Method)',
           modelTrace: trace.paymentModel,
@@ -580,7 +580,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     required Color border,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       decoration: BoxDecoration(
         color: surface,
         borderRadius: BorderRadius.circular(16),
@@ -594,28 +594,28 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
             children: [
               Text(
                 title,
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryText),
+                style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryText),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
                 decoration: BoxDecoration(
                   color: accentColor.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   'Vencedor: ${modelTrace.predictedLabel} (${(modelTrace.confidence * 100).toStringAsFixed(1)}%)',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: accentColor),
+                  style: TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.bold, color: accentColor),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: KrezioSpace.lg),
           ...modelTrace.probabilities.take(5).map((prob) {
             final isWinner = prob.label == modelTrace.predictedLabel;
             final pct = prob.probability;
 
             return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: KrezioSpace.sm),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -625,18 +625,18 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                       Text(
                         prob.label,
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: KrezioFont.small,
                           fontWeight: isWinner ? FontWeight.bold : FontWeight.w500,
                           color: isWinner ? accentColor : primaryText,
                         ),
                       ),
                       Text(
                         '${(pct * 100).toStringAsFixed(1)}% (score: ${prob.score.toStringAsFixed(2)})',
-                        style: TextStyle(fontSize: 11, color: secondaryText),
+                        style: TextStyle(fontSize: KrezioFont.caption, color: secondaryText),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: KrezioSpace.xs),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
@@ -662,10 +662,10 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     final dec = trace.installmentDecision;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       children: [
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(KrezioSpace.lg),
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.circular(16),
@@ -677,14 +677,14 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
               const Row(
                 children: [
                   Icon(Icons.account_tree, color: KrezioColors.aiPurple, size: 20),
-                  SizedBox(width: 8),
+                  SizedBox(width: KrezioSpace.sm),
                   Text(
                     'Árvore de Decisão & NER de Slots',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: KrezioFont.bodyLarge, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: KrezioSpace.lg),
               _buildSlotAuditItem(
                 label: 'Intenção Identificada',
                 value: trace.draft.intent,
@@ -749,7 +749,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                     style: TextStyle(fontWeight: FontWeight.bold, color: primaryText),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
                     decoration: BoxDecoration(
                       color: trace.isComplete
                           ? KrezioColors.emeraldGreen.withOpacity(0.15)
@@ -759,7 +759,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                     child: Text(
                       trace.isComplete ? 'Pronto para Gravação 🎉' : 'Aguardando Resposta Contextual ⏳',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: KrezioFont.small,
                         fontWeight: FontWeight.bold,
                         color: trace.isComplete ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange,
                       ),
@@ -768,22 +768,22 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                 ],
               ),
               if (trace.clarificationPrompt != null) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: KrezioSpace.md),
                 Text(
                   'Pergunta Empática Gerada:',
-                  style: TextStyle(fontSize: 12, color: secondaryText),
+                  style: TextStyle(fontSize: KrezioFont.small, color: secondaryText),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: KrezioSpace.xs),
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(KrezioSpace.md),
                   decoration: BoxDecoration(
                     color: widget.isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF3F4F6),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     trace.clarificationPrompt!,
-                    style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: primaryText),
+                    style: TextStyle(fontSize: KrezioFont.bodySmall, fontStyle: FontStyle.italic, color: primaryText),
                   ),
                 ),
               ],
@@ -803,7 +803,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     required Color secondaryText,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: KrezioSpace.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -812,10 +812,10 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
             size: 16,
             color: isSatisfied ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: KrezioSpace.sm),
           Expanded(
             flex: 4,
-            child: Text(label, style: TextStyle(fontSize: 12, color: secondaryText)),
+            child: Text(label, style: TextStyle(fontSize: KrezioFont.small, color: secondaryText)),
           ),
           Expanded(
             flex: 5,
@@ -823,7 +823,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
               value,
               textAlign: TextAlign.right,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: KrezioFont.small,
                 fontWeight: FontWeight.w600,
                 color: highlightColor ?? (isSatisfied ? primaryText : KrezioColors.friendlyOrange),
               ),
@@ -841,12 +841,12 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     final trace = _currentTrace;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       children: [
         // 1. Status da Consulta da Frase Atual
         if (trace != null && trace.draft.isReminder) ...[
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(KrezioSpace.lg),
             decoration: BoxDecoration(
               color: KrezioColors.friendlyOrange.withOpacity(0.12),
               borderRadius: BorderRadius.circular(16),
@@ -858,38 +858,38 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                 Row(
                   children: const [
                     Icon(Icons.event_available, color: KrezioColors.friendlyOrange, size: 20),
-                    SizedBox(width: 8),
+                    SizedBox(width: KrezioSpace.sm),
                     Text(
                       'Lembrete Agendado pelo Motor IA',
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: KrezioFont.body,
                         fontWeight: FontWeight.bold,
                         color: KrezioColors.friendlyOrange,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: KrezioSpace.sm),
                 Text(
                   trace.draft.calendarConsultationNote ?? 'Lembrete conectado ao 5º dia útil bancário.',
-                  style: TextStyle(fontSize: 12, color: primaryText),
+                  style: TextStyle(fontSize: KrezioFont.small, color: primaryText),
                 ),
                 if (trace.draft.personName != null) ...[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: KrezioSpace.sm),
                   Text(
                     'Devedor: ${trace.draft.personName} • Data-Alvo: $paydayLabel',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: KrezioColors.friendlyOrange),
+                    style: const TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: KrezioColors.friendlyOrange),
                   ),
                 ],
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: KrezioSpace.lg),
         ],
 
         // 2. Previsão de Salário e 5º Dia Útil FEBRABAN
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(KrezioSpace.lg),
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.circular(16),
@@ -901,21 +901,21 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
               Row(
                 children: const [
                   Icon(Icons.calendar_month, color: KrezioColors.aiPurple, size: 20),
-                  SizedBox(width: 8),
+                  SizedBox(width: KrezioSpace.sm),
                   Text(
                     'Previsão de Salário (5º Dia Útil Bancário)',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: KrezioFont.bodySmall, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: KrezioSpace.md),
               Text(
                 'A IA calcula os dias úteis bancários reais excluindo finais de semana e feriados nacionais FEBRABAN:',
-                style: TextStyle(fontSize: 12, color: secondaryText),
+                style: TextStyle(fontSize: KrezioFont.small, color: secondaryText),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: KrezioSpace.md),
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(KrezioSpace.md),
                 decoration: BoxDecoration(
                   color: KrezioColors.aiPurple.withOpacity(0.08),
                   borderRadius: BorderRadius.circular(12),
@@ -926,12 +926,12 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                   children: [
                     const Text(
                       'Próximo 5º dia útil:',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600),
                     ),
                     Text(
                       paydayLabel,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: KrezioFont.bodySmall,
                         fontWeight: FontWeight.bold,
                         color: KrezioColors.aiPurple,
                       ),
@@ -942,11 +942,11 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: KrezioSpace.lg),
 
         // 3. Eventos & Lembretes no Calendário
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(KrezioSpace.lg),
           decoration: BoxDecoration(
             color: surface,
             borderRadius: BorderRadius.circular(16),
@@ -960,19 +960,19 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                 children: [
                   const Text(
                     'Eventos & Lembretes no Calendário',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                    style: TextStyle(fontSize: KrezioFont.bodySmall, fontWeight: FontWeight.bold),
                   ),
                   Text(
                     '${calendar.events.length} eventos',
-                    style: TextStyle(fontSize: 11, color: secondaryText),
+                    style: TextStyle(fontSize: KrezioFont.caption, color: secondaryText),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: KrezioSpace.md),
               ...calendar.events.map((ev) {
                 final dateStr = RealtimeCalendarService.formatDateLabel(ev.dateTime);
                 return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.symmetric(vertical: KrezioSpace.sm),
                   child: Row(
                     children: [
                       Icon(
@@ -984,26 +984,26 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
                         size: 16,
                         color: KrezioColors.friendlyOrange,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: KrezioSpace.sm),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               ev.title,
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: primaryText),
+                              style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600, color: primaryText),
                             ),
                             if (ev.notes != null)
                               Text(
                                 ev.notes!,
-                                style: TextStyle(fontSize: 10, color: secondaryText),
+                                style: TextStyle(fontSize: KrezioFont.micro, color: secondaryText),
                               ),
                           ],
                         ),
                       ),
                       Text(
                         dateStr,
-                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: secondaryText),
+                        style: TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w500, color: secondaryText),
                       ),
                     ],
                   ),
@@ -1057,9 +1057,9 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
     };
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(KrezioSpace.lg),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(KrezioSpace.lg),
         decoration: BoxDecoration(
           color: widget.isDark ? const Color(0xFF141416) : const Color(0xFFF3F4F6),
           borderRadius: BorderRadius.circular(16),
@@ -1070,7 +1070,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
             _formatJson(map, 0),
             style: const TextStyle(
               fontFamily: 'monospace',
-              fontSize: 12,
+              fontSize: KrezioFont.small,
               height: 1.4,
               color: KrezioColors.aiPurple,
             ),
@@ -1113,14 +1113,14 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
           title: const Row(
             children: [
               Icon(Icons.shield_outlined, color: KrezioColors.aiPurple),
-              SizedBox(width: 8),
+              SizedBox(width: KrezioSpace.sm),
               Text('Ambiente de Homologação'),
             ],
           ),
           content: const Text(
             'Esta interface visual da rede neural é exclusiva para homologação e auditoria on-device do Krezio.ai.\n\n'
             'Ela expõe em tempo real o cálculo de tensores TF-IDF, matriz de pesos, distribuição de probabilidades Softmax e as regras de negócio de assinaturas no crédito.',
-            style: TextStyle(fontSize: 13, height: 1.4),
+            style: TextStyle(fontSize: KrezioFont.bodySmall, height: 1.4),
           ),
           actions: [
             TextButton(
@@ -1327,7 +1327,7 @@ class NeuralNetworkPainter extends CustomPainter {
       text: label,
       style: TextStyle(
         color: isDark ? const Color(0xFFF3F4F6) : const Color(0xFF1F2937),
-        fontSize: 10,
+        fontSize: KrezioFont.micro,
         fontWeight: FontWeight.bold,
       ),
     );
