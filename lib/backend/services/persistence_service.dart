@@ -18,6 +18,7 @@ class PersistenceService {
   static const _kGoals = 'krezio_goals_v1';
   static const _kCategoryOverrides = 'krezio_category_overrides_v1';
   static const _kAccounts = 'krezio_accounts_v1';
+  static const _kPreferences = 'krezio_preferences_v1';
   static const _kHasSeeded = 'krezio_has_seeded_v1';
 
   Future<SharedPreferences> get _prefs => SharedPreferences.getInstance();
@@ -112,6 +113,18 @@ class PersistenceService {
     return list.map((e) => FinancialAccount.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  Future<void> savePreferences(Map<String, String> prefs) async {
+    final p = await _prefs;
+    await p.setString(_kPreferences, jsonEncode(prefs));
+  }
+
+  Future<Map<String, String>> loadPreferences() async {
+    final p = await _prefs;
+    final raw = p.getString(_kPreferences);
+    if (raw == null) return {};
+    return (jsonDecode(raw) as Map<String, dynamic>).map((k, v) => MapEntry(k, v.toString()));
+  }
+
   /// Wipes all persisted app data (used by the "Limpar Histórico de Testes"
   /// action in Ajustes / Homologação).
   Future<void> clearAll() async {
@@ -123,6 +136,7 @@ class PersistenceService {
       prefs.remove(_kGoals),
       prefs.remove(_kCategoryOverrides),
       prefs.remove(_kAccounts),
+      prefs.remove(_kPreferences),
     ]);
     // An emptied app is real (empty) data, not a first run: removing this
     // flag made the next start seed the demo transactions again

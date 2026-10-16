@@ -1,4 +1,5 @@
 import '../backend/models/budget_category.dart';
+import 'cesar_advisor.dart';
 import '../backend/models/financial_goal.dart';
 import '../backend/models/financial_transaction.dart';
 import '../backend/repositories/financial_repository.dart';
@@ -108,6 +109,58 @@ class CesarAssistant {
   List<String> _focus = const [];
 
   FinancialQaEngine get _qa => FinancialQaEngine(repository: repository, now: _clock);
+  CesarAdvisor get _advisor => CesarAdvisor(repository: repository, now: _clock);
+
+  /// How César calls the user ("Gustavo"), or null.
+  String? get userName => repository.preference(FinancialRepository.prefUserName);
+
+  /// What César says when the chat opens, after the greeting: last week's
+  /// summary (once a week, from Monday on) and out-of-pattern spending.
+  List<String> openingNotes() {
+    final notes = <String>[];
+    final week = CesarAdvisor.weekStart(_clock()).toIso8601String().substring(0, 10);
+    if (repository.preference(FinancialRepository.prefWeeklySummaryWeek) != week) {
+      final summary = _advisor.weeklySummary();
+      if (summary != null) {
+        notes.add(summary.text);
+        repository.setPreference(FinancialRepository.prefWeeklySummaryWeek, week);
+      }
+    }
+    final muted = (repository.preference(FinancialRepository.prefMutedUnusual) ?? '').split(',').where((x) => x.isNotEmpty).toSet();
+    notes.addAll(_advisor.unusualSpending(muted: muted).map((a) => a.text));
+    return notes;
+  }
+
+  /// "me chama de Gu", "meu nome é Ana", "para de me avisar de lazer",
+  /// "volta a me avisar de lazer".
+  AssistantReply? _preferenceCommand(String text) {
+    final s = CesarText.simplify(text);
+    final name = RegExp(r'^(?:pode\s+)?(?:me\s+cham[ae]\s+de|meu\s+nome\s+(?:e|eh)|eu\s+me\s+chamo)\s+([a-z][a-z ]{0,29})$').firstMatch(s);
+    if (name != null) {
+      final words = text.trim().split(RegExp(r'\s+'));
+      final n = words.sublist(words.length - name.group(1)!.split(' ').length).join(' ').replaceAll(RegExp(r'[.!?]+$'), '');
+      final display = n.isEmpty ? n : n[0].toUpperCase() + n.substring(1);
+      repository.setPreference(FinancialRepository.prefUserName, display);
+      return AssistantReply('Combinado, $display! Vou te chamar assim. 😊', route: 'preference');
+    }
+    final mute = RegExp(r'^(?:para|pare|parar)\s+de\s+me\s+avisar\s+(?:d[aeo]s?|sobre(?:\s+[oa]s?)?|com)\s+(?:gastos?\s+(?:com|de|d[oa])\s+)?(.+)$').firstMatch(s);
+    final unmute = RegExp(r'^(?:volta|volte|pode\s+voltar)\s+a\s+me\s+avisar\s+(?:d[aeo]s?|sobre(?:\s+[oa]s?)?|com)\s+(.+)$').firstMatch(s);
+    final m = mute ?? unmute;
+    if (m != null) {
+      final code = CesarText.resolveCategory(m.group(1)!, repository.budgets);
+      if (code == null) return AssistantReply('Não achei a categoria "${m.group(1)}".', route: 'category_not_found');
+      final set = (repository.preference(FinancialRepository.prefMutedUnusual) ?? '').split(',').where((x) => x.isNotEmpty).toSet();
+      mute != null ? set.add(code) : set.remove(code);
+      repository.setPreference(FinancialRepository.prefMutedUnusual, set.join(','));
+      final name = CesarText.categoryName(code, repository.budgets);
+      return AssistantReply(
+          mute != null
+              ? 'Tudo bem, não te aviso mais de gasto fora do padrão em $name. Se quiser de volta, diga "volta a me avisar de ${name.toLowerCase()}".'
+              : 'Combinado, volto a te avisar quando $name sair do padrão.',
+          route: 'preference');
+    }
+    return null;
+  }
 
   /// Whether César is waiting for a yes/no or a choice from a list.
   bool get hasPendingQuestion => _pending != null;
@@ -163,8 +216,11 @@ class CesarAssistant {
 
   /// The chat changed records through another path (e.g. a recurring due-day
   /// correction): keep the snapshot so "desfaz" can put them back.
-  void recordExternalEdit(List<FinancialTransaction> before) {
-    history.push(ChatAction(ChatActionKind.edited, before));
+  /// [learned]: category memory set with this edit (description → the value
+  /// it had before, null = none), forgotten again by "desfaz".
+  void recordExternalEdit(List<FinancialTransaction> before, {Map<String, String?> learned = const {}}) {
+    history.push(ChatAction(ChatActionKind.edited, before,
+        alsoUndo: learned.isEmpty ? null : (r) => learned.forEach(r.restoreCategoryOverride)));
     _lastMutationTurn = _turn;
   }
 
@@ -1264,12 +1320,21 @@ class CesarAssistant {
     for (final t in updated) {
       repository.updateTransaction(t);
     }
-    history.push(ChatAction(ChatActionKind.edited, targets));
-    // Category memory: once corrected, similar entries get it right next time.
+    // Category memory: once corrected, similar entries get it right next
+    // time — and "desfaz" forgets it again.
+    final learned = <String, String?>{};
     if (changes.category != null && updated.first.category != targets.first.category) {
-      repository.rememberCategoryOverride(targets.first.title, updated.first.category);
-      if (updated.first.title != targets.first.title) repository.rememberCategoryOverride(updated.first.title, updated.first.category);
+      for (final title in {targets.first.title, updated.first.title}) {
+        learned[title] = repository.recallCategoryOverride(title);
+        repository.rememberCategoryOverride(title, updated.first.category);
+      }
     }
+    history.push(ChatAction(ChatActionKind.edited, targets,
+        alsoUndo: learned.isEmpty
+            ? null
+            : (r) {
+                learned.forEach(r.restoreCategoryOverride);
+              }));
     _focus = List.unmodifiable(updated.map((t) => t.id));
     _focusDeleted = false;
     _lastMutationTurn = _turn;
@@ -1291,6 +1356,9 @@ class CesarAssistant {
   /// Questions about the data, with follow-ups that reuse the last one ("e
   /// ontem?", "e com mercado?"). Null when [text] isn't a question.
   AssistantReply? handleQuestion(String text) {
+    final pref = _preferenceCommand(text);
+    if (pref != null) return pref;
+
     final talk = CesarSmallTalk.reply(text, now: _clock());
     if (talk != null) return AssistantReply(talk.text, spokenText: talk.spokenText, route: talk.kind == 'help' || talk.kind == 'howto' ? 'help' : 'smalltalk');
 
@@ -1299,6 +1367,9 @@ class CesarAssistant {
 
     final lookup = _lookupRecord(text);
     if (lookup != null) return lookup;
+
+    final advice = _advisor.answer(text);
+    if (advice != null) return AssistantReply(advice.text, spokenText: advice.spokenText, route: advice.route);
 
     final whatIf = _hypothesis(text);
     if (whatIf != null) return whatIf;

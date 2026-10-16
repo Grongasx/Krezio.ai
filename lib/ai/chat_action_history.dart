@@ -19,10 +19,15 @@ class ChatAction {
   final bool Function(FinancialRepository repository)? revert;
   final String? undoMessage;
 
-  const ChatAction(this.kind, this.records) : revert = null, undoMessage = null;
+  /// Something else to put back with an edit — the category memory learned
+  /// from a correction, so "desfaz" also forgets it.
+  final void Function(FinancialRepository repository)? alsoUndo;
+
+  const ChatAction(this.kind, this.records, {this.alsoUndo}) : revert = null, undoMessage = null;
 
   const ChatAction.custom(bool Function(FinancialRepository repository) this.revert, String this.undoMessage, [this.records = const []])
-      : kind = ChatActionKind.custom;
+      : kind = ChatActionKind.custom,
+        alsoUndo = null;
 }
 
 class UndoResult {
@@ -108,6 +113,7 @@ class ChatActionHistory {
         for (final t in back) {
           repository.updateTransaction(t);
         }
+        action.alsoUndo?.call(repository);
         return UndoResult(action, 'Desfeito! Voltei $names para como estava antes. ↩️', restoredIds: back.map((t) => t.id).toSet());
       case ChatActionKind.deleted:
         final missing = action.records.where((t) => !existing.containsKey(t.id)).toList();

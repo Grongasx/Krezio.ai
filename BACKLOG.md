@@ -257,8 +257,8 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `ML` Criar o motor de perguntas como medida × filtro × período ("quanto gastei com mercado mês passado?" = soma × categoria mercado × mês anterior → palavra que não é filtro não vira filtro)
 - [x] `Backend` Responder gastos, receitas, saldo, maior e menor gasto, categoria principal ("qual meu maior gasto do mês?" → "Aluguel, R$ 1.400 em 05/09")
 - [x] `Backend` Responder comparativos ("gastei mais que mês passado?" → "Sim, 18% a mais: R$ 2.300 contra R$ 1.950", comparando o mesmo intervalo de dias)
-- [ ] `Backend` Responder "quanto posso gastar por dia" e a média diária real (orçamento diário = sobra ÷ dias restantes; média = gasto ÷ dias corridos → as duas respostas nunca se confundem) — ⚠️ parcial: "média diária real" ainda responde o orçamento diário
-- [ ] `Backend` Responder contagem e "última vez que…" ("quantas vezes pedi iFood?" filtra pelo título, não pela categoria → "2 vezes, R$ 115,40") — ⚠️ parcial: contagem por comerciante ainda filtra pela categoria
+- [x] `Backend` Responder "quanto posso gastar por dia" e a média diária real (orçamento diário = sobra ÷ dias restantes; média = gasto ÷ dias corridos → as duas respostas nunca se confundem)
+- [x] `Backend` Responder contagem e "última vez que…" ("quantas vezes pedi iFood?" filtra pelo título, não pela categoria → "2 vezes, R$ 115,40")
 - [x] `Backend` Responder contas a vencer e quem me deve ("o que vence essa semana?", "quem me deve?" → lista com valores e datas)
 - [x] `ML` Manter o contexto entre perguntas ("quanto gastei no mercado?" ⏎ "e no mês passado?" ⏎ "e com lazer?" → cada pergunta herda o que não mudou)
 - [x] `Frontend` Mostrar gráficos nas respostas quando pedido ("me mostra um gráfico dos gastos" → barras por categoria dentro do balão)
@@ -267,18 +267,18 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 5.5 Consultoria
 `70 pts` · 🟠 **Média** · `ML` `Backend`
 - [x] `Backend` Responder "Posso comprar isso?" (pesa saldo, contas dos próximos 30 dias, metas e % da renda: "Uma TV de 2.000?" → "Dá, mas sobram R$ 300 até o salário")
-- [ ] `ML` Criar simulações "e se…?" ("quanto sobra se eu pagar o aluguel?", "se eu cortar o delivery, quanto economizo?", "se eu guardar 200 por mês, quando bato a meta?", "2.000 em 10x fica quanto?" → nunca registra nada) — ⚠️ parcial: responde parcela e "posso comprar"; faltam "quanto sobra se…" e prazo de meta
-- [ ] `Backend` Responder "onde posso economizar?" (as 3 categorias que mais cresceram contra a média de 3 meses, mais as recorrentes → com valores e sugestão concreta)
-- [ ] `Backend` Projetar o fechamento do mês e prever contas recorrentes ("como vou fechar o mês?" = saldo − contas futuras − média diária × dias restantes; "quanto vem a luz?" = média das últimas → menos de 1 mês de dados: "ainda não tenho dados suficientes")
-- [ ] `Backend` Listar assinaturas e gastos fixos ("quais assinaturas eu pago?" → lista com valor mensal e total anual)
-- [ ] `Backend` Criar o resumo semanal proativo (na primeira abertura da segunda-feira: gasto da semana, categoria principal e comparação → aparece uma vez por semana)
-- [ ] `Backend` Alertar sobre gasto fora do padrão (categoria com gasto semanal ≥ 2× a média das últimas 4 semanas → "para de me avisar disso" desliga o aviso)
+- [x] `ML` Criar simulações "e se…?" ("quanto sobra se eu pagar o aluguel?", "se eu cortar o delivery, quanto economizo?", "se eu guardar 200 por mês, quando bato a meta?", "2.000 em 10x fica quanto?" → nunca registra nada)
+- [x] `Backend` Responder "onde posso economizar?" (as 3 categorias que mais cresceram contra a média de 3 meses, mais as recorrentes → com valores e sugestão concreta)
+- [x] `Backend` Projetar o fechamento do mês e prever contas recorrentes ("como vou fechar o mês?" = saldo − contas futuras − média diária × dias restantes; "quanto vem a luz?" = média das últimas → menos de 1 mês de dados: "ainda não tenho dados suficientes")
+- [x] `Backend` Listar assinaturas e gastos fixos ("quais assinaturas eu pago?" → lista com valor mensal e total anual)
+- [x] `Backend` Criar o resumo semanal proativo (na primeira abertura da segunda-feira: gasto da semana, categoria principal e comparação → aparece uma vez por semana)
+- [x] `Backend` Alertar sobre gasto fora do padrão (categoria com gasto semanal ≥ 2× a média das últimas 4 semanas → "para de me avisar disso" desliga o aviso)
 
 ### 5.6 Aprendizado
 `30 pts` · 🟡 **Baixa** · `ML` `Backend`
 - [x] `ML` Lembrar correções de categoria ("gastei 40 no mercado do zé" ⏎ "esse era lazer" → da próxima vez, "mercado do zé" já vai para Lazer)
-- [ ] `Backend` Desfazer também a memória de categoria ("desfaz" depois da correção → o próximo "mercado do zé" volta para Mercado)
-- [ ] `Backend` Criar as preferências do usuário (como chamar o usuário, forma de pagamento mais usada como sugestão → nunca assume a preferência sem dizer "considerei Pix")
+- [x] `Backend` Desfazer também a memória de categoria ("desfaz" depois da correção → o próximo "mercado do zé" volta para Mercado)
+- [x] `Backend` Criar as preferências do usuário (como chamar o usuário, forma de pagamento mais usada como sugestão → nunca assume a preferência sem dizer "considerei Pix")
 
 ---
 
