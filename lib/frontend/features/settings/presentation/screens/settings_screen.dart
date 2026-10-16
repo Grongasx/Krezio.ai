@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import '../../../accounts/presentation/screens/accounts_screen.dart';
+import '../../../reminders/presentation/screens/open_items_screen.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/config/app_environment.dart';
 import '../../../../../ai/local_nlp_engine.dart';
@@ -40,15 +43,15 @@ class SettingsScreen extends StatelessWidget {
         elevation: 0,
         title: Text(
           'Configurações',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryTextColor),
+          style: TextStyle(fontSize: KrezioFont.title, fontWeight: FontWeight.bold, color: primaryTextColor),
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(KrezioSpace.lg),
         children: [
           // Theme Section
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(KrezioSpace.lg),
             decoration: BoxDecoration(
               color: bgSurface,
               borderRadius: KrezioTheme.borderRadius,
@@ -63,17 +66,17 @@ class SettingsScreen extends StatelessWidget {
                       isDark ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
                       color: KrezioColors.aiPurple,
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: KrezioSpace.md),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Aparência / Tema',
-                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryTextColor),
+                          style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                         ),
                         Text(
                           isDark ? 'Modo Escuro Ativo' : 'Modo Claro Ativo',
-                          style: TextStyle(fontSize: 12, color: secondaryTextColor),
+                          style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor),
                         ),
                       ],
                     ),
@@ -87,7 +90,38 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: KrezioSpace.lg),
+
+          // Money: accounts and open bills/debtors
+          KrezioCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.account_balance_wallet_outlined, color: KrezioColors.aiPurple),
+                  title: const Text('Contas e carteiras'),
+                  subtitle: const Text('Saldo por conta, transferências e fatura do cartão'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => AccountsScreen(repository: repository, isDark: isDark)),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.receipt_long, color: KrezioColors.aiPurple),
+                  title: const Text('Contas e devedores'),
+                  subtitle: const Text('Contas em aberto e quem te deve'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => OpenItemsScreen(repository: repository, isDark: isDark)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: KrezioSpace.lg),
 
           // Homologation & Neural Inspector Card
           ValueListenableBuilder<AppEnvironment>(
@@ -96,7 +130,7 @@ class SettingsScreen extends StatelessWidget {
               final isHomolog = currentEnv == AppEnvironment.homologation;
 
               return Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(KrezioSpace.lg),
                 decoration: BoxDecoration(
                   color: bgSurface,
                   borderRadius: KrezioTheme.borderRadius,
@@ -117,14 +151,14 @@ class SettingsScreen extends StatelessWidget {
                               Icons.hub_outlined,
                               color: isHomolog ? KrezioColors.aiPurple : secondaryTextColor,
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: KrezioSpace.md),
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'Modo de Homologação',
                                   style: TextStyle(
-                                    fontSize: 14,
+                                    fontSize: KrezioFont.body,
                                     fontWeight: FontWeight.bold,
                                     color: primaryTextColor,
                                   ),
@@ -134,7 +168,7 @@ class SettingsScreen extends StatelessWidget {
                                       ? 'Ambiente de Testes / Staging Ativo'
                                       : 'Ambiente de Produção Padrão',
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: KrezioFont.small,
                                     color: isHomolog ? KrezioColors.aiPurple : secondaryTextColor,
                                   ),
                                 ),
@@ -150,21 +184,21 @@ class SettingsScreen extends StatelessWidget {
                       ],
                     ),
                     if (isHomolog) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: KrezioSpace.md),
                       const Divider(height: 1),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: KrezioSpace.md),
                       Text(
                         'O modo de homologação ativa o inspetor visual transparente da rede neural e auditoria on-device de inferências.',
-                        style: TextStyle(fontSize: 12, color: secondaryTextColor, height: 1.35),
+                        style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor, height: 1.35),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: KrezioSpace.md),
                       if (engine != null)
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
                             style: ElevatedButton.styleFrom(
                               backgroundColor: KrezioColors.aiPurple,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              padding: const EdgeInsets.symmetric(vertical: KrezioSpace.md),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
@@ -175,7 +209,7 @@ class SettingsScreen extends StatelessWidget {
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 13,
+                                fontSize: KrezioFont.bodySmall,
                               ),
                             ),
                             onPressed: () {
@@ -197,11 +231,11 @@ class SettingsScreen extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: KrezioSpace.lg),
 
           // Privacy & AI Info Card
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(KrezioSpace.lg),
             decoration: BoxDecoration(
               color: bgSurface,
               borderRadius: KrezioTheme.borderRadius,
@@ -213,28 +247,28 @@ class SettingsScreen extends StatelessWidget {
                 Row(
                   children: [
                     const Icon(Icons.security, color: KrezioColors.emeraldGreen, size: 20),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     Text(
                       userEmail != null ? 'Privacidade & IA On-Device' : 'Privacidade & IA 100% On-Device',
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryTextColor),
+                      style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: KrezioSpace.sm),
                 Text(
                   userEmail != null
                       ? 'As inferências de NLP e o processamento de voz continuam 100% no seu dispositivo, inclusive offline. Seus lançamentos são sincronizados apenas com a sua própria conta na nuvem, para backup e uso em outros aparelhos — nunca compartilhados com terceiros.'
                       : 'Todos os seus dados financeiros, inferências de NLP e processamento de voz acontecem exclusivamente no seu dispositivo. Nenhum dado financeiro é compartilhado ou enviado para servidores externos.',
-                  style: TextStyle(fontSize: 12, height: 1.4, color: secondaryTextColor),
+                  style: TextStyle(fontSize: KrezioFont.small, height: 1.4, color: secondaryTextColor),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: KrezioSpace.lg),
 
           if (userEmail != null) ...[
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(KrezioSpace.lg),
               decoration: BoxDecoration(
                 color: bgSurface,
                 borderRadius: KrezioTheme.borderRadius,
@@ -245,35 +279,42 @@ class SettingsScreen extends StatelessWidget {
                 children: [
                   Text(
                     'Conta',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryTextColor),
+                    style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: KrezioSpace.md),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.account_circle_outlined, color: KrezioColors.aiPurple),
-                    title: Text(userEmail!, style: TextStyle(fontSize: 13, color: primaryTextColor)),
-                    subtitle: Text('Dados sincronizados nesta conta', style: TextStyle(fontSize: 11, color: secondaryTextColor)),
+                    title: Text(userEmail!, style: TextStyle(fontSize: KrezioFont.bodySmall, color: primaryTextColor)),
+                    subtitle: Text('Dados sincronizados nesta conta', style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor)),
                   ),
                   const Divider(height: 1),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.logout, color: KrezioColors.friendlyOrange),
-                    title: const Text('Sair da Conta', style: TextStyle(fontSize: 13, color: KrezioColors.friendlyOrange)),
+                    title: const Text('Sair da Conta', style: TextStyle(fontSize: KrezioFont.bodySmall, color: KrezioColors.friendlyOrange)),
                     onTap: onSignOut == null
                         ? null
                         : () async {
-                            await onSignOut!();
+                            final ok = await showKrezioConfirmDialog(
+                              context,
+                              title: 'Sair da conta?',
+                              message: 'Seus dados continuam salvos na nuvem. Para vê-los de novo, é só entrar com o mesmo e-mail.',
+                              confirmLabel: 'Sair',
+                              danger: true,
+                            );
+                            if (ok) await onSignOut!();
                           },
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: KrezioSpace.lg),
           ],
 
           // Data Management Card
           Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(KrezioSpace.lg),
             decoration: BoxDecoration(
               color: bgSurface,
               borderRadius: KrezioTheme.borderRadius,
@@ -284,13 +325,13 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Text(
                   'Gestão de Dados',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: primaryTextColor),
+                  style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: KrezioSpace.md),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.file_download_outlined, color: KrezioColors.aiPurple),
-                  title: const Text('Exportar Extrato (CSV)', style: TextStyle(fontSize: 13)),
+                  title: const Text('Exportar Extrato (CSV)', style: TextStyle(fontSize: KrezioFont.bodySmall)),
                   onTap: () {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Exportação concluída! Dados salvos localmente.')),
@@ -301,27 +342,16 @@ class SettingsScreen extends StatelessWidget {
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.delete_sweep_outlined, color: KrezioColors.friendlyOrange),
-                  title: const Text('Limpar Histórico de Testes', style: TextStyle(fontSize: 13, color: KrezioColors.friendlyOrange)),
-                  onTap: () {
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-                        title: const Text('Limpar Dados?'),
-                        content: const Text('Deseja apagar todos os lançamentos cadastrados?'),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-                          ElevatedButton(
-                            style: ElevatedButton.styleFrom(backgroundColor: KrezioColors.friendlyOrange),
-                            onPressed: () async {
-                              Navigator.of(ctx).pop();
-                              await repository.clearAllData();
-                            },
-                            child: const Text('Limpar', style: TextStyle(color: Colors.white)),
-                          ),
-                        ],
-                      ),
+                  title: const Text('Limpar Histórico de Testes', style: TextStyle(fontSize: KrezioFont.bodySmall, color: KrezioColors.friendlyOrange)),
+                  onTap: () async {
+                    final ok = await showKrezioConfirmDialog(
+                      context,
+                      title: 'Limpar Dados?',
+                      message: 'Deseja apagar todos os lançamentos cadastrados?',
+                      confirmLabel: 'Limpar',
+                      danger: true,
                     );
+                    if (ok) await repository.clearAllData();
                   },
                 ),
               ],

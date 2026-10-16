@@ -850,19 +850,29 @@ class FinancialQaEngine {
     return QaAnswer(text: '📈 $spoken', spokenText: spoken, query: q);
   }
 
+  /// A merchant named in some title ("ifood") filters by the title only —
+  /// not by its category, which would count every delivery. Otherwise the
+  /// term is a category ("mercado", "saúde").
+  bool Function(FinancialTransaction) _titleOrCategory(String term) {
+    final folded = CesarText.fold(term);
+    final inTitles = folded.isNotEmpty && repository.transactions.any((t) => CesarText.fold(t.title).contains(folded));
+    return inTitles ? (t) => CesarText.fold(t.title).contains(folded) : (t) => _matchesTerm(t, term);
+  }
+
   QaAnswer _count(QaQuery q) {
     final r = _range(q.period);
-    final items = _inRange(r, (t) => _matchesTerm(t, q.term));
+    final items = _inRange(r, _titleOrCategory(q.term));
     final total = items.fold(0.0, (a, t) => a + t.amount);
     final when = _periodPhrase(r.label);
     final text = items.isEmpty
         ? 'Não encontrei nenhum lançamento com "${q.term}" $when.'
-        : 'Encontrei ${items.length} ${items.length == 1 ? 'lançamento' : 'lançamentos'} com "${q.term}" $when, somando ${CesarText.money(total)}.';
+        : '${items.length} ${items.length == 1 ? 'vez' : 'vezes'} com "${q.term}" $when '
+            '(${items.length} ${items.length == 1 ? 'lançamento' : 'lançamentos'}), somando ${CesarText.money(total)}.';
     return QaAnswer(text: text, spokenText: text, query: q);
   }
 
   QaAnswer _lastTime(QaQuery q) {
-    final items = repository.transactions.where((t) => _matchesTerm(t, q.term)).toList()..sort((a, b) => b.date.compareTo(a.date));
+    final items = repository.transactions.where(_titleOrCategory(q.term)).toList()..sort((a, b) => b.date.compareTo(a.date));
     if (items.isEmpty) {
       final text = 'Não encontrei nenhum lançamento com "${q.term}".';
       return QaAnswer(text: text, spokenText: text, query: q);
