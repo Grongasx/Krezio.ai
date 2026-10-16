@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 
 class CategoryDonutChart extends StatelessWidget {
@@ -24,15 +25,12 @@ class CategoryDonutChart extends StatelessWidget {
     final total = categoryData.values.fold(0.0, (a, b) => a + b);
 
     if (total == 0 || categoryData.isEmpty) {
-      return Container(
+      return const SizedBox(
         height: 180,
-        alignment: Alignment.center,
-        child: Text(
-          'Nenhuma despesa registrada este mês.',
-          style: TextStyle(
-            color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
-            fontSize: 13,
-          ),
+        child: KrezioEmptyState(
+          icon: Icons.pie_chart_outline,
+          title: 'Nenhuma despesa este mês',
+          compact: true,
         ),
       );
     }
@@ -58,16 +56,16 @@ class CategoryDonutChart extends StatelessWidget {
                   Text(
                     'Total',
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: KrezioFont.caption,
                       fontWeight: FontWeight.w500,
                       color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: KrezioSpace.hair),
                   Text(
                     'R\$ ${total >= 1000 ? '${(total / 1000).toStringAsFixed(1)}k' : total.toStringAsFixed(0)}',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: KrezioFont.bodyLarge,
                       fontWeight: FontWeight.bold,
                       color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
                     ),
@@ -77,7 +75,7 @@ class CategoryDonutChart extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: KrezioSpace.lg),
         Wrap(
           spacing: 12,
           runSpacing: 8,
@@ -104,11 +102,11 @@ class CategoryDonutChart extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 5),
+                const SizedBox(width: KrezioSpace.xs),
                 Text(
                   '${categoryNames[e.key] ?? dummyTx.categoryLabel} ($percentage%)',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: KrezioFont.caption,
                     color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                     fontWeight: FontWeight.w500,
                   ),
