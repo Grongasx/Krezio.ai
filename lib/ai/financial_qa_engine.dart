@@ -1,3 +1,4 @@
+import '../backend/models/budget_category.dart';
 import '../backend/models/financial_goal.dart';
 import '../backend/models/financial_transaction.dart';
 import '../backend/repositories/financial_repository.dart';
@@ -18,6 +19,7 @@ enum QaKind {
   dailyBudget,
   freeUntilIncome,
   goals,
+  savings,
   budgetRemaining,
   comparison,
   count,
@@ -44,10 +46,13 @@ class QaQuery {
   /// How many items a list/ranking should show.
   final int limit;
 
-  const QaQuery(this.kind, {this.term = '', this.period, this.limit = 5});
+  /// Position in a ranking: "o segundo maior gasto" is rank 2.
+  final int rank;
 
-  QaQuery copyWith({QaKind? kind, String? term, String? period, int? limit}) =>
-      QaQuery(kind ?? this.kind, term: term ?? this.term, period: period ?? this.period, limit: limit ?? this.limit);
+  const QaQuery(this.kind, {this.term = '', this.period, this.limit = 5, this.rank = 1});
+
+  QaQuery copyWith({QaKind? kind, String? term, String? period, int? limit, int? rank}) =>
+      QaQuery(kind ?? this.kind, term: term ?? this.term, period: period ?? this.period, limit: limit ?? this.limit, rank: rank ?? this.rank);
 
   @override
   String toString() => 'QaQuery($kind, term="$term", period=$period)';
@@ -110,8 +115,18 @@ class FinancialQaEngine {
     r'\b(?:(?:es[st]e|n(?:es[st]e|esse))\s+mes|do\s+mes|no\s+mes|mes\s+atual)\b': 'este mês',
   };
 
+  /// "nos últimos 7 dias", "nas últimas 2 semanas", "últimos 3 meses".
+  static final _lastN = RegExp(r'\b(?:(?:n|d)?(?:os|as)\s+)?ultim[oa]s\s+(\d{1,3}|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez|quinze|vinte|trinta)\s+(dias|semanas|meses)\b');
+
   /// Canonical period named in [folded] text, or null.
   static String? periodIn(String folded) {
+    final n = _lastN.firstMatch(folded);
+    if (n != null) {
+      final count = _numberWord(n.group(1)!);
+      final unit = n.group(2)!;
+      if (count == 1) return unit == 'dias' ? 'hoje' : (unit == 'semanas' ? 'esta semana' : 'este mês');
+      return unit == 'semanas' ? 'nas últimas $count semanas' : 'nos últimos $count $unit';
+    }
     for (final e in _periodPatterns.entries) {
       if (RegExp(e.key).hasMatch(folded)) return e.value;
     }
@@ -119,7 +134,7 @@ class FinancialQaEngine {
   }
 
   static String _stripPeriods(String folded) {
-    var s = folded;
+    var s = folded.replaceAll(_lastN, ' ');
     for (final p in _periodPatterns.keys) {
       s = s.replaceAll(RegExp(p), ' ');
     }
@@ -133,7 +148,7 @@ class FinancialQaEngine {
     var t = _stripPeriods(raw);
     t = t.replaceAll(RegExp('\\b$_fillers\\b'), ' ');
     t = t.replaceAll(RegExp(r'\s+'), ' ').trim();
-    const lead = r'(?:com|de|do|da|dos|das|no|na|nos|nas|em|o|a|os|as|pelo|pela|pro|pra|para|meu|minha|meus|minhas|um|uma|eu|que)';
+    const lead = r'(?:com|de|do|da|dos|das|no|na|nos|nas|em|o|a|os|as|ao|aos|pelo|pela|pro|pra|para|meu|minha|meus|minhas|um|uma|eu|que)';
     for (var i = 0; i < 4; i++) {
       t = t.replaceFirst(RegExp('^$lead(?:\\s+|\$)'), '');
       t = t.replaceFirst(RegExp(r'(?:^|\s+)(?:e|de|do|da|no|na|em|com|o|a)$'), '');
@@ -150,7 +165,7 @@ class FinancialQaEngine {
   static final _interrogative = RegExp(r'\b(?:quanto|quantos|quantas|qual|quais|quando|onde|quem|cade|por\s*que|sera\s+que)\b');
 
   static int _numberWord(String w) {
-    const words = {'dois': 2, 'duas': 2, 'tres': 3, 'quatro': 4, 'cinco': 5, 'seis': 6, 'sete': 7, 'oito': 8, 'nove': 9, 'dez': 10, 'quinze': 15, 'vinte': 20};
+    const words = {'dois': 2, 'duas': 2, 'tres': 3, 'quatro': 4, 'cinco': 5, 'seis': 6, 'sete': 7, 'oito': 8, 'nove': 9, 'dez': 10, 'quinze': 15, 'vinte': 20, 'trinta': 30};
     return words[w] ?? int.tryParse(w) ?? 5;
   }
 
@@ -166,33 +181,52 @@ class FinancialQaEngine {
   // ── What the question measures (one family of words per measure) ──
   static final _debtWords = RegExp(r'\b(?:me\s+deve\w*|me\s+devendo|(?:alguem|quem|gente|pessoa)\s+(?:ainda\s+)?(?:ta\s+|esta\s+)?devendo|deve\s+(?:pra|para|a)\s+mim|me\s+pag(?:ou|ar|aram|a)|(?:a|pra)\s+receber|dividas?\s+(?:comigo|a\s+receber))\b');
   static final _comparisonWords = RegExp(r'\b(?:mais\s+ou\s+menos|compar\w*|em\s+relacao|(?:mais|menos)\s+(?:do\s+)?que\s+(?:em\s+|no\s+|o\s+|na\s+)?(?:mes|semana|' +
-      _months.join('|') + r')|gastando\s+(?:demais|muito|mais)|exagerando|exagerei|to\s+gastando)\b');
+      _months.join('|') + r')|gastando\s+(?:demais|muito|mais)|exagerando|exagerei|to\s+gastando|'
+          // "gastei mais esse mês ou no passado?"
+          r'(?:esse|este|nesse|neste)\s+mes\s+ou\s+(?:no\s+|o\s+|do\s+|n[oa]\s+)?(?:mes\s+)?(?:passado|anterior)|ou\s+(?:no|o|do)\s+(?:mes\s+)?(?:passado|anterior))\b');
   static final _overviewWords = RegExp(r'\b(?:resumo|resumao|balanco|panorama|vida\s+financeira|situacao(?:\s+financeira)?|minhas\s+financas|as\s+financas|minhas\s+contas\s+no\s+geral|'
       r'como\s+(?:ta|esta|estao|tao|vai|vao|anda|andam)\s+(?:a\s+|as\s+|o\s+|os\s+)?(?:minha|minhas|meu|meus)\s+(?:vida|financas|grana|dinheiro|mes|orcamento))\b');
   static final _whereMoneyWent = RegExp(r'\bcade\s+(?:o\s+|meu\s+|a\s+|minha\s+)?(?:dinheiro|grana|salario)\b|\bonde\s+(?:(?:eu\s+)?(?:foi|foram|vai|esta\s+indo|ta\s+indo|anda)\s+(?:parar\s+)?(?:o\s+|meu\s+|a\s+|minha\s+)?(?:dinheiro|grana|salario)|(?:eu\s+)?(?:enfiei|meti|torrei|gastei)\s+(?:o\s+|meu\s+)?(?:dinheiro|grana|salario))\b');
-  static final _balanceWords = RegExp(r'\b(?:saldo|sobrou|sobra|sobrando|resta|restou|me\s+resta|tenho\s+(?:na\s+conta|de\s+dinheiro|guardado|disponivel)|(?:quanto|qto)\s+(?:de\s+dinheiro\s+)?(?:eu\s+)?(?:ainda\s+)?tenho)\b');
-  static final _dailyWords = RegExp(r'\b(?:posso|consigo|da\s+pra|da\s+para|devo)\s+gastar\s+(?:hoje|por\s+dia|ao\s+dia|pro\s+dia|no\s+dia|cada\s+dia|diariamente|ate\s+o\s+(?:fim|final)\s+do\s+mes)\b|\b(?:orcamento|limite|gasto)\s+(?:diario|por\s+dia|de\s+hoje)\b');
+  static final _balanceWords = RegExp(r'\b(?:saldo|sobrou|sobra|sobrando|resta|restou|me\s+resta|tenho\s+(?:na\s+conta|de\s+dinheiro|guardado|disponivel)|(?:quanto|qto)\s+(?:de\s+dinheiro\s+)?(?:eu\s+)?(?:(?:ainda|ja)\s+)?tenho)\b');
+  static final _dailyWords = RegExp(r'\b(?:posso|consigo|da\s+pra|da\s+para|devo)\s+gastar\s+(?:hoje|por\s+dia|ao\s+dia|pro\s+dia|no\s+dia|cada\s+dia|diariamente|ate\s+o\s+(?:fim|final)\s+do\s+mes)\b|\b(?:orcamento|limite|gasto)\s+(?:diario|por\s+dia|de\s+hoje)\b|'
+      // "quanto ainda posso gastar esse mês?", "quanto ainda dá pra gastar?"
+      r'\bquanto\s+(?:eu\s+)?(?:ainda\s+)?(?:posso|consigo|da\s+pra|da\s+para)\s+gastar(?:\s+(?:esse|este|nesse|neste|no)\s+mes)?$');
   static final _countWords = RegExp(r'\b(?:quantas|quantos)\s+(?:vezes\s+)?(?!reais\b|real\b|conto\w*\b)');
   static final _lastTimeWords = RegExp(r'\b(?:ultima\s+vez|quando\s+(?:foi\s+(?:a\s+)?ultima|(?:eu\s+)?(?:foi\s+que\s+)?(?:paguei|gastei|fui|comprei|pedi|abasteci|recebi|usei|peguei|ganhei)))\b');
   static final _incomeWords = RegExp(r'\b(?:ganhei|ganho|ganhamos|recebi|recebo|recebemos|entrou|entraram|entrada|entradas|receita|receitas|faturei|faturamento|caiu|cairam|renda)\b');
-  static final _spendingWords = RegExp(r'\b(?:gastei|gasto|gastos|gastamos|gastando|despesa|despesas|saiu|sairam|saida|saidas|paguei|pago|pagando|pagamos|torrei|torrando|desembolsei|custou|custa|custando|foi\s+gasto|quanto\s+(?:foi|deu|ficou)|total\s+de)\b');
+  static final _spendingWords = RegExp(r'\b(?:gastei|gasto|gastos|gastamos|gastando|despesa|despesas|saiu|sairam|saida|saidas|paguei|pago|pagando|pagamos|torrei|torrando|desembolsei|custou|custa|custando|foi\s+gasto|quanto\s+(?:foi|deu|ficou)|total\s+de|'
+      // "quanto já foi embora esse mês?", "quanto voou de grana?"
+      r'(?:foi|foram|vai|ta\s+indo)\s+embora|voou|voaram|sumiu|sumiram)\b');
 
   /// Words that never name a filter: interrogatives, auxiliaries, the
   /// measure words themselves and fillers ("pela última vez", "de dinheiro").
   static final _emptyWords = RegExp(r'\b(?:quanto|quantos|quantas|qual|quais|quando|onde|como|que|o\s+que|oque|quem|cade|sera|foi|foram|e|eh|era|eu|ja|ainda|so|to|tou|estou|ta|tava|estava|tenho|tive|fiz|fui|'
-      r'me|mim|pra\s+mim|meu|minha|meus|minhas|o|a|os|as|um|uma|uns|umas|de|do|da|dos|das|no|na|nos|nas|em|com|pro|pra|para|pelo|pela|por|'
+      r'me|mim|pra\s+mim|meu|minha|meus|minhas|o|a|os|as|ao|aos|um|uma|uns|umas|de|do|da|dos|das|no|na|nos|nas|em|com|pro|pra|para|pelo|pela|por|'
+      r'embora|voou|voaram|sumiu|sumiram|'
       r'diz|diga|fala|mostra|mostre|lista|liste|conta|manda|faz|faca|passa|total|valor|ao\s+todo|no\s+total|ate\s+agora|ate\s+hoje|por\s+enquanto|afinal|entao|cesar|la|ai|mesmo|'
       r'ultima\s+vez|pela\s+ultima\s+vez|vez|vezes|dinheiro|grana|lancamentos?|registros?|transac\w+|movimentac\w+|'
       r'gastei|gasto|gastos|gastamos|gastando|despesas?|saiu|sairam|saidas?|paguei|pago|pagando|pagamos|torrei|torrando|desembolsei|custou|custa|custando|deu|ficou|'
       r'ganhei|ganho|ganhamos|recebi|recebo|recebemos|entrou|entraram|entradas?|receitas?|faturei|faturamento|caiu|cairam|renda|'
       r'usei|peguei|pedi|comprei|abasteci|chamei|almocei|jantei|fui|fiz|tive|agora|mes|semana|hoje|ontem|anteontem)\b');
 
+  static const _bigWords = r'maior(?:es)?|mais\s+(?:car|salgad|pesad|alt)[oa]s?';
+  static const _smallWords = r'menor(?:es)?|mais\s+barat[oa]s?';
+  static final _extremeLead = RegExp('\\b((?:(?:segund|terceir|quart|quint)[oa]\\s+)?(?:$_bigWords|$_smallWords))\\s+(?:gastos?|despesas?|compras?|lancamentos?|saidas?)\\b');
+  static final _extremeTail = RegExp('\\b(?:gastos?|despesas?|compras?)\\s+(?:mais\\s+)?($_bigWords|$_smallWords|(?:segund|terceir|quart|quint)[oa]\\s+(?:maior|menor))\\b');
+
+  /// "segundo maior" → 2; anything else → 1.
+  static int _rankOf(String w) =>
+      const {'segund': 2, 'terceir': 3, 'quart': 4, 'quint': 5}[RegExp(r'(segund|terceir|quart|quint)').firstMatch(w)?.group(1)] ?? 1;
+
   /// The filter left after removing everything that isn't one.
   static String _termOf(String folded) {
     var t = _stripPeriods(folded);
     t = t.replaceAll(_monthPattern, ' ');
     // "de dinheiro" as payment is "em dinheiro"/"em espécie"; kept below.
-    final cash = RegExp(r'\b(?:em|no|de)\s+(?:especie|dinheiro\s+vivo)\b|\bem\s+dinheiro\b').hasMatch(t);
+    // ("no dinheiro vivo" is cash, not the Vivo operator.)
+    final cashWords = RegExp(r'\b(?:em|no|de|com)\s+(?:especie|dinheiro\s+vivo|dinheirinho)\b|\b(?:em|no|com\s+o)\s+dinheiro\b');
+    final cash = cashWords.hasMatch(t);
+    if (cash) t = t.replaceAll(cashWords, ' ');
     t = t.replaceAllMapped(RegExp(r'\bcartao\s+de\s+(credito|debito)\b'), (m) => m.group(1)!);
     for (var i = 0; i < 3; i++) {
       t = t.replaceAll(_emptyWords, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -234,7 +268,12 @@ class FinancialQaEngine {
       // "gastei mais ou menos que em agosto?": this month against the month
       // named (or the one before).
       final versus = month ?? (RegExp(r'\bsemana\b').hasMatch(s) ? 'semana passada' : 'mês passado');
-      return QaQuery(QaKind.comparison, period: versus);
+      // "tô gastando mais com ifood que no mês passado?": the comparison of one thing.
+      final about = RegExp(r'\b(?:com|de|no|na|em)\s+([a-z]+(?:\s+[a-z]+)?)\s+(?:do\s+)?(?:que|quanto|comparado|em\s+relacao)\b')
+          .firstMatch(_stripPeriods(s).replaceAll(_monthPattern, ' ').replaceAll(RegExp(r'\s+'), ' '))
+          ?.group(1);
+      final term = about == null ? '' : _cleanTerm(about);
+      return QaQuery(QaKind.comparison, period: versus, term: RegExp(r'^(?:mes|semana|antes|passado|gasto|gastos)$').hasMatch(term) ? '' : term);
     }
 
     if (!isQuestion && !RegExp(r'^(?:meu|o\s+meu)\s+saldo$|^saldo$|^extrato$|^meu\s+extrato$').hasMatch(s)) {
@@ -258,10 +297,26 @@ class FinancialQaEngine {
       if (term.isNotEmpty) return QaQuery(QaKind.budgetRemaining, term: term);
     }
 
+    // The budgets as a whole: "estou dentro do orçamento?", "estourei algum
+    // limite?" (one category was asked above).
+    if (RegExp(r'\b(?:dentro|fora)\s+do\s+(?:meu\s+)?(?:orcamento|limite)s?\b|\bestour(?:ei|ou|ando|aram)\s+(?:o\s+|algum\s+|meu\s+|os\s+|meus\s+)?(?:orcamento|limite)s?\b|'
+            r'\bcomo\s+(?:esta|ta|estao|tao|vai|vao)\s+(?:o\s+|os\s+|meu\s+|meus\s+)?(?:orcamentos?|limites?)$|\bpassei\s+(?:de\s+|do\s+)?(?:algum\s+)?(?:orcamento|limite)\b')
+        .hasMatch(s)) {
+      return const QaQuery(QaKind.budgetRemaining);
+    }
+
+    // "quanto eu economizei esse mês?": what was left between income and
+    // spending — not a goal (unless one is named: "guardei pra viagem").
+    if (RegExp(r'\bquanto\s+(?:eu\s+)?(?:ja\s+)?(?:economizei|poupei|consegui\s+(?:economizar|guardar|poupar)|guardei)\b').hasMatch(s) &&
+        !RegExp(r'\b(?:metas?|pra|para|pro|na\s+meta|no\s+cofrinho)\b').hasMatch(s)) {
+      return QaQuery(QaKind.savings, period: period);
+    }
+
     // Goals.
-    if (RegExp(r'\bmetas?\b').hasMatch(s) || RegExp(r'quanto\s+(?:eu\s+)?(?:ja\s+)?(?:guardei|juntei|economizei|poupei)').hasMatch(s)) {
+    if (RegExp(r'\bmetas?\b').hasMatch(s) ||
+        RegExp(r'quanto\s+(?:eu\s+)?(?:ja\s+)?(?:guardei|juntei|economizei|poupei)|\b(?:tenho|tem)\s+(?:guardado|juntado|economizado|poupado)\b').hasMatch(s)) {
       final m = RegExp(r'\bmetas?\s+(?:d[aeo]s?\s+)?(.+)$').firstMatch(s) ??
-          RegExp(r'(?:guardei|juntei|economizei|poupei)\s+(?:pra|para|pro|na|no)\s+(?:a\s+|o\s+)?(.+)$').firstMatch(s);
+          RegExp(r'(?:guardei|juntei|economizei|poupei|guardado|juntado|economizado|poupado)\s+(?:pra|para|pro|na|no)\s+(?:a\s+|o\s+)?(.+)$').firstMatch(s);
       return QaQuery(QaKind.goals, term: m == null ? '' : _cleanTerm(m.group(1)!));
     }
 
@@ -274,20 +329,23 @@ class FinancialQaEngine {
       return QaQuery(QaKind.debtors, term: person == null || notNames.contains(person) ? '' : person);
     }
 
-    // Largest / smallest expense.
-    final extreme = RegExp(r'\b(maior(?:es)?|mais\s+car[oa]s?|menor(?:es)?|mais\s+barat[oa]s?)\s+(?:gastos?|despesas?|compras?|lancamentos?|saidas?)\b').firstMatch(s) ??
-        RegExp(r'\b(?:gastos?|despesas?|compras?)\s+(mais\s+car[oa]s?|mais\s+barat[oa]s?)\b').firstMatch(s);
+    // Largest / smallest expense ("o mais salgado", "o segundo maior").
+    final extreme = _extremeLead.firstMatch(s) ?? _extremeTail.firstMatch(s);
     if (extreme != null) {
       final w = extreme.group(1)!;
-      final smallest = w.startsWith('menor') || w.contains('barat');
+      final smallest = w.contains('menor') || w.contains('barat');
       final plural = w.endsWith('es') || w.endsWith('os') || w.endsWith('as');
+      final rank = _rankOf(w);
       final n = RegExp(r'\b(\d+|dois|duas|tres|cinco|dez)\s+(?:maiores|menores)').firstMatch(s);
-      return QaQuery(smallest ? QaKind.smallestExpense : QaKind.largestExpense, period: period, limit: n != null ? _numberWord(n.group(1)!) : (plural ? 3 : 1));
+      return QaQuery(smallest ? QaKind.smallestExpense : QaKind.largestExpense,
+          period: period, limit: rank > 1 ? 1 : (n != null ? _numberWord(n.group(1)!) : (plural ? 3 : 1)), rank: rank);
     }
 
-    // Category ranking: "com o que eu mais gastei?", "onde foi parar meu dinheiro?".
-    if ((RegExp(r'(?:mais\s+gast\w*|gast\w*\s+mais)').hasMatch(s) &&
-            RegExp(r'\b(?:categoria|categorias|onde|com\s+o\s+que|com\s+que|em\s+que|no\s+que|qual|quais)\b').hasMatch(s)) ||
+    // Category ranking: "com o que eu mais gastei?", "onde foi parar meu
+    // dinheiro?", "qual categoria tá pesando mais?".
+    if ((RegExp(r'(?:mais\s+gast\w*|gast\w*\s+mais|(?:pesando|pesa|pesou|pesam|levando|leva|levou|consome|come|comendo)\s+mais|mais\s+pesad[oa])').hasMatch(s) &&
+            RegExp(r'\b(?:categoria|categorias|onde|com\s+o\s+que|com\s+que|em\s+que|no\s+que|qual|quais|o\s+que)\b').hasMatch(s)) ||
+        RegExp(r'\bo\s+que\s+(?:mais\s+)?(?:pesa|pesou|esta\s+pesando|ta\s+pesando)\b').hasMatch(s) ||
         _whereMoneyWent.hasMatch(s)) {
       return QaQuery(QaKind.topCategory, period: period);
     }
@@ -368,6 +426,23 @@ class FinancialQaEngine {
     if (rest.split(' ').length > 6) return null;
     // A number isn't a filter ("e 30 na padaria" is a new expense).
     if (RegExp(r'\d').hasMatch(rest)) return null;
+    // "e o menor?", "e o segundo maior?", "e o segundo?": the other end (or
+    // the next place) of a ranking, with the same period and filter.
+    final ext = RegExp('^(?:o\\s+|a\\s+)?((?:(?:segund|terceir|quart|quint)[oa]\\s+)?(?:$_bigWords|$_smallWords))(?:\\s+(?:gasto|despesa|compra))?\$')
+        .firstMatch(rest);
+    if (ext != null) {
+      final w = ext.group(1)!;
+      final small = w.contains('menor') || w.contains('barat');
+      return QaQuery(small ? QaKind.smallestExpense : QaKind.largestExpense, term: previous.term, period: previous.period, rank: _rankOf(w), limit: 1);
+    }
+    // "quanto falta pra meta da viagem?" ⏎ "e quanto já tenho?": the same goal.
+    if (previous.kind == QaKind.goals && RegExp(r'^(?:quanto\s+)?(?:eu\s+)?(?:ja\s+|ainda\s+)?(?:tenho|guardei|juntei|falta|faltam|economizei)\b').hasMatch(rest)) {
+      return previous;
+    }
+    final nth = RegExp(r'^(?:o\s+|a\s+)?(segund|terceir|quart|quint)[oa](?:\s+(?:gasto|lugar|colocado))?$').firstMatch(rest);
+    if (nth != null && (previous.kind == QaKind.largestExpense || previous.kind == QaKind.smallestExpense)) {
+      return previous.copyWith(rank: _rankOf(nth.group(1)!), limit: 1);
+    }
     final period = periodIn(rest) ?? monthIn(rest);
     final switched = _measureSwitch(rest);
     if (switched != null && switched != previous.kind) {
@@ -433,6 +508,8 @@ class FinancialQaEngine {
         return _dailyBudget(q);
       case QaKind.goals:
         return _goals(q);
+      case QaKind.savings:
+        return _savings(q);
       case QaKind.freeUntilIncome:
         return _freeUntilIncome(q);
       case QaKind.budgetRemaining:
@@ -487,6 +564,18 @@ class FinancialQaEngine {
       final d = CesarText.dayOnly(now).subtract(const Duration(days: 2));
       return DateRangeResult(start: d, end: DateTime(d.year, d.month, d.day, 23, 59, 59), label: 'anteontem', matchedExpression: 'anteontem');
     }
+    // "nos últimos 7 dias": today and the 6 days before it.
+    final lastN = RegExp(r'^n[oa]s\s+últim[oa]s\s+(\d+)\s+(dias|semanas|meses)$').firstMatch(label);
+    if (lastN != null) {
+      final n = int.parse(lastN.group(1)!);
+      final today = CesarText.dayOnly(now);
+      final start = switch (lastN.group(2)) {
+        'dias' => today.subtract(Duration(days: n - 1)),
+        'semanas' => today.subtract(Duration(days: n * 7 - 1)),
+        _ => DateTime(today.year, today.month - n, today.day + 1),
+      };
+      return DateRangeResult(start: start, end: DateTime(today.year, today.month, today.day, 23, 59, 59), label: label, matchedExpression: label);
+    }
     return TemporalDateParser.parse(label, referenceDate: now) ?? TemporalDateParser.parse('este mês', referenceDate: now)!;
   }
 
@@ -511,6 +600,8 @@ class FinancialQaEngine {
 
   bool _matchesTerm(FinancialTransaction t, String term) {
     if (term.isEmpty) return true;
+    final pay = _paymentCode(term);
+    if (pay != null) return t.paymentMethod == pay;
     final folded = CesarText.fold(term);
     if (CesarText.fold(t.title).contains(folded)) return true;
     final code = CesarText.resolveCategory(term, repository.budgets);
@@ -573,6 +664,9 @@ class FinancialQaEngine {
     return ' com ${_originalSpelling(term, originalText)}';
   }
 
+  /// [folded] as a brand is spelled in some title ("ifood" → "iFood").
+  String _titleSpelling(String folded) => CesarText.brandSpelling(folded, repository.transactions.map((t) => t.title));
+
   /// The substring of [original] that folds to [folded] ("saúde" for "saude").
   static String _originalSpelling(String folded, String? original) {
     if (original == null) return folded;
@@ -613,6 +707,17 @@ class FinancialQaEngine {
     }
     final word = smallest ? 'menor' : 'maior';
     final now = _clock();
+    if (q.rank > 1) {
+      const ordinal = {2: 'segundo', 3: 'terceiro', 4: 'quarto', 5: 'quinto'};
+      if (items.length < q.rank) {
+        final text = 'Você só tem ${items.length} ${items.length == 1 ? 'gasto' : 'gastos'} $when, então não há um ${ordinal[q.rank]} $word.';
+        return QaAnswer(text: text, spokenText: text, query: q);
+      }
+      final t = items[q.rank - 1];
+      final text = 'Seu ${ordinal[q.rank]} $word gasto $when foi **${t.title}**: ${CesarText.money(t.amount)} em ${CesarText.ddmm(t.date)}'
+          '${t.paymentMethod == 'unknown' ? '' : ' (${CesarText.paymentName(t.paymentMethod)})'}.';
+      return QaAnswer(text: text, spokenText: text.replaceAll('**', ''), query: q);
+    }
     if (q.limit <= 1) {
       final t = items.first;
       final cat = CesarText.categoryName(t.category, repository.budgets);
@@ -777,6 +882,29 @@ class FinancialQaEngine {
     return QaAnswer(text: '🧮 $spoken', spokenText: spoken, query: q);
   }
 
+  /// "quanto eu economizei esse mês?": income minus spending in the period.
+  QaAnswer _savings(QaQuery q) {
+    final r = _range(q.period);
+    final income = _inRange(r, (t) => t.type == TransactionType.income).fold(0.0, (a, t) => a + t.amount);
+    final spent = _inRange(r, (t) => t.type != TransactionType.income && !t.isInternalTransfer).fold(0.0, (a, t) => a + t.amount);
+    final when = _periodPhrase(r.label);
+    final left = income - spent;
+    final String spoken;
+    if (income <= 0 && spent <= 0) {
+      spoken = 'Não tenho entradas nem saídas registradas $when.';
+    } else if (left >= 0) {
+      final pct = income > 0 ? ' (${(left / income * 100).round()}% do que entrou)' : '';
+      spoken = '${_capitalized(when)} entraram ${CesarText.money(income)} e saíram ${CesarText.money(spent)}: você economizou ${CesarText.money(left)}$pct.';
+    } else {
+      spoken = '${_capitalized(when)} entraram ${CesarText.money(income)} e saíram ${CesarText.money(spent)}: você gastou ${CesarText.money(-left)} a mais do que entrou.';
+    }
+    final saved = repository.goals.fold(0.0, (a, g) => a + g.savedAmount);
+    final goals = saved > 0 ? '\n\n🎯 Nas suas metas, você tem ${CesarText.money(saved)} guardados.' : '';
+    return QaAnswer(text: '💰 $spoken$goals', spokenText: spoken, query: q);
+  }
+
+  static String _capitalized(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
   QaAnswer _goals(QaQuery q) {
     final active = repository.goals.where((g) => !g.isCompleted).toList();
     final all = repository.goals;
@@ -809,6 +937,7 @@ class FinancialQaEngine {
   }
 
   QaAnswer _budgetRemaining(QaQuery q) {
+    if (q.term.isEmpty) return _budgetsOverview(q);
     final code = CesarText.resolveCategory(q.term, repository.budgets);
     final budget = code == null ? null : repository.budgets.where((b) => b.category == code).firstOrNull;
     if (budget == null) {
@@ -826,26 +955,65 @@ class FinancialQaEngine {
     return QaAnswer(text: spoken, spokenText: spoken, query: q);
   }
 
+  /// "estou dentro do orçamento?": every category with a limit, the ones
+  /// over it and the ones close to it.
+  QaAnswer _budgetsOverview(QaQuery q) {
+    final withLimit = repository.budgets.where((b) => b.monthlyLimit > 0).toList();
+    if (withLimit.isEmpty) {
+      const text = 'Você ainda não tem limites definidos. Diga, por exemplo, "meu limite de mercado é 800" que eu passo a acompanhar.';
+      return QaAnswer(text: text, spokenText: text, query: q);
+    }
+    final over = withLimit.where((b) => b.isOverBudget).toList();
+    final near = withLimit.where((b) => b.isNearLimit).toList();
+    final spent = withLimit.fold(0.0, (a, b) => a + b.currentSpent);
+    final limits = withLimit.fold(0.0, (a, b) => a + b.monthlyLimit);
+    final total = 'No total, você usou ${CesarText.money(spent)} de ${CesarText.money(limits)} (${(spent / limits * 100).round()}%).';
+    String pct(BudgetCategory b) => '${b.name} (${(b.currentSpent / b.monthlyLimit * 100).round()}%)';
+    final String head, icon;
+    if (over.isEmpty && near.isEmpty) {
+      icon = '✅';
+      head = 'Sim! Você está dentro de todos os ${withLimit.length} orçamentos este mês.';
+    } else if (over.isEmpty) {
+      icon = '🟡';
+      head = 'Está dentro, mas perto do limite em ${near.map(pct).join(' e ')}.';
+    } else {
+      icon = '🔴';
+      head = 'Você passou do limite em ${over.map((b) => '${b.name} (${CesarText.money(b.currentSpent - b.monthlyLimit)} acima)').join(' e ')}'
+          '${near.isEmpty ? '' : '; perto do limite: ${near.map(pct).join(' e ')}'}.';
+    }
+    final list = withLimit
+        .map((b) => '- ${b.name}: ${CesarText.money(b.currentSpent)} de ${CesarText.money(b.monthlyLimit)} (${(b.currentSpent / b.monthlyLimit * 100).round()}%)')
+        .join('\n');
+    return QaAnswer(text: '$icon $head $total\n\n$list', spokenText: '$head $total', query: q);
+  }
+
   QaAnswer _comparison(QaQuery q) {
     final now = _clock();
     // This month (or week) against the period named — "que em agosto",
     // "que a semana passada" — or, by default, the month before.
     final versus = q.period ?? 'mês passado';
     final weekly = versus == 'semana passada';
-    double spentIn(DateRangeResult r) => _inRange(r, (t) => t.type != TransactionType.income).fold(0.0, (a, t) => a + t.amount);
-    final cur = weekly ? spentIn(_range('esta semana')) : _month(now).expense;
-    final prev = versus == 'mês passado' ? _month(DateTime(now.year, now.month - 1)).expense : spentIn(_range(versus));
+    final filter = q.term.isEmpty ? (FinancialTransaction t) => true : _titleOrCategory(q.term);
+    double spentIn(DateRangeResult r) => _inRange(r, (t) => t.type != TransactionType.income && filter(t)).fold(0.0, (a, t) => a + t.amount);
+    double monthOf(DateTime ref) => q.term.isEmpty
+        ? _month(ref).expense
+        : repository.transactions
+            .where((t) => t.type != TransactionType.income && t.date.year == ref.year && t.date.month == ref.month && filter(t))
+            .fold(0.0, (a, t) => a + t.amount);
+    final cur = weekly ? spentIn(_range('esta semana')) : monthOf(now);
+    final prev = versus == 'mês passado' ? monthOf(DateTime(now.year, now.month - 1)) : spentIn(_range(versus));
     final curLabel = weekly ? 'Esta semana' : 'Este mês';
     final prevLabel = versus == 'mês passado' ? 'no mês passado' : (weekly ? 'na semana passada' : versus);
+    final what = q.term.isEmpty ? '' : (_paymentCode(q.term) != null ? _termPhrase(q.term, null) : ' com ${_titleSpelling(q.term)}');
     final String spoken;
     if (prev <= 0) {
-      spoken = '$curLabel você gastou ${CesarText.money(cur)}. Não tenho gastos registrados $prevLabel para comparar.';
+      spoken = '$curLabel você gastou ${CesarText.money(cur)}$what. Não tenho gastos${what.isEmpty ? '' : what} registrados $prevLabel para comparar.';
     } else {
       final diff = cur - prev;
       final pct = (diff.abs() / prev * 100).round();
       final trend = diff.abs() < 0.01 ? 'o mesmo que' : (diff > 0 ? '$pct% a mais que' : '$pct% a menos que');
       final ref = versus == 'mês passado' ? 'o mês passado' : prevLabel;
-      spoken = '$curLabel você gastou ${CesarText.money(cur)}; $prevLabel, ${CesarText.money(prev)}. Isso é $trend $ref.';
+      spoken = '$curLabel você gastou ${CesarText.money(cur)}$what; $prevLabel, ${CesarText.money(prev)}. Isso é $trend $ref.';
     }
     return QaAnswer(text: '📈 $spoken', spokenText: spoken, query: q);
   }

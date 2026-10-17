@@ -1,0 +1,7 @@
+# Um cenário por linha; turnos separados por " ⏎ ". Rode:
+#   flutter test test/_qa/phrase_probe_test.dart 2>&1 | grep -E "^PP\||^   =>|^   \+\+"
+a gasolina subiu de novo, absurdo
+preciso parar de pedir ifood ⏎ sim
+paguei 90 ⏎ luz ⏎ boleto
+qual meu maior gasto do mês? ⏎ e o segundo maior?
+peguei um uber de 32 até o centro e voltei de ônibus por 5,50 no pix

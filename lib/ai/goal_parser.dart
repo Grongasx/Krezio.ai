@@ -87,6 +87,9 @@ class GoalParser {
     if (title == null || title.isEmpty) return null;
 
     title = title.replaceAll(RegExp(r'[.!?]+$'), '').trim();
+    // "pra comprar um celular" is the "Celular", "pra fazer uma viagem" the
+    // "Viagem": the verb and its article aren't the name of the goal.
+    title = title.replaceFirst(RegExp(r'^(?:comprar|trocar\s+(?:de|o|a)|pagar|fazer|ter|quitar|dar\s+entrada\s+(?:n[oa]|em))\s+(?:(?:uma|um|o|a|meu|minha)\s+)?'), '').trim();
     if (title.isEmpty) return null;
     return title[0].toUpperCase() + title.substring(1);
   }
