@@ -53,7 +53,10 @@ class RecordLookupParser {
     final when = RegExp('^quando\\s+(?:foi|(?:eu\\s+)?(?:paguei|comprei|gastei\\s+com|lancei))\\s+($_article\\s+.+)\$').firstMatch(s);
     // "quando foi a última vez que paguei aluguel?" asks the Q&A engine
     // ("última vez"), not about one record named here.
-    if (when != null && !RegExp(r'^(?:a|o)\s+(?:ultima|ultimo|primeira|primeiro)\s+(?:vez|dia)').hasMatch(when.group(1)!)) {
+    // ("quando paguei a academia pela última vez?" asks the last of many —
+    // the reports' "última vez".)
+    if (when != null && !RegExp(r'^(?:a|o)\s+(?:ultima|ultimo|primeira|primeiro)\s+(?:vez|dia)').hasMatch(when.group(1)!) &&
+        !RegExp(r'\b(?:ultima|primeira)\s+vez\b').hasMatch(s)) {
       return RecordLookup(LookupAspect.date, when.group(1)!);
     }
 

@@ -315,7 +315,8 @@ class CesarPlanner {
         // "tem boleto vencendo amanhã", "o que vence hoje" (with a day).
         (RegExp(r'\b(?:conta|contas|boleto|boletos|algo|alguma\s+coisa)\s+(?:vencendo|pra\s+vencer|a\s+vencer|que\s+vence\w*)\b|\bo\s+que\s+vence\b').hasMatch(s) &&
             RegExp(r'\b(?:hoje|amanha|semana|mes)\b').hasMatch(s)) ||
-        RegExp(r'\bcomo\s+(?:estao|esta|tao|ta)\s+(?:as\s+coisas|tudo|minhas\s+financas|minha\s+vida\s+financeira)\b').hasMatch(s);
+        // ("como tá minha vida financeira?" is the overview report, not the agenda.)
+        RegExp(r'\bcomo\s+(?:estao|esta|tao|ta)\s+(?:as\s+coisas|tudo)\b').hasMatch(s);
     if (!asksAgenda) return null;
     // Questions with a measure of their own ("o que eu tenho de saldo") are
     // the Q&A engine's.

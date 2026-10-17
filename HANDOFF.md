@@ -83,8 +83,11 @@
 ## Qualidade: como medir (e a armadilha)
 
 - Baterias que só imprimem (não falham a suíte), em `test/_qa/`:
-  - `conversation_probe_test.dart` — 217/217 (**saturada**, não mede mais nada).
-  - `conversation_r2_probe_test.dart` — 279/279 (frases inéditas da rodada 2; **também saturada**).
+  - `conversation_probe_test.dart` — 216/217 (**saturada**; a que falta é "paguei a fatura do cartão de 1800", que por
+    decisão — card #43 — não vira gasto).
+  - `conversation_r2_probe_test.dart` — 275/279 (**também saturada**; 2 dependem do mês: foram escritas em setembro com
+    "setembro" = mês atual; 2 só de rota: "faz um resumo do mês" vai ao planejador e "qual é a média que eu gasto por dia?"
+    ao consultor, com a resposta certa).
   - `holdout_probe_test.dart` — 30 frases de conferência independente (~2/3 corretas).
   - **`conversation_r3_probe_test.dart`** — rodada 3, 267 frases inéditas + 20 do eixo "futuro".
     **É a medida atual**: 210/267 antes do lote A → **216/267** depois; futuro 0/20.

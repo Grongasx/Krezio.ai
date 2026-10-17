@@ -274,7 +274,11 @@ class CesarAdvisor {
 
   /// "qual foi o mês que eu mais gastei?": the months with data, by total.
   Advice? _peakMonth(String s) {
-    if (!RegExp(r'\b(?:qual|que|em\s+que)\s+(?:foi\s+)?(?:o\s+)?mes\b').hasMatch(s) || !RegExp(r'\b(?:mais|menos)\s+(?:eu\s+)?gast|\bgastei\s+(?:mais|menos)\b').hasMatch(s)) {
+    // "qual foi o mês que eu mais gastei?", "em que mês eu gastei menos?" —
+    // not "gastei mais que mês passado?" (a comparison).
+    if (!RegExp(r'\b(?:qual|em\s+qual|em\s+que|que)\s+(?:foi\s+)?(?:o\s+)?mes\b(?!\s+(?:passado|anterior|retrasado))').hasMatch(s) ||
+        !RegExp(r'\b(?:mais|menos)\s+(?:eu\s+)?gast|\bgastei\s+(?:mais|menos)\b').hasMatch(s) ||
+        RegExp(r'\b(?:mais|menos)\s+(?:do\s+)?que\s+(?:o\s+|no\s+|em\s+)?mes\b').hasMatch(s)) {
       return null;
     }
     final least = RegExp(r'\bmenos\b').hasMatch(s);

@@ -124,7 +124,7 @@ class CesarCommentary {
   static final _moodMonth = RegExp(r'\b(?:esse|este|o)\s+mes\s+(?:foi|ta|esta|tava)\s+(?:dificil|puxado|pesado|complicado|apertado|osso|tenso)\b|'
       r'\bmes\s+(?:dificil|puxado|pesado|complicado|apertado)\b|\b(?:que\s+caro\s+(?:ta|esta)\s+tudo|(?:ta|esta)\s+tudo\s+(?:muito\s+|tao\s+)?caro|tudo\s+(?:ta|esta)\s+(?:muito\s+)?caro)\b|'
       r'\b(?:a\s+vida|as\s+coisas|tudo)\s+(?:ta|esta|anda|tao|estao)\s+(?:muito\s+|tao\s+|cada\s+vez\s+mais\s+|bem\s+)?car[ao]s?\b|'
-      r'\b(?:to|tou|estou|vou\s+ficar|fico)\s+(?:ferrad[oa]|lascad[oa]|quebrad[oa]|na\s+pior|no\s+vermelho)\b');
+      r'\b(?:to|tou|estou|vou\s+ficar|fico)\s+(?:ferrad[oa]|lascad[oa]|quebrad[oa]|na\s+pior)\b');
   static final _dollar = RegExp(r'\b(?:dolar|euro|cambio)\b');
   static final _positive = RegExp(r'\b(?:tava|estava|foi|ta|esta)\s+(?:muito\s+|bem\s+|super\s+)?(?:otim[oa]|boa|bom|legal|top|show|incrivel|maravilhos[oa]|uma\s+delicia|delicios[oa]|barat[oa]|em\s+conta)\b');
   static final _hate = RegExp(r'\b(?:odeio|detesto|nao\s+suporto|nao\s+aguento(?:\s+mais)?|que\s+raiva\s+de)\b');
@@ -137,6 +137,9 @@ class CesarCommentary {
     if (s.isEmpty || RegExp(r'\d').hasMatch(s) || _question.hasMatch(s) || _requests.hasMatch(s)) return null;
     if (_entryVerb.hasMatch(s) && !_intensity.hasMatch(s)) return null;
     final thing = _thingIn(s);
+    // "tô gastando demais?", "tô no vermelho?": a yes/no question about the
+    // month as a whole is the reports' (only one about a thing stays here).
+    if (original.trim().endsWith('?') && thing == null) return null;
 
     if (_hate.hasMatch(s)) return _hateReply(s);
     if (_control.hasMatch(s)) return _controlReply();
