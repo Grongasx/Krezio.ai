@@ -42,7 +42,8 @@ class RecordLookupParser {
     // "qual foi o valor do restaurante?", "qual a data da farmácia?"
     final field = RegExp('^(?:qual|quais)\\s+(?:foi|e|era)?\\s*(?:o|a)?\\s*(valor|preco|data|dia|forma\\s+de\\s+pagamento|pagamento|categoria)\\s+(?:d[oa]|de)\\s+(.+)\$')
         .firstMatch(s);
-    if (field != null) return RecordLookup(_aspect(field.group(1)!), field.group(2)!);
+    // ("qual dia da semana eu mais gasto?" asks about a pattern, not a record.)
+    if (field != null && !RegExp(r'^(?:semana|mes)\b').hasMatch(field.group(2)!)) return RecordLookup(_aspect(field.group(1)!), field.group(2)!);
 
     // "quanto foi o restaurante?", "quanto deu o uber de ontem?", "quanto custou a pizza?"
     final howMuch = RegExp('^quanto\\s+(?:foi|deu|custou|saiu|ficou)\\s+($_article\\s+.+)\$').firstMatch(s);

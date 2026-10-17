@@ -338,11 +338,31 @@ class CesarAssistant {
       }
     }
 
+    // "em 3x", "foi à vista" right after a purchase was recorded or changed:
+    // how it was split (it was "Não consegui identificar essa transação").
+    if (justChanged) {
+      final split = _splitAnswer.firstMatch(s);
+      final targets = _lastTargets();
+      if (split != null && targets.length == 1 && targets.first.type == TransactionType.expense) {
+        final n = int.tryParse(split.group(1) ?? split.group(2) ?? '') ?? 1;
+        final onCard = targets.first.paymentMethod == 'credit_card';
+        if (onCard && n == 1 && (targets.first.installments ?? 1) <= 1) {
+          return const AssistantReply('Combinado: fica à vista no cartão de crédito. 👍', route: 'confirm');
+        }
+        if (onCard || n > 1) {
+          return _applyEdit(targets, TransactionChanges(installments: n, paymentMethod: onCard ? null : 'credit_card'), text);
+        }
+      }
+    }
+
     final cmd = TransactionCommandParser.parse(text, now: _clock(), budgets: repository.budgets);
     if (cmd == null) return null;
     if (nonEvent && cmd.kind != ChatCommandKind.delete) return null;
     return _runCommand(cmd, text);
   }
+
+  static final _splitAnswer = RegExp(r'^(?:(?:foi|era|e|eh|mas\s+foi|na\s+verdade)\s+)?(?:(?:em|de)\s+)?(\d{1,2})\s*(?:x|vezes|parcelas)$|'
+      r'^(?:(?:foi|era|e|eh|mas\s+foi|na\s+verdade)\s+)?(?:a\s+vista|avista|sem\s+parcelar|numa\s+vez\s+so|de\s+uma\s+vez)$|^parcel(?:ei|ado|ada|amos)\s+em\s+(\d{1,2})(?:\s*(?:x|vezes))?$');
 
   /// With a draft still being asked about, a command that names another
   /// record ("apaga o do sacolão", "exclui os dois") acts on that record and
@@ -377,11 +397,23 @@ class CesarAssistant {
   }
 
   /// "o uber e o 99", "o sacolão e a banca": several records in one command.
-  static List<String> _splitTargets(String ref) => CesarText.simplify(ref)
-      .split(RegExp(r'\s+(?:e|mais)\s+(?=(?:o|a|os|as|aquele|aquela|esse|essa|do|da)\s)'))
-      .map((p) => p.trim())
-      .where((p) => p.isNotEmpty)
-      .toList();
+  static const _dayWord = r'(?:hoje|ontem|anteontem|segunda|terca|quarta|quinta|sexta|sabado|domingo|dia\s+\d{1,2})';
+  static final _twoDays = RegExp('^(.*?)\\b(?:de|do|da)?\\s*($_dayWord)\\s+e\\s+(?:o\\s+|a\\s+|os\\s+|as\\s+)?(?:de|do|da)?\\s*($_dayWord)\$');
+
+  static List<String> _splitTargets(String ref) {
+    final s = CesarText.simplify(ref);
+    // "os gastos de ontem e de hoje": the same kind of record on two days.
+    final days = _twoDays.firstMatch(s);
+    if (days != null && days.group(1)!.trim().isNotEmpty) {
+      final head = days.group(1)!.trim();
+      return ['$head de ${days.group(2)}', '$head de ${days.group(3)}'];
+    }
+    return s
+        .split(RegExp(r'\s+(?:e|mais)\s+(?=(?:o|a|os|as|aquele|aquela|esse|essa|do|da)\s)'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+  }
 
   /// One confirmation (or one edit) for every record named (R2-FEAT-002).
   /// Each part must point to one record; otherwise César says which part he
@@ -394,7 +426,8 @@ class CesarAssistant {
       if (r == null || r.matches.isEmpty || r.byCategoryOnly) {
         return AssistantReply('Não achei "$part", então não mexi em nada. Pode repetir só com os que existem?', route: 'not_found');
       }
-      if (r.matches.length > 1 && !_sameGroup(r.matches)) {
+      // ("os gastos de ontem": every record of that part is meant.)
+      if (r.matches.length > 1 && !_sameGroup(r.matches) && !spec.plural) {
         final opts = r.matches.take(3).map((t) => CesarText.describe(t, _clock())).join('; ');
         return AssistantReply('Achei mais de um lançamento para "$part" ($opts), então não mexi em nada. '
             'Me diga um de cada vez, com a data ou o valor — ex.: "${cmd.kind == ChatCommandKind.delete ? 'apaga' : 'muda'} $part de ontem".',
@@ -523,7 +556,9 @@ class CesarAssistant {
       final narrowed = _resolve(spec.copyWith(amount: edit.oldAmount));
       if (narrowed.matches.isNotEmpty) r = narrowed;
     }
-    final demonstrative = RegExp(r'^(?:aquel|daquel)').hasMatch(CesarText.simplify(edit.reference));
+    // "aquele do posto", and "o do cinema", "a da farmácia": pointing back at
+    // a record — nobody records a new purchase that way.
+    final demonstrative = RegExp(r'^(?:aquel|daquel|(?:o|a|os|as)\s+d[oa]s?\s)').hasMatch(CesarText.simplify(edit.reference));
     // "a feira de segunda foi 90" with the Feira on another day: say where it
     // is and ask, instead of recording a new entry or editing another one
     // (CHAOS-R3-004).
@@ -1388,9 +1423,14 @@ class CesarAssistant {
     if (a.category != b.category) {
       out.add('a categoria de ${CesarText.categoryName(a.category, repository.budgets)} para ${CesarText.categoryName(b.category, repository.budgets)}');
     }
-    if (a.paymentMethod != b.paymentMethod || a.installments != b.installments) {
+    if (a.paymentMethod != b.paymentMethod) {
       final inst = (b.installments ?? 1) > 1 ? ' em ${b.installments}x' : '';
       out.add('a forma de pagamento de ${CesarText.paymentName(a.paymentMethod)} para ${CesarText.paymentName(b.paymentMethod)}$inst');
+    } else if ((a.installments ?? 1) != (b.installments ?? 1)) {
+      // Same card, other split: "de à vista para 3x" (it read "de cartão de
+      // crédito para cartão de crédito em 3x").
+      String split(int? n) => (n ?? 1) > 1 ? '${n}x' : 'à vista';
+      out.add('o parcelamento de ${split(a.installments)} para ${split(b.installments)}');
     }
     if (a.title != b.title) out.add('o nome de "${a.title}" para "${b.title}"');
     return out;
@@ -1521,7 +1561,9 @@ class CesarAssistant {
     }
 
     final code = TransactionCode.label(t.id);
-    final day = '${CesarText.relativeDay(t.date, now)} (${t.date.day.toString().padLeft(2, '0')}/${t.date.month.toString().padLeft(2, '0')})';
+    // "anteontem (15/10)", but "13/10" alone — not "13/10 (13/10)".
+    final rel = CesarText.relativeDay(t.date, now);
+    final day = rel == CesarText.ddmm(t.date) ? rel : '$rel (${CesarText.ddmm(t.date)})';
     final pay = CesarText.paymentName(t.paymentMethod);
     final inst = (t.installments ?? 1) > 1 ? ' em ${t.installments}x de ${CesarText.money(t.amount / t.installments!)}' : '';
     final category = repository.budgets.where((b) => b.category == t.category).map((b) => b.name).firstOrNull;

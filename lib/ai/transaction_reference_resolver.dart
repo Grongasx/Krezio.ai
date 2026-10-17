@@ -134,6 +134,10 @@ class TransactionReferenceResolver {
 
   static const _countWords = {'dois': 2, 'duas': 2, 'tres': 3, 'quatro': 4, 'cinco': 5, '2': 2, '3': 3, '4': 4, '5': 5};
 
+  static const _monthNames = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+  static final _monthRef = RegExp(r'\b(?:(?:de|do|da|em|no)\s+)?(?:(mes\s+(?:passado|retrasado))|(?:mes\s+de\s+)?'
+      r'(janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro))\b');
+
   /// Words that carry no search meaning in a reference.
   static const _stop = {
     'o', 'a', 'os', 'as', 'do', 'da', 'dos', 'das', 'de', 'no', 'na', 'nos', 'nas', 'em', 'com', 'pra', 'para', 'pro',
@@ -207,6 +211,26 @@ class TransactionReferenceResolver {
       final matched = d?.matched ?? said.matched;
       if (matched != null) s = s.replaceFirst(matched, ' ');
       if (d != null) dateWords = d.matched;
+    }
+    // "o mercado de setembro", "a luz do mês passado": a whole month — the
+    // most recent one with that name.
+    if (dayStart == null && invalidDate == null) {
+      final month = _monthRef.firstMatch(s);
+      if (month != null) {
+        final DateTime first;
+        if (month.group(1) != null) {
+          first = DateTime(now.year, now.month - (month.group(1)!.endsWith('retrasado') ? 2 : 1));
+          dateLabel = month.group(1)!.endsWith('retrasado') ? 'do mês retrasado' : 'do mês passado';
+        } else {
+          final m = _monthNames.indexOf(month.group(2)!) + 1;
+          first = DateTime(m > now.month ? now.year - 1 : now.year, m);
+          dateLabel = 'de ${month.group(2) == 'marco' ? 'março' : month.group(2)}';
+        }
+        dayStart = first;
+        dayEnd = DateTime(first.year, first.month + 1, 0, 23, 59, 59);
+        dateWords = month.group(0);
+        s = s.replaceFirst(month.group(0)!, ' ');
+      }
     }
 
     // Value: "o de 48", "de R$ 48,90".

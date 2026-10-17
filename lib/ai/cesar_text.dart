@@ -24,13 +24,31 @@ class CesarText {
 
   /// "R$ 1.400,00".
   static String money(double value) {
-    final negative = value < 0;
-    final parts = value.abs().toStringAsFixed(2).split('.');
-    final intPart = parts[0].replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
-    return '${negative ? '-' : ''}R\$ $intPart,${parts[1]}';
+    // Whole cents, half up: 2611,60 ÷ 16 is R$ 163,23 whatever the float
+    // noise of the sum (163,2249999… printed 163,22).
+    final cents = (value.abs() * 100 + 1e-6).round();
+    final negative = value < 0 && cents > 0;
+    final intPart = (cents ~/ 100).toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
+    return '${negative ? '-' : ''}R\$ $intPart,${(cents % 100).toString().padLeft(2, '0')}';
   }
 
   static String ddmm(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+
+  /// [term] as a brand is spelled in one of [titles] ("ifood" → "iFood",
+  /// "tim" → "TIM"); a word only capitalized there ("Mercado") stays as said.
+  static String brandSpelling(String term, Iterable<String> titles) {
+    final f = fold(term);
+    if (f.isEmpty) return term;
+    for (final title in titles) {
+      final folded = fold(title);
+      final i = folded.indexOf(f);
+      if (i < 0 || folded.length != title.length) continue;
+      final said = title.substring(i, i + f.length);
+      final plain = said.toLowerCase();
+      if (said != plain && said != plain[0].toUpperCase() + plain.substring(1)) return said;
+    }
+    return term;
+  }
 
   static DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 

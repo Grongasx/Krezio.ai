@@ -174,7 +174,7 @@ void main() {
     test('pedaço com palavra desconhecida pergunta a categoria, com o nome dito', () {
       for (final e in {
         'paguei 30 no estacionamento e 15 no chaveiro no pix': 'Chaveiro',
-        'comprei 40 de ração e 25 no borracheiro no débito': 'Borracheiro',
+        'comprei 40 de ração e 25 no relojoeiro no débito': 'Relojoeiro',
         'gastei 20 na farmácia e 35 no sapateiro no pix': 'Sapateiro',
       }.entries) {
         final last = engine.parseMulti(e.key).last;

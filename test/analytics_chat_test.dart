@@ -49,7 +49,7 @@ void main() {
   test('o que cortar: delivery e assinaturas, com o efeito nas metas', () {
     final r = chat().send('o que eu devo cortar de gastos?');
     expect(r.route, 'planner:cuts');
-    expect(r.text, allOf(contains('**Delivery**'), contains('**Assinaturas de streaming**'), contains('chega')));
+    expect(r.text, allOf(contains('**Delivery (iFood)**'), contains('**Assinaturas de streaming**'), contains('chega')));
     expect(chat().send('onde eu to gastando demais?').route, 'planner:cuts');
   });
 

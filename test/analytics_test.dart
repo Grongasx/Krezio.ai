@@ -154,7 +154,7 @@ void main() {
     test('acha o delivery e as assinaturas duplicadas, com valores', () {
       final cuts = SavingsCoach(AnalysisContext(repo(), now: now)).cuts();
       final titles = cuts.map((c) => c.title).toList();
-      expect(titles, contains('Delivery'));
+      expect(titles, contains('Delivery (iFood)'));
       expect(titles, contains('Assinaturas de streaming'));
       final streaming = cuts.firstWhere((c) => c.title == 'Assinaturas de streaming');
       expect(streaming.monthly, closeTo(21.9, 0.01), reason: 'fica com a Netflix, corta o Spotify');

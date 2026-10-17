@@ -404,6 +404,11 @@ class EntrySafetyGate {
   /// after dates ("rua 25 de março"), and "hoje" when another day is also
   /// said ("hoje lembrei que gastei … ontem", CHAOS-B-002). Shared by the
   /// engine (to read the date) and the gate (to check it).
+  /// The part of a loan sentence that says when it is paid back: "ele me
+  /// paga dia 10", "vai me devolver mês que vem", "prometeu pagar sexta".
+  static final RegExp loanRepayClause = RegExp(
+      r'\b(?:(?:ele|ela|eles|elas)\s+)?(?:(?:vai|vao|prometeu|prometeram|disse\s+que\s+(?:vai|ia))\s+)?(?:me\s+)?(?:paga|pagam|pagar|devolve|devolvem|devolver|acerta|acertam|acertar)\b[^,;.!?]*');
+
   static String entryDateText(String text, {bool skipDayNumber = false, DateTime? now}) {
     var s = SpokenDayParser.normalizeWeekdays(_fold(PtNumberWords.normalize(text.toLowerCase())));
     // A "se/caso" clause up to its punctuation (hedges keep theirs).
@@ -412,6 +417,11 @@ class EntrySafetyGate {
         // ontem, registra" keeps its "ontem".)
         (m) => RegExp(r'\b[a-z]{3,}ei\b').hasMatch(m.group(0)!) ? m.group(0)! : ' ' * m.group(0)!.length);
     s = s.replaceAll(RegExp(r'\b(?:hj|hoji|oje)\b'), 'hoje');
+    // "emprestei 300 pro carlos, ele me paga dia 10 / mês que vem": the day
+    // after "me paga" is when the money comes back, not when it was lent.
+    if (RegExp(r'\b(?:emprestei|emprestamos|empresto)\b').hasMatch(s)) {
+      s = s.replaceAllMapped(loanRepayClause, (m) => ' ' * m.group(0)!.length);
+    }
     // "mês passado no dia 12 gastei 230" is "dia 12 do mês passado": one
     // date, said month first (ACC-C-020) — read as a span plus a day of
     // this month, it was asked.
