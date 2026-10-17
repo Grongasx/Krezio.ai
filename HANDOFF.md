@@ -117,7 +117,12 @@
 - **PRs abertos, mesclar nesta ordem** (cada branch parte da anterior):
   #71 Fase 1 → #72 Fase 2 → #73 feedback do César → #74 Fase 3 → #75 Fase 5 → #76 Fase 6 → #77 Fase 7 →
   #78 Fase 8 → #79 Fase 9 → #80 Fase 10 → #81 componentes/skeleton/regras → #82 defeitos do César →
-  #83 Firebase → #84 voz masculina/planejador/análises → afinamento de conversa (`feat/cesar-precisao`).
+  #83 Firebase → #84 voz masculina/planejador/análises → #85 afinamento de conversa → #86 recursos novos (`feat/cesar-recursos`).
+- **Recursos novos (#86):** calculadora (`lib/ai/financial_calculator.dart`: porcentagem, juros/Price, à vista × parcelado,
+  quanto rende), busca com filtros (`QaKind.search`: valor, forma de pagamento, nome/nota, período), "por que gastei tanto?",
+  repetidos, "o que você notou?", saldo numa data, "cancelei a netflix", editar metas (valor/prazo/nome) e notas nos
+  lançamentos. Testes: `test/cesar_recursos_test.dart`. O teste de tempo `statement_query_test` ("mil lançamentos… rápido")
+  falha com a máquina carregada (ex.: jogo aberto) e passa sozinho — não é regressão.
 - **BACKLOG.md:** tudo marcado, exceto o que precisa de algo de fora (lista abaixo).
 - **Precisa do usuário / de outro software:**
   - Firebase: `firebase login` + `flutterfire configure`, ativar e-mail/senha, criar o Firestore em

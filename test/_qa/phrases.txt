@@ -1,7 +1,8 @@
 # Um cenário por linha; turnos separados por " ⏎ ". Rode:
 #   flutter test test/_qa/phrase_probe_test.dart 2>&1 | grep -E "^PP\||^   =>|^   \+\+"
-a gasolina subiu de novo, absurdo
-preciso parar de pedir ifood ⏎ sim
-paguei 90 ⏎ luz ⏎ boleto
-qual meu maior gasto do mês? ⏎ e o segundo maior?
-peguei um uber de 32 até o centro e voltei de ônibus por 5,50 no pix
+quanto é 15% de 230?
+vale mais a pena pagar 1000 à vista com 10% de desconto ou em 10x sem juros?
+mostra os gastos acima de 100 esse mês ⏎ e no débito?
+por que eu gastei tanto esse mês?
+cancelei a academia ⏎ sim ⏎ desfaz
+anota no posto de ontem: viagem pra praia ⏎ quais gastos com praia?
