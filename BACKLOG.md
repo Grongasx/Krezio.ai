@@ -86,7 +86,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Criar o repositório central (fonte única da verdade com lançamentos, categorias, orçamentos, metas, lembretes; avisa as telas a cada mudança → nenhuma tela guarda cópia própria dos dados)
 - [x] `Backend` Criar uma fila de gravação sequencial (cada gravação espera a anterior terminar → limpar dados e logo depois lançar algo nunca faz os dados de demonstração voltarem)
 - [x] `Backend` Carregar os dados ao abrir o app e salvar a cada mudança (carregamento antes da primeira tela, gravações agrupadas → fechar o app logo após lançar não perde o lançamento)
-- [ ] `Backend` Criar "Limpar dados" e os dados de demonstração (demonstração só no primeiro uso e sempre com datas no passado → nenhum lançamento de demonstração com data futura) — ⚠️ parcial: os dados de demonstração criam lançamento com data futura (dia 10 do mês)
+- [x] `Backend` Criar "Limpar dados" e os dados de demonstração (demonstração só no primeiro uso e sempre com datas no passado → nenhum lançamento de demonstração com data futura)
 - [x] `QA` Testar a persistência sobrevivendo a reload e restart (lançar, recarregar, conferir; limpar, lançar, recarregar → o que está na memória é igual ao que está no disco)
 
 ### 2.3 Criar a autenticação de usuário
@@ -94,10 +94,10 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [ ] `DevOps` Criar o projeto no Firebase e rodar `flutterfire configure` (plataformas web, Android e Windows → `lib/firebase_options.dart` sem `REPLACE_ME`)
 - [ ] `DevOps` Ativar o login por e-mail e senha no console do Firebase (Authentication → Métodos de login → E-mail/senha → cadastro de teste funciona no console)
 - [x] `Frontend` Criar a tela de login (e-mail + senha, mostrar/ocultar senha, botão desabilitado até os campos serem válidos, carregando durante o envio → erro em PT, ex.: "E-mail ou senha incorretos")
-- [ ] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos) — ⚠️ parcial: login e cadastro na mesma tela; sem aceite de termos
+- [ ] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos) — ⚠️ parcial: nome, e-mail, senha e confirmação prontos; falta o aceite dos termos, que depende dos documentos do card 7.3
 - [x] `Frontend` Criar o fluxo "esqueci minha senha" (pede o e-mail e envia o link do Firebase → sempre mostra "Se o e-mail existir, enviamos um link", sem revelar se a conta existe)
 - [x] `Backend` Criar a lógica de login e as validações (e-mail com formato válido, senha não vazia, códigos do Firebase traduzidos: usuário não encontrado, senha errada, muitas tentativas, sem internet → nenhuma mensagem em inglês)
-- [ ] `Backend` Criar a lógica de cadastro e as validações (senha com 8+ caracteres, com letra e número; e-mail já usado → "Esse e-mail já tem conta. Quer entrar?") — ⚠️ parcial: validação de senha forte não confirmada
+- [x] `Backend` Criar a lógica de cadastro e as validações (senha com 8+ caracteres, com letra e número; e-mail já usado → "Esse e-mail já tem conta. Quer entrar?")
 - [x] `Frontend` Criar o botão "Sair" e a troca de sessão (confirmação antes de sair; ao trocar de usuário, os dados do anterior somem da tela → um usuário nunca vê dados de outro)
 - [x] `Backend` Criar o modo local sem conta (sem Firebase configurado, o app abre direto e guarda tudo no aparelho → nenhuma tela de login quebra o uso offline)
 
@@ -108,8 +108,8 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 - [x] `Backend` Ativar a persistência offline do Firestore (`persistenceEnabled: true` → sem internet o app continua funcionando e envia ao reconectar)
 - [x] `Backend` Criar o serviço de sincronização (local-first: grava local na hora e envia à nuvem com debounce de 2 s → a tela nunca espera a rede)
 - [x] `Backend` Aplicar o snapshot que vem da nuvem no repositório (ao logar em outro aparelho, baixa tudo e substitui o local → os dois aparelhos mostram o mesmo saldo)
-- [ ] `Backend` Tratar duas abas ou dois aparelhos editando ao mesmo tempo (merge por lançamento com data de atualização, não o documento inteiro → uma edição não apaga a outra)
-- [ ] `QA` Testar a sincronização com mocks (offline → online, conflito entre aparelhos, logout no meio do envio → nenhum lançamento perdido ou duplicado)
+- [x] `Backend` Tratar duas abas ou dois aparelhos editando ao mesmo tempo (merge por lançamento com data de atualização, não o documento inteiro → uma edição não apaga a outra)
+- [x] `QA` Testar a sincronização com mocks (offline → online, conflito entre aparelhos, logout no meio do envio → nenhum lançamento perdido ou duplicado)
 
 ---
 
