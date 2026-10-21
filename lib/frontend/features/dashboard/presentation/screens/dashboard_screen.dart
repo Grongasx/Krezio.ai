@@ -156,13 +156,8 @@ class DashboardScreen extends StatelessWidget {
                     const SizedBox(height: KrezioSpace.xl),
 
                     // 4. Category Spending Donut Chart Card
-                    Container(
+                    KrezioCard(
                       padding: const EdgeInsets.all(KrezioSpace.lg),
-                      decoration: BoxDecoration(
-                        color: bgSurface,
-                        borderRadius: KrezioTheme.borderRadius,
-                        border: Border.all(color: borderColor),
-                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -199,13 +194,8 @@ class DashboardScreen extends StatelessWidget {
 
                     // 5. Upcoming Recurring Bills Alert
                     if (upcomingBills.isNotEmpty) ...[
-                      Container(
+                      KrezioCard(
                         padding: const EdgeInsets.all(KrezioSpace.lg),
-                        decoration: BoxDecoration(
-                          color: bgSurface,
-                          borderRadius: KrezioTheme.borderRadius,
-                          border: Border.all(color: borderColor),
-                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -250,13 +240,8 @@ class DashboardScreen extends StatelessWidget {
 
                     // 5.5 Reminders & Receivables Section
                     if (repository.reminders.isNotEmpty) ...[
-                      Container(
+                      KrezioCard(
                         padding: const EdgeInsets.all(KrezioSpace.lg),
-                        decoration: BoxDecoration(
-                          color: bgSurface,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: borderColor),
-                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [

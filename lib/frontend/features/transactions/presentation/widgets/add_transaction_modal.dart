@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 import '../../../../../backend/models/budget_category.dart';
 import '../../../../../backend/models/financial_account.dart';
@@ -429,20 +430,10 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
             const SizedBox(height: KrezioSpace.xl),
 
             // Submit Button
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: KrezioColors.aiPurple,
-                  shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-                ),
-                child: Text(
-                  _isEditing ? 'Salvar Alterações' : 'Salvar Lançamento',
-                  style: const TextStyle(fontSize: KrezioFont.bodyLarge, fontWeight: FontWeight.bold, color: Colors.white),
-                ),
-              ),
+            KrezioButton(
+              label: _isEditing ? 'Salvar Alterações' : 'Salvar Lançamento',
+              expand: true,
+              onPressed: _submit,
             ),
           ],
         ),
