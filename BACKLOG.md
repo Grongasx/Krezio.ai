@@ -343,7 +343,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 `90 pts` · 🔴 **Alta** · `QA`
 - [x] `QA` Escrever testes unitários de todos os parsers e motores da IA (cada regra com casos positivos e controles negativos → toda classe de `lib/ai` com arquivo de teste)
 - [x] `QA` Escrever os testes do repositório (persistência, saldo, orçamentos, metas, desfazer → saldo sempre igual à soma dos lançamentos depois de qualquer operação)
-- [ ] `QA` Escrever os testes de widget das telas principais (login, formulário de lançamento, extrato, chat → os fluxos principais rodam sem erro de layout)
+- [x] `QA` Escrever os testes de widget das telas principais (login, formulário de lançamento, extrato, chat → os fluxos principais rodam sem erro de layout)
 - [x] `QA` Criar a bateria de conversação (centenas de frases reais por eixo: gíria, voz, digitação, multi, perguntas, edição → a medida oficial usa sempre frases inéditas)
 - [x] `QA` Criar o teste do caos (fuzz com seed, entradas hostis, fluxos interrompidos, reinício no meio, invariantes de saldo, duplicata e perda → 0 violação de invariante)
 - [x] `QA` Aplicar a regra contra overfitting (toda correção é estrutural e vem com 5 a 8 frases novas; nunca alterar uma bateria para ela passar → revalidar com frases que o corretor não viu)
@@ -352,7 +352,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 ### 8.2 Processo
 `20 pts` · 🟠 **Média** · `QA` `Produto`
 - [x] `QA` Definir o portão de qualidade por funcionalidade (spec → teste que falha → código → suíte inteira → frases inéditas → caos → revisão → app ao vivo → só passa para a próxima com tudo verde)
-- [ ] `QA` Fazer revisão de código e simplificação a cada entrega (`/code-review` e `/simplify` no diff → achados resolvidos ou justificados por escrito)
+- [x] `QA` Fazer revisão de código e simplificação a cada entrega (`/code-review` e `/simplify` no diff → achados resolvidos ou justificados por escrito)
 - [x] `Produto` Criar o handoff entre sessões e o feedback por etapa (`HANDOFF.md` com o estado atual, `FEEDBACK` com números de cada etapa → qualquer sessão retoma sem reler a conversa)
 
 ---

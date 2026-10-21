@@ -1048,11 +1048,13 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
             const SizedBox(width: KrezioSpace.md),
-            Column(
+            Expanded(
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'César • Krezio.ai',
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: KrezioFont.title,
                     fontWeight: FontWeight.bold,
@@ -1060,12 +1062,14 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 Text(
                   'Seu Copiloto Financeiro On-Device',
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: KrezioFont.caption,
                     color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                   ),
                 ),
               ],
+            ),
             ),
           ],
         ),
@@ -1128,7 +1132,8 @@ class _ChatScreenState extends State<ChatScreen> {
               );
             },
           ),
-          if (_lastLatencyMs > 0)
+          // Latency badge: only where there is room (not on a phone).
+          if (_lastLatencyMs > 0 && MediaQuery.sizeOf(context).width >= 480)
             Container(
               margin: const EdgeInsets.only(right: KrezioSpace.sm),
               padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
@@ -1138,6 +1143,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 border: Border.all(color: KrezioColors.emeraldGreen.withOpacity(0.3)),
               ),
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   const Icon(Icons.bolt, color: KrezioColors.emeraldGreen, size: 14),
                   const SizedBox(width: KrezioSpace.xs),
@@ -1237,11 +1243,14 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ],
           ),
-          IconButton(
-            icon: Icon(isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
-            onPressed: widget.onToggleTheme,
-            tooltip: 'Alternar Tema',
-          ),
+          // The theme switch lives in Ajustes → Aparência; on a phone there
+          // was no room left for the title.
+          if (MediaQuery.sizeOf(context).width >= 480)
+            IconButton(
+              icon: Icon(isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+              onPressed: widget.onToggleTheme,
+              tooltip: 'Alternar Tema',
+            ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: _clearChat,

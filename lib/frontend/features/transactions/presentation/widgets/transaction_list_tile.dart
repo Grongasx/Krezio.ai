@@ -91,11 +91,15 @@ class TransactionListTile extends StatelessWidget {
                     const SizedBox(height: KrezioSpace.xs),
                     Row(
                       children: [
-                        Text(
-                          '$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}',
-                          style: TextStyle(
-                            fontSize: KrezioFont.caption,
-                            color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                        Flexible(
+                          child: Text(
+                            '$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: KrezioFont.caption,
+                              color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                            ),
                           ),
                         ),
                         if (transaction.bankSource != null) ...[
