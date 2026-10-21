@@ -1,4 +1,4 @@
-# Krezio.ai — Handoff para nova sessão (atualizado 2026-10-16)
+# Krezio.ai — Handoff para nova sessão (atualizado 2026-10-17)
 
 > Leia isto antes de qualquer trabalho. É o resumo do estado atual. O histórico completo,
 > sessão por sessão, está em `docs/SESSION_HANDOFF.md` (longo; consulte só o que precisar).
@@ -83,8 +83,11 @@
 ## Qualidade: como medir (e a armadilha)
 
 - Baterias que só imprimem (não falham a suíte), em `test/_qa/`:
-  - `conversation_probe_test.dart` — 217/217 (**saturada**, não mede mais nada).
-  - `conversation_r2_probe_test.dart` — 279/279 (frases inéditas da rodada 2; **também saturada**).
+  - `conversation_probe_test.dart` — 216/217 (**saturada**; a que falta é "paguei a fatura do cartão de 1800", que por
+    decisão — card #43 — não vira gasto).
+  - `conversation_r2_probe_test.dart` — 275/279 (**também saturada**; 2 dependem do mês: foram escritas em setembro com
+    "setembro" = mês atual; 2 só de rota: "faz um resumo do mês" vai ao planejador e "qual é a média que eu gasto por dia?"
+    ao consultor, com a resposta certa).
   - `holdout_probe_test.dart` — 30 frases de conferência independente (~2/3 corretas).
   - **`conversation_r3_probe_test.dart`** — rodada 3, 267 frases inéditas + 20 do eixo "futuro".
     **É a medida atual**: 210/267 antes do lote A → **216/267** depois; futuro 0/20.
@@ -113,7 +116,13 @@
 
 - **PRs abertos, mesclar nesta ordem** (cada branch parte da anterior):
   #71 Fase 1 → #72 Fase 2 → #73 feedback do César → #74 Fase 3 → #75 Fase 5 → #76 Fase 6 → #77 Fase 7 →
-  #78 Fase 8 → #79 Fase 9 → #80 Fase 10 → #81 componentes/skeleton/regras → #82 defeitos do César.
+  #78 Fase 8 → #79 Fase 9 → #80 Fase 10 → #81 componentes/skeleton/regras → #82 defeitos do César →
+  #83 Firebase → #84 voz masculina/planejador/análises → #85 afinamento de conversa → #86 recursos novos (`feat/cesar-recursos`).
+- **Recursos novos (#86):** calculadora (`lib/ai/financial_calculator.dart`: porcentagem, juros/Price, à vista × parcelado,
+  quanto rende), busca com filtros (`QaKind.search`: valor, forma de pagamento, nome/nota, período), "por que gastei tanto?",
+  repetidos, "o que você notou?", saldo numa data, "cancelei a netflix", editar metas (valor/prazo/nome) e notas nos
+  lançamentos. Testes: `test/cesar_recursos_test.dart`. O teste de tempo `statement_query_test` ("mil lançamentos… rápido")
+  falha com a máquina carregada (ex.: jogo aberto) e passa sozinho — não é regressão.
 - **BACKLOG.md:** tudo marcado, exceto o que precisa de algo de fora (lista abaixo).
 - **Precisa do usuário / de outro software:**
   - Firebase: `firebase login` + `flutterfire configure`, ativar e-mail/senha, criar o Firestore em
@@ -123,7 +132,21 @@
   - Open Finance (agregador com contrato) e "Ok Google" (só depois de publicado).
 - **Correção importante no #80:** a `MainActivity` estava em `com.example.krezio_ai`, mas o manifest resolve
   `com.krezio.ai.MainActivity` — o app quebrava ao abrir no Android. Movida para `android/app/src/main/kotlin/com/krezio/ai/`.
-- **Placar do César:** aceite 264/272 (P0: 1, `pm3`, por decisão), conversa 221/267.
+- **Placar do César (17/10):** aceite 263/272 (as falhas são as mesmas de antes + `wknd`, que depende do dia: no sábado
+  "gastei no fim de semana" cai no próprio sábado), **conversa R3 265/267** (era 221) e **futuro 20/20** (era 5). As 2 que
+  sobram ("quanto foi a farmácia?", "quanto foi o gás?") respondem certo pelo lookup do registro; a bateria esperava o relatório.
+- **Afinamento de conversa (branch `feat/cesar-precisao`, PR depois do #84):** corretor de digitação (letra dobrada no fim,
+  k↔c, palavras novas, título corrigido com acento), gírias (`soltei/queimei/derreti`, `mangos`, `dinheirinho`, `rango`,
+  `happy hour`, `mototáxi`, `padoca`), gorjeta/taxa/volta herdando a categoria do item, **`lib/ai/cesar_commentary.dart`**
+  (comentários como "a gasolina subiu", "preciso parar de pedir ifood", "amanhã vou no mercado" respondem com os números
+  e oferecem limite — "sim" aplica, "desfaz" volta; nada é lançado), perguntas novas no QA (últimos N dias, "foi embora",
+  "mais salgado", "e o menor?", "segundo maior", "dentro do orçamento?", comparação de uma coisa, "quanto economizei"),
+  análises novas no `CesarAdvisor` (média por dia/semana/mês por categoria, gasto anual, dia da semana, mês recorde, em quanto
+  tempo junto X, aumento de salário, "quanto eu teria sem o ifood"), referência por mês ("o mercado de setembro foi 530"),
+  "o do cinema foi 46" sem perguntar, "apaga os gastos de ontem e de hoje", fatura do cartão explicada (não vira gasto em dobro),
+  dívida com valor ("tenho uma dívida de 3 mil no cartão, como eu pago?" → plano + "sim" anota), empréstimo com data de
+  cobrança ("ele me paga dia 10"). Testes: `test/cesar_precisao_test.dart`. Ferramenta de inspeção: `test/_qa/phrase_probe_test.dart`
+  lê `test/_qa/phrases.txt` (um cenário por linha, turnos separados por " ⏎ ").
 - **Planejador (`lib/ai/cesar_planner.dart`):** agenda, cobranças, dívidas com parcelas, metas de compra, plano do
   salário, conceitos, conversa; fluxos de vários passos com "desfaz". Baterias de linguagem natural em
   `test/_qa/natural_probe*_test.dart` (a terceira entra no CI via `test/cesar_planner_test.dart`).
@@ -131,8 +154,8 @@
   `CashFlowForecast` (saldo dia a dia, 400 cenários por bootstrap dos gastos diários, semente fixa), e
   `PurchaseAdvisor` / `GoalTracker` / `SavingsCoach`. Só entram com ≥ 30 dias de histórico (antes disso, as regras antigas).
   Histórico sintético de 6 meses para testes: `test/analytics_test.dart` (`history()`, `repo()`).
-- **Armadilha:** não use heredoc de Python no Bash com regex: `\b` vira backspace. Escreva o script com a
-  ferramenta Write e rode o arquivo, ou edite com Edit.
+- **Armadilha:** não use heredoc de Python no Bash com regex: `\b` vira backspace — e a ferramenta Bash ainda troca `\\`
+  por `\` antes de o Python ver. Para código Dart com barra invertida, use só a ferramenta Edit (ou Write).
 - Web local: `flutter build web` e servir `build/web` na porta 8091 (`.claude/launch.json` → `krezio-web`);
   o service worker guarda a versão antiga — limpe-o ao reconferir.
 
@@ -153,11 +176,8 @@ esperadas (suíte vermelha de propósito até terminar); detalhes e prompt em `C
 `test/_qa/chaos_lote_a_test.dart`; achados `docs/qa/findings-aceite-lote-a.md`, `findings-caos-lote-a.md`.
 Decisão nova pendente: "gastei 25 na netflix" vira recorrente só pela categoria (CHAOS-A-022) — desenho ou bug?
 
-**Pendências conhecidas (P2):** "esquece esse último" não oferece apagar; "qual a média que eu
-gasto por dia?" responde o orçamento diário, não a média; "quanto sobra se eu pagar o aluguel?"
-ignora a hipótese; "apaguei as luzes… 20 na padaria" salva título "Luz"; um comentário ("o
-mercado tá caro demais") abre rascunho pedindo valor em vez de só conversar; duas abas no web
-sobrescrevem uma à outra (limitação de arquitetura).
+**Pendências conhecidas (P2):** "esquece esse último" não oferece apagar; "apaguei as luzes… 20 na padaria" salva título
+"Luz"; duas abas no web sobrescrevem uma à outra (limitação de arquitetura).
 
 **Git e backup (importante):** branch atual **`feat/cesar-v0.5`** (criada em 29/09, sem commits próprios);
 último commit `62ab336 v0.4.0`; **~75+ alterações sem commit** (inclui o lote A)

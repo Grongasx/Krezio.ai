@@ -42,7 +42,8 @@ class RecordLookupParser {
     // "qual foi o valor do restaurante?", "qual a data da farmácia?"
     final field = RegExp('^(?:qual|quais)\\s+(?:foi|e|era)?\\s*(?:o|a)?\\s*(valor|preco|data|dia|forma\\s+de\\s+pagamento|pagamento|categoria)\\s+(?:d[oa]|de)\\s+(.+)\$')
         .firstMatch(s);
-    if (field != null) return RecordLookup(_aspect(field.group(1)!), field.group(2)!);
+    // ("qual dia da semana eu mais gasto?" asks about a pattern, not a record.)
+    if (field != null && !RegExp(r'^(?:semana|mes)\b').hasMatch(field.group(2)!)) return RecordLookup(_aspect(field.group(1)!), field.group(2)!);
 
     // "quanto foi o restaurante?", "quanto deu o uber de ontem?", "quanto custou a pizza?"
     final howMuch = RegExp('^quanto\\s+(?:foi|deu|custou|saiu|ficou)\\s+($_article\\s+.+)\$').firstMatch(s);
@@ -52,7 +53,10 @@ class RecordLookupParser {
     final when = RegExp('^quando\\s+(?:foi|(?:eu\\s+)?(?:paguei|comprei|gastei\\s+com|lancei))\\s+($_article\\s+.+)\$').firstMatch(s);
     // "quando foi a última vez que paguei aluguel?" asks the Q&A engine
     // ("última vez"), not about one record named here.
-    if (when != null && !RegExp(r'^(?:a|o)\s+(?:ultima|ultimo|primeira|primeiro)\s+(?:vez|dia)').hasMatch(when.group(1)!)) {
+    // ("quando paguei a academia pela última vez?" asks the last of many —
+    // the reports' "última vez".)
+    if (when != null && !RegExp(r'^(?:a|o)\s+(?:ultima|ultimo|primeira|primeiro)\s+(?:vez|dia)').hasMatch(when.group(1)!) &&
+        !RegExp(r'\b(?:ultima|primeira)\s+vez\b').hasMatch(s)) {
       return RecordLookup(LookupAspect.date, when.group(1)!);
     }
 

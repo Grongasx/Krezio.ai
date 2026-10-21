@@ -11,6 +11,7 @@ import 'goal_command_parser.dart';
 import 'cesar_small_talk.dart';
 import 'cesar_text.dart';
 import 'chat_action_history.dart';
+import 'financial_calculator.dart';
 import 'financial_qa_engine.dart';
 import 'affordability_analyzer.dart';
 import 'financial_report_rag_engine.dart';
@@ -132,7 +133,7 @@ class CesarAssistant {
         if (goal != null) repo.deleteGoal(goal);
         budgets.forEach(repo.setBudgetLimit);
         return true;
-      }, 'Desfiz o que eu tinha criado.'));
+      }, r.undoNote ?? 'Desfiz o que eu tinha criado.'));
       _lastMutationTurn = _turn;
     }
     return AssistantReply(r.text, spokenText: r.spokenText, route: r.route);
@@ -298,6 +299,14 @@ class CesarAssistant {
 
     if (TransactionCommandParser.isUndo(text)) return _undo();
 
+    // "cancelei a netflix": a fixed expense to stop counting — not a record
+    // to delete (only when it names one).
+    final cancelSub = _planner.cancelSubscription(text);
+    if (cancelSub != null) return _fromPlanner(cancelSub);
+
+    final note = _noteCommand(text);
+    if (note != null) return note;
+
     final split = BillSplitParser.parse(text);
     if (split != null) return _recordSplit(split, text);
 
@@ -338,10 +347,77 @@ class CesarAssistant {
       }
     }
 
+    // "em 3x", "foi à vista" right after a purchase was recorded or changed:
+    // how it was split (it was "Não consegui identificar essa transação").
+    if (justChanged) {
+      final split = _splitAnswer.firstMatch(s);
+      final targets = _lastTargets();
+      if (split != null && targets.length == 1 && targets.first.type == TransactionType.expense) {
+        final n = int.tryParse(split.group(1) ?? split.group(2) ?? '') ?? 1;
+        final onCard = targets.first.paymentMethod == 'credit_card';
+        if (onCard && n == 1 && (targets.first.installments ?? 1) <= 1) {
+          return const AssistantReply('Combinado: fica à vista no cartão de crédito. 👍', route: 'confirm');
+        }
+        if (onCard || n > 1) {
+          return _applyEdit(targets, TransactionChanges(installments: n, paymentMethod: onCard ? null : 'credit_card'), text);
+        }
+      }
+    }
+
     final cmd = TransactionCommandParser.parse(text, now: _clock(), budgets: repository.budgets);
     if (cmd == null) return null;
     if (nonEvent && cmd.kind != ChatCommandKind.delete) return null;
     return _runCommand(cmd, text);
+  }
+
+  static final _splitAnswer = RegExp(r'^(?:(?:foi|era|e|eh|mas\s+foi|na\s+verdade)\s+)?(?:(?:em|de)\s+)?(\d{1,2})\s*(?:x|vezes|parcelas)$|'
+      r'^(?:(?:foi|era|e|eh|mas\s+foi|na\s+verdade)\s+)?(?:a\s+vista|avista|sem\s+parcelar|numa\s+vez\s+so|de\s+uma\s+vez)$|^parcel(?:ei|ado|ada|amos)\s+em\s+(\d{1,2})(?:\s*(?:x|vezes))?$');
+
+  static final _noteVerb = RegExp(
+      r'^(?:c[eé]sar[,\s]+)?(?:anota|anote|coloca|coloque|adiciona|adicione|p[oõ]e|bota|escreve|escreva|deixa|salva|salve)\s+(?:uma\s+|um\s+)?'
+      r'(?:nota|observa[cç][aã]o|obs|coment[aá]rio|lembrete)?\s*(?:(?:no|na|nos|nas|em|pro|pra)\s+(.+?)|(nesse|nessa|neste|nesta|nele|nela|nisso)(?:\s+(?:lan[cç]amento|gasto))?)'
+      r'(?:\s*:\s*|\s+[-—–]\s+|\s*,\s*(?=(?:que|foi|era|pra|para|pro|de)\b)|\s+que\s+(?=(?:foi|era|e|é)\b))(.+)$',
+      caseSensitive: false);
+  static final _noteNoun = RegExp(r'^(?:nota|observa[cç][aã]o|obs)\s+(?:(?:no|na|em|pro|pra)\s+(.+?)|(nesse|nessa|nele|nela))(?:\s*:\s*|\s+[-—–]\s+)(.+)$', caseSensitive: false);
+
+  /// "anota no mercado de ontem: churrasco do sábado", "coloca uma
+  /// observação no uber: foi a trabalho": a note on a saved record, shown
+  /// when it is looked up and found by the search ("quais gastos foram do
+  /// churrasco?"). Null when the record named doesn't exist (it may be an
+  /// entry: "anota no caderno: gastei 50 na padaria").
+  AssistantReply? _noteCommand(String text) {
+    final raw = text.trim();
+    final m = _noteVerb.firstMatch(raw) ?? _noteNoun.firstMatch(raw);
+    if (m == null) return null;
+    final note = m.group(3)!.trim().replaceAll(RegExp(r'''^["'“]|["'”.!]$'''), '').trim();
+    if (note.isEmpty || TransactionCommandParser.looksLikeFullEntry(CesarText.simplify(note))) return null;
+    // "anota nesse: …" is the record just made.
+    final spec = TransactionReferenceResolver.parse(m.group(1) ?? 'esse', now: _clock());
+    if (spec.invalidDate != null) return null;
+    final r = spec.isJustLast ? ReferenceResolution(spec, _lastTargets()) : _resolve(spec);
+    if (r.matches.isEmpty || r.byCategoryOnly) return null;
+    final now = _clock();
+    if (r.matches.length > 1 && !_sameGroup(r.matches)) {
+      final list = r.matches.take(3).map((t) => '- ${CesarText.describe(t, now)} ${TransactionCode.label(t.id)}').join('\n');
+      return AssistantReply('Achei ${r.matches.length} lançamentos ${spec.describe()}:\n$list\n\nEm qual deles? Diga, por exemplo, '
+          '"anota no ${TransactionCode.label(r.matches.first.id)}: $note".', route: 'choose');
+    }
+    final t = r.matches.first;
+    final notes = (t.notes ?? '').isEmpty ? note : '${t.notes} · $note';
+    repository.updateTransaction(t.copyWith(notes: notes));
+    history.push(ChatAction(ChatActionKind.edited, [t]));
+    _focus = List.unmodifiable([t.id]);
+    _focusDeleted = false;
+    _lastMutationTurn = _turn;
+    final msg = 'Anotei em **${CesarText.describe(t, now)}**: "$note". Para achar depois, pergunte "quais gastos com ${_noteHint(note)}?".';
+    return AssistantReply('📝 $msg', spokenText: 'Anotei: $note.', route: 'note_added', changedIds: {t.id});
+  }
+
+  /// "compras da festa" → "festa": the most specific word of a note, as typed.
+  static String _noteHint(String note) {
+    const stop = {'para', 'pra', 'pro', 'com', 'minha', 'minhas', 'meu', 'meus', 'uma', 'umas', 'uns', 'sobre', 'foi', 'era', 'que', 'dos', 'das', 'compras', 'gasto', 'gastos'};
+    final words = note.split(RegExp(r'[^A-Za-zÀ-ÿ]+')).where((w) => w.length >= 4 && !stop.contains(CesarText.fold(w))).toList();
+    return words.isEmpty ? note : words.last.toLowerCase();
   }
 
   /// With a draft still being asked about, a command that names another
@@ -377,11 +453,23 @@ class CesarAssistant {
   }
 
   /// "o uber e o 99", "o sacolão e a banca": several records in one command.
-  static List<String> _splitTargets(String ref) => CesarText.simplify(ref)
-      .split(RegExp(r'\s+(?:e|mais)\s+(?=(?:o|a|os|as|aquele|aquela|esse|essa|do|da)\s)'))
-      .map((p) => p.trim())
-      .where((p) => p.isNotEmpty)
-      .toList();
+  static const _dayWord = r'(?:hoje|ontem|anteontem|segunda|terca|quarta|quinta|sexta|sabado|domingo|dia\s+\d{1,2})';
+  static final _twoDays = RegExp('^(.*?)\\b(?:de|do|da)?\\s*($_dayWord)\\s+e\\s+(?:o\\s+|a\\s+|os\\s+|as\\s+)?(?:de|do|da)?\\s*($_dayWord)\$');
+
+  static List<String> _splitTargets(String ref) {
+    final s = CesarText.simplify(ref);
+    // "os gastos de ontem e de hoje": the same kind of record on two days.
+    final days = _twoDays.firstMatch(s);
+    if (days != null && days.group(1)!.trim().isNotEmpty) {
+      final head = days.group(1)!.trim();
+      return ['$head de ${days.group(2)}', '$head de ${days.group(3)}'];
+    }
+    return s
+        .split(RegExp(r'\s+(?:e|mais)\s+(?=(?:o|a|os|as|aquele|aquela|esse|essa|do|da)\s)'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+  }
 
   /// One confirmation (or one edit) for every record named (R2-FEAT-002).
   /// Each part must point to one record; otherwise César says which part he
@@ -394,7 +482,8 @@ class CesarAssistant {
       if (r == null || r.matches.isEmpty || r.byCategoryOnly) {
         return AssistantReply('Não achei "$part", então não mexi em nada. Pode repetir só com os que existem?', route: 'not_found');
       }
-      if (r.matches.length > 1 && !_sameGroup(r.matches)) {
+      // ("os gastos de ontem": every record of that part is meant.)
+      if (r.matches.length > 1 && !_sameGroup(r.matches) && !spec.plural) {
         final opts = r.matches.take(3).map((t) => CesarText.describe(t, _clock())).join('; ');
         return AssistantReply('Achei mais de um lançamento para "$part" ($opts), então não mexi em nada. '
             'Me diga um de cada vez, com a data ou o valor — ex.: "${cmd.kind == ChatCommandKind.delete ? 'apaga' : 'muda'} $part de ontem".',
@@ -523,7 +612,9 @@ class CesarAssistant {
       final narrowed = _resolve(spec.copyWith(amount: edit.oldAmount));
       if (narrowed.matches.isNotEmpty) r = narrowed;
     }
-    final demonstrative = RegExp(r'^(?:aquel|daquel)').hasMatch(CesarText.simplify(edit.reference));
+    // "aquele do posto", and "o do cinema", "a da farmácia": pointing back at
+    // a record — nobody records a new purchase that way.
+    final demonstrative = RegExp(r'^(?:aquel|daquel|(?:o|a|os|as)\s+d[oa]s?\s)').hasMatch(CesarText.simplify(edit.reference));
     // "a feira de segunda foi 90" with the Feira on another day: say where it
     // is and ask, instead of recording a new entry or editing another one
     // (CHAOS-R3-004).
@@ -1388,9 +1479,14 @@ class CesarAssistant {
     if (a.category != b.category) {
       out.add('a categoria de ${CesarText.categoryName(a.category, repository.budgets)} para ${CesarText.categoryName(b.category, repository.budgets)}');
     }
-    if (a.paymentMethod != b.paymentMethod || a.installments != b.installments) {
+    if (a.paymentMethod != b.paymentMethod) {
       final inst = (b.installments ?? 1) > 1 ? ' em ${b.installments}x' : '';
       out.add('a forma de pagamento de ${CesarText.paymentName(a.paymentMethod)} para ${CesarText.paymentName(b.paymentMethod)}$inst');
+    } else if ((a.installments ?? 1) != (b.installments ?? 1)) {
+      // Same card, other split: "de à vista para 3x" (it read "de cartão de
+      // crédito para cartão de crédito em 3x").
+      String split(int? n) => (n ?? 1) > 1 ? '${n}x' : 'à vista';
+      out.add('o parcelamento de ${split(a.installments)} para ${split(b.installments)}');
     }
     if (a.title != b.title) out.add('o nome de "${a.title}" para "${b.title}"');
     return out;
@@ -1449,6 +1545,10 @@ class CesarAssistant {
   AssistantReply? handleQuestion(String text) {
     final pref = _preferenceCommand(text);
     if (pref != null) return pref;
+
+    // "quanto é 15% de 230?", "à vista com 10% ou 10x sem juros?": the math.
+    final calc = FinancialCalculator.answer(text);
+    if (calc != null) return AssistantReply(calc.text, spokenText: calc.spokenText, route: calc.route);
 
     final plan = _planner.start(text);
     if (plan != null) return _fromPlanner(plan);
@@ -1521,11 +1621,13 @@ class CesarAssistant {
     }
 
     final code = TransactionCode.label(t.id);
-    final day = '${CesarText.relativeDay(t.date, now)} (${t.date.day.toString().padLeft(2, '0')}/${t.date.month.toString().padLeft(2, '0')})';
+    // "anteontem (15/10)", but "13/10" alone — not "13/10 (13/10)".
+    final rel = CesarText.relativeDay(t.date, now);
+    final day = rel == CesarText.ddmm(t.date) ? rel : '$rel (${CesarText.ddmm(t.date)})';
     final pay = CesarText.paymentName(t.paymentMethod);
     final inst = (t.installments ?? 1) > 1 ? ' em ${t.installments}x de ${CesarText.money(t.amount / t.installments!)}' : '';
     final category = repository.budgets.where((b) => b.category == t.category).map((b) => b.name).firstOrNull;
-    final String answer;
+    String answer;
     switch (q.aspect) {
       case LookupAspect.amount:
         answer = '**${t.title}** $code foi de **${CesarText.money(t.amount)}**$inst, $day.';
@@ -1540,8 +1642,11 @@ class CesarAssistant {
             '- Valor: ${CesarText.money(t.amount)}$inst\n'
             '- Data: $day\n'
             '- Pagamento: $pay\n'
-            '${category == null ? '' : '- Categoria: $category\n'}';
+            '${category == null ? '' : '- Categoria: $category\n'}'
+            '${(t.notes ?? '').isEmpty ? '' : '- Nota: ${t.notes}\n'}';
     }
+    // A note said back with any aspect asked: "o mercado de ontem foi R$ 45 — 📝 churrasco".
+    if (q.aspect != LookupAspect.all && (t.notes ?? '').isNotEmpty) answer += ' 📝 ${t.notes}';
     final follow = '\nQuer mudar algo? É só dizer, ex.: "foi ${(t.amount + 10).toStringAsFixed(0)}", "foi no débito" ou "apaga ele".';
     return AssistantReply('$answer$follow', spokenText: answer.replaceAll('**', '').replaceAll('📌 ', '').replaceAll('\n- ', '. '), route: 'lookup');
   }

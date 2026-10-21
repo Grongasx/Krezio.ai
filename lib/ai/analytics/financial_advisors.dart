@@ -315,6 +315,11 @@ class SavingsCoach {
   /// Share of the income above which a category is usually too much.
   static const _benchmarks = {'leisure': 0.10, 'transport': 0.15, 'supermarket': 0.20, 'expense_other': 0.08};
 
+  static const _deliveryApps = {
+    r'\bi\s*food\b': 'iFood', r'\brappi\b': 'Rappi', r'\bze\s+delivery\b': 'Zé Delivery', r'\baiqfome\b': 'Aiqfome',
+    r'\buber\s+eats\b': 'Uber Eats', r'\b99\s*food\b': '99Food', r'\bjames\b': 'James',
+  };
+
   String _name(String code) => CesarText.categoryName(code, ctx.repository.budgets);
 
   List<CutSuggestion> cuts() {
@@ -339,9 +344,14 @@ class SavingsCoach {
         final spiking = months >= 2 && recentTotal > total * 1.25;
         // Whatever is bigger: back to the usual month, or half the orders.
         final saving = spiking ? max(recentTotal - total, recentTotal / 2) : total / 2;
+        // Named by the apps used: "Delivery (iFood)".
+        final apps = <String>{
+          for (final t in delivery)
+            if (_deliveryApps.entries.where((e) => RegExp(e.key).hasMatch(CesarText.fold(t.title))).firstOrNull case final e?) e.value,
+        };
         out.add(CutSuggestion(
           category: deliveryCategory,
-          title: 'Delivery',
+          title: apps.isEmpty ? 'Delivery' : 'Delivery (${apps.take(2).join(', ')})',
           detail: spiking
               ? 'Nos últimos 30 dias foram ${recent.length} pedidos (${CesarText.money(recentTotal)}), bem acima da sua média de ${CesarText.money(total)} por mês '
                   '(${perMonth.round()} pedidos, ticket de ${CesarText.money(ticket)}). Voltar ao normal — ou pedir metade das vezes — economiza ${CesarText.money(saving)} por mês.'

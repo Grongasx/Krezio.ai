@@ -1006,6 +1006,16 @@ class FinancialRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Replaces the goal with the same id ("adia a meta da viagem pra julho").
+  /// A target or value that isn't a real amount is refused.
+  void updateGoal(FinancialGoal goal) {
+    final idx = _goals.indexWhere((g) => g.id == goal.id);
+    if (idx == -1 || !_isStorableAmount(goal.targetAmount) || goal.targetAmount <= 0) return;
+    _goals[idx] = goal.copyWith(isCompleted: goal.savedAmount >= goal.targetAmount);
+    _persistAll();
+    notifyListeners();
+  }
+
   /// Finds an active (not completed) goal whose title matches [term] (substring,
   /// case/accent-insensitive) — used to resolve "quero colocar 200 na minha
   /// viagem" to the right goal.
