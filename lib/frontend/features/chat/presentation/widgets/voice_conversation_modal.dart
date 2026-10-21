@@ -57,6 +57,10 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
       duration: const Duration(seconds: 10),
     )..repeat();
 
+    // "tchau César" or 10 s of silence in hands-free close the conversation.
+    widget.controller.onConversationEnded = () {
+      if (mounted) Navigator.of(context).maybePop();
+    };
     widget.controller.initialize().then((_) {
       if (mounted) {
         widget.controller.startConversation(speakGreeting: true);
@@ -412,7 +416,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   primaryGlow = const Color(0xFF06B6D4); // Cyan Neon
                   secondaryGlow = const Color(0xFF3B82F6); // Electric Blue
                   accentCore = const Color(0xFF67E8F9);
-                  statusLabel = 'Ouvindo você...';
+                  statusLabel = 'Ouvindo você... (diga "tchau César" para encerrar)';
                 } else if (state == VoiceState.thinking) {
                   primaryGlow = KrezioColors.aiPurple; // Deep AI Purple
                   secondaryGlow = const Color(0xFFEC4899); // Hot Pink

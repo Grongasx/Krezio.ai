@@ -57,6 +57,48 @@ class VoiceConversationController {
   Timer? _speechTimeoutTimer;
   Timer? _silenceDebounceTimer;
 
+  /// Hands-free ends after this long listening without hearing anything.
+  Duration idleTimeout = const Duration(seconds: 10);
+  Timer? _idleTimer;
+
+  /// Set by "tchau César": the conversation ends once César says goodbye.
+  bool _endAfterSpeaking = false;
+
+  /// The hands-free conversation ended by itself ("tchau César" or silence).
+  VoidCallback? onConversationEnded;
+
+  /// "tchau", "tchau César", "até mais", "pode parar", "obrigado, tchau".
+  static bool isGoodbye(String phrase) {
+    var s = phrase.toLowerCase().trim();
+    const from = 'áàâãéêíóôõúç';
+    const to = 'aaaaeeiooouc';
+    for (var i = 0; i < from.length; i++) {
+      s = s.replaceAll(from[i], to[i]);
+    }
+    s = s.replaceAll(RegExp(r'[.,!?]'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+    return RegExp(r'^(?:(?:ok|ta|beleza|valeu|obrigad[oa]|era\s+isso|so\s+isso)\s+)*'
+            r'(?:tchau|ate\s+mais|ate\s+logo|ate\s+amanha|ate\s+depois|encerra|encerrar|pode\s+parar|para\s+de\s+ouvir|desliga|fim)'
+            r'(?:\s+(?:cesar|obrigad[oa]))*$')
+        .hasMatch(s);
+  }
+
+  void _armIdleTimer() {
+    _idleTimer?.cancel();
+    if (!isHandsFreeNotifier.value) return;
+    _idleTimer = Timer(idleTimeout, () {
+      if (_isDisposed || stateNotifier.value != VoiceState.listening) return;
+      if (userTranscriptNotifier.value.trim().isNotEmpty) return;
+      _endConversation();
+    });
+  }
+
+  Future<void> _endConversation() async {
+    _endAfterSpeaking = false;
+    _idleTimer?.cancel();
+    await stopConversation();
+    if (!_isDisposed) onConversationEnded?.call();
+  }
+
   void Function(FinancialTransactionDraft completedDraft)? onTransactionCompleted;
   void Function(ReportRagResult reportResult)? onReportGenerated;
 
@@ -138,6 +180,7 @@ class VoiceConversationController {
     }
 
     await _startListeningInternal();
+    _armIdleTimer();
   }
 
   Future<void> _startListeningInternal() async {
@@ -163,6 +206,7 @@ class VoiceConversationController {
           final words = result.recognizedWords.trim();
           if (words.isNotEmpty) {
             userTranscriptNotifier.value = result.recognizedWords;
+            _idleTimer?.cancel();
           }
 
           // 1. Immediate finalize if engine flagged finalResult
@@ -222,6 +266,12 @@ class VoiceConversationController {
 
     stopListening();
     stateNotifier.value = VoiceState.thinking;
+
+    if (isGoodbye(phrase)) {
+      _endAfterSpeaking = true;
+      _speakAsCesar('Até mais! Quando precisar, é só me chamar.');
+      return;
+    }
 
     final lower = phrase.toLowerCase();
     String? conversationalResponse;
@@ -455,6 +505,10 @@ class VoiceConversationController {
     audioLevelNotifier.value = 0.0;
 
     if (stateNotifier.value == VoiceState.speaking) {
+      if (_endAfterSpeaking) {
+        _endConversation();
+        return;
+      }
       if (isHandsFreeNotifier.value && !isMutedNotifier.value) {
         // Wait 300ms for browser audio device context to cleanly switch from playback to record
         Future.delayed(const Duration(milliseconds: 300), () {
@@ -508,6 +562,7 @@ class VoiceConversationController {
     if (_isDisposed) return;
     _speechTimeoutTimer?.cancel();
     _silenceDebounceTimer?.cancel();
+    _idleTimer?.cancel();
     await stopListening();
     await voiceSynthesis.stop();
     if (!_isDisposed) {
@@ -521,6 +576,7 @@ class VoiceConversationController {
   void dispose() {
     if (_isDisposed) return;
     _isDisposed = true;
+    _idleTimer?.cancel();
     _speechTimeoutTimer?.cancel();
     _silenceDebounceTimer?.cancel();
     try {
