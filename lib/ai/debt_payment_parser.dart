@@ -60,6 +60,13 @@ class DebtPaymentParser {
     'chefe', 'patrao', 'patrão', 'patroa', 'firma', 'emprego', 'bico', 'diaria', 'diária', 'diarias', 'diárias',
     'hora', 'horas', 'extra', 'extras', 'governo', 'inss', 'fgts', 'restituicao', 'restituição', 'estorno',
     'reembolsaram', 'cashback', 'premio', 'prêmio', 'loja', 'app', 'aplicativo', 'mercado', 'uber', 'ifood',
+    // Other kinds of income ("recebi 1500 de adiantamento do salário" was
+    // "no debt in the name of Adiantamento").
+    'adiantamento', 'vale', 'decimo', 'décimo', 'ferias', 'férias', 'pensao', 'pensão', 'aposentadoria', 'beneficio', 'benefício',
+    'auxilio', 'auxílio', 'bolsa', 'mesada', 'heranca', 'herança', 'rendimento', 'rendimentos', 'juros', 'investimento', 'investimentos',
+    'aplicacao', 'aplicação', 'poupanca', 'poupança', 'cdb', 'tesouro', 'acoes', 'ações', 'consultoria', 'servico', 'serviço', 'projeto',
+    'aula', 'aulas', 'plr', 'participacao', 'participação', 'gorjeta', 'gorjetas', 'caixinha', 'indenizacao', 'indenização', 'rescisao',
+    'rescisão', 'seguro', 'seguradora', 'freelance', 'job', 'trampo', 'corrida', 'corridas', 'entrega', 'entregas', 'hospedagem', 'airbnb',
   };
 
   /// What César says when the phrase sounded like a debt payment but nobody

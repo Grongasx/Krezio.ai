@@ -32,7 +32,9 @@ import 'category_name_matcher.dart';
 /// - tokens shorter than 5 letters or with digits are never touched;
 /// - a token written with an accent or "ç" was spelled on purpose (and voice
 ///   transcription always spells real words) — typos drop accents, they
-///   don't add them;
+///   don't add them; only a missing letter is fixed there ("açouge");
+/// - a doubled last letter ("aluguell", "debitoo", "uberr") is always a slip:
+///   it is dropped when what is left is a keyword or a known word;
 /// - the few real words that *are* one plausible slip away from a keyword
 ///   ("gostei", "lance", "vagem", "pararia") are protected, as is anything
 ///   the caller says is a known word (the model's vocabulary).
@@ -51,6 +53,9 @@ class KeywordTypoCorrector {
     'academia', 'gasolina', 'aluguel', 'salario', 'condominio', 'combustivel',
     'estacionamento', 'faculdade', 'mensalidade', 'almoco', 'jantar', 'lanche',
     'viagem', 'cinema', 'brinquedo', 'presente',
+    'internet', 'onibus', 'dentista', 'acougue', 'pedagio', 'remedio', 'remedios',
+    'shopping', 'pizzaria', 'lanchonete', 'hamburguer', 'sorvete', 'cerveja',
+    'barbeiro', 'cabeleireiro', 'manicure', 'veterinario', 'oficina', 'escola', 'hortifruti',
     // payment methods
     'credito', 'debito', 'dinheiro', 'boleto',
   ];
@@ -79,6 +84,7 @@ class KeywordTypoCorrector {
     'lance', 'lances', 'vagem', 'vagens', 'pararia', 'recebo', 'recebes', 'recebei',
     'jantam', 'jantes', 'jante', 'gastam', 'gastas', 'pagues', 'compres',
     'devido', 'devida', 'boleia', 'bolota', 'deito', 'visagem', 'visagens',
+    'cereja', 'cerejas', 'condomino', 'condominos', 'escolha', 'escolhas',
   };
 
   /// Keywords that decide whether the entry is money in or out: a false
@@ -108,8 +114,9 @@ class KeywordTypoCorrector {
     return (pa.$1 - pb.$1).abs() == 1 && (pa.$2 - pb.$2).abs() < 1;
   }
 
-  // Letters that sound alike in Portuguese spelling ("farmasia", "viajem").
-  static const _soundAlike = ['scz', 'gj'];
+  // Letters that sound alike in Portuguese spelling ("farmasia", "viajem",
+  // "merkado").
+  static const _soundAlike = ['scz', 'gj', 'ck'];
 
   static bool _plausibleSubstitution(String typed, String intended) =>
       areNeighbourKeys(typed, intended) || _soundAlike.any((g) => g.contains(typed) && g.contains(intended));
@@ -123,12 +130,26 @@ class KeywordTypoCorrector {
   /// real words (e.g. the model's vocabulary).
   static String? correct(String token, {bool Function(String word)? isKnownWord}) {
     final lowerToken = token.toLowerCase();
-    // Accents/"ç" mean the word was spelled on purpose ("solário", "almaço").
-    if (RegExp(r'[à-ÿ]').hasMatch(lowerToken)) return null;
     final t = CategoryNameMatcher.foldAccents(lowerToken);
     if (t.length < 5 || RegExp(r'[^a-z]').hasMatch(t)) return null;
     if (keywords.contains(t) || protectedWords.contains(t)) return null;
     if (isKnownWord != null && (isKnownWord(t) || isKnownWord(token.toLowerCase()))) return null;
+    // A doubled last letter ("aluguell", "debitoo", "uberr") is a key held
+    // too long, not an ending — Portuguese words don't end in one. Any known
+    // word, short brands included, once the extra letter is gone.
+    if (t[t.length - 1] == t[t.length - 2]) {
+      final single = t.substring(0, t.length - 1);
+      if (keywords.contains(single) || (isKnownWord != null && isKnownWord(single))) return single;
+    }
+    // Accents/"ç" mean the word was spelled on purpose ("solário", "almaço"):
+    // typos drop letters, they don't add accents. Only a letter missing from
+    // a keyword is still fixed ("açouge").
+    if (RegExp(r'[à-ÿ]').hasMatch(lowerToken)) {
+      for (final k in keywords) {
+        if (k.length == t.length + 1 && k[0] == t[0] && _missingOneLetter(t, k)) return k;
+      }
+      return null;
+    }
 
     String? best;
     var bestDistance = 99;
@@ -151,12 +172,24 @@ class KeywordTypoCorrector {
     return best;
   }
 
+  /// How the keywords that carry an accent are written, for titles
+  /// ("onbus" is the "Ônibus", not the "Onibus").
+  static const _accented = {
+    'farmacia': 'farmácia', 'salario': 'salário', 'condominio': 'condomínio', 'combustivel': 'combustível',
+    'almoco': 'almoço', 'credito': 'crédito', 'debito': 'débito', 'onibus': 'ônibus', 'acougue': 'açougue',
+    'pedagio': 'pedágio', 'remedio': 'remédio', 'remedios': 'remédios', 'hamburguer': 'hambúrguer',
+    'veterinario': 'veterinário',
+  };
+
   /// [text] with every typo'd keyword replaced by its canonical spelling;
-  /// everything else (spacing, punctuation, digits) is left as it was.
-  static String correctText(String text, {bool Function(String word)? isKnownWord}) {
+  /// everything else (spacing, punctuation, digits) is left as it was. With
+  /// [accented], the replacement is spelled with its accents (for titles).
+  static String correctText(String text, {bool Function(String word)? isKnownWord, bool accented = false}) {
     return text.replaceAllMapped(RegExp(r'[a-zA-ZÀ-ÿ]+'), (m) {
       final word = m.group(0)!;
-      return correct(word, isKnownWord: isKnownWord) ?? word;
+      final fixed = correct(word, isKnownWord: isKnownWord);
+      if (fixed == null) return word;
+      return accented ? (_accented[fixed] ?? fixed) : fixed;
     });
   }
 
@@ -196,6 +229,15 @@ class KeywordTypoCorrector {
   }
 
   static int _min(int a, int b) => a < b ? a : b;
+
+  /// Whether [short] is [long] with exactly one letter left out.
+  static bool _missingOneLetter(String short, String long) {
+    var i = 0;
+    while (i < short.length && short[i] == long[i]) {
+      i++;
+    }
+    return short.substring(i) == long.substring(i + 1);
+  }
 
   /// Optimal-string-alignment distance (Levenshtein plus adjacent
   /// transpositions, so "gsatei" is one edit from "gastei"). Stops early and

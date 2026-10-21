@@ -24,15 +24,31 @@ class CesarSmallTalk {
       '"quanto posso gastar por dia até o fim do mês?" — e depois "e no mês passado?"\n'
       '- **Planejar**: metas ("quero juntar 5000 para uma viagem"), orçamentos ("meu limite de lazer é 800"), '
       'categorias ("cria a categoria Pets"), "posso comprar um celular de 2000?"\n'
+      '- **Organizar o dia**: "o que tenho pra hoje?", "o que vence essa semana?", "quem eu preciso cobrar?", "como tá minha situação?"\n'
+      '- **Dívidas**: "fiz uma dívida de 3000 em 12x todo dia 15", "quanto eu devo?", "paguei a parcela", "quero sair das dívidas"\n'
+      '- **Planejar**: "quero comprar um carro, me ajuda", "me ajuda a dividir meu salário", "quanto posso investir esse mês?"\n'
       '- **Consultar**: "onde posso economizar?", "como vou fechar o mês?", "quanto vem a luz?", "quais assinaturas eu pago?", '
       '"se eu cortar o delivery, quanto economizo?", "se eu guardar 200 por mês, quando bato a meta?"\n'
+      '- **Buscar**: "mostra os gastos acima de 100 no crédito", "o que eu paguei no pix essa semana?", "tem lançamento duplicado?"\n'
+      '- **Entender**: "por que eu gastei tanto esse mês?", "o que você notou nos meus gastos?", "quanto vou ter dia 25?"\n'
+      '- **Calcular**: "quanto é 15% de 230?", "2000 em 12x com juros de 2%", "à vista com 10% ou 10x sem juros?", '
+      '"se eu investir 200 por mês por 5 anos?"\n'
+      '- **Ajustar**: "cancelei a netflix", "adia a meta da viagem pra julho", "anota no mercado de ontem: churrasco"\n'
       '- **Lembrar**: contas a vencer, quem te deve, empréstimos ("emprestei 100 pro João"), lançamentos antigos ("lembra do restaurante?", "apaga o #4821")';
 
   static const _capabilitiesSpoken = 'Eu registro gastos e receitas, corrijo e apago lançamentos, desfaço o que fiz, '
-      'respondo perguntas como quanto você gastou ou qual seu maior gasto, mostro onde dá para economizar, e cuido de metas, orçamentos, categorias e lembretes. '
-      'É só falar naturalmente.';
+      'respondo perguntas como quanto você gastou ou qual seu maior gasto, busco lançamentos, explico por que o mês ficou mais caro, faço contas de juros e porcentagem, '
+      'mostro onde dá para economizar, e cuido de metas, orçamentos, assinaturas, categorias e lembretes. É só falar naturalmente.';
 
   static final Map<RegExp, String> _howTo = {
+    RegExp(r'\b(?:assinatura\w*|cancel\w*\s+(?:a|o|uma|um)\s+(?:assinatura|plano|streaming))\b'):
+        'Quando cancelar uma assinatura, me conte: "cancelei a netflix". Eu tiro dos gastos fixos depois do seu "sim" — '
+            'ela sai das contas a vencer e da previsão. Para ver todas: "quais assinaturas eu pago?".',
+    RegExp(r'\b(?:observac\w*|nota|notas|comentario\w*)\b'):
+        'Diga, por exemplo, "anota no mercado de ontem: churrasco do sábado". Depois é só buscar: "quais gastos com churrasco?".',
+    RegExp(r'\b(?:busc\w*|procur\w*|filtr\w*|achar|encontrar)\b'):
+        'Pergunte com os filtros que quiser: "mostra os gastos acima de 100 no crédito", "o que eu paguei no pix essa semana?", '
+            '"quais compras eu fiz no ifood em setembro?".',
     RegExp(r'\b(?:apag\w*|exclu\w*|delet\w*|remov\w*|tirar)\b'):
         'É só me dizer qual: "apaga o uber de ontem", "exclui o último" ou "apaga os dois últimos". '
             'Eu mostro o que vou apagar e só apago depois do seu "sim". Se mudar de ideia, diga "desfaz".',

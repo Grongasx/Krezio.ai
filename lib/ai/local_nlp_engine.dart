@@ -828,7 +828,8 @@ class LocalFinancialNlpEngine {
     final paymentText = quantityPricing == null
         ? cleanText
         : numLower.replaceFirst(quantityPricing.matchedText, ' ');
-    final description = _extractDescription(cleanText, categoryResult.label);
+    // Typos fixed in the title too ("framacia" was titled "Framacia").
+    final description = _extractDescription(KeywordTypoCorrector.correctText(cleanText, isKnownWord: _vocabulary.containsKey, accented: true), categoryResult.label);
     final recurrence = _parseRecurrence(normText);
     // "gastei 100 na mensalidade da academia": a fee said paid, in the past,
     // with no word of recurrence of its own, is today's payment — not a new
@@ -1035,6 +1036,10 @@ class LocalFinancialNlpEngine {
         resolvedDueDay = payday.day;
         final dateLabel = RealtimeCalendarService.formatDateLabel(payday);
         calendarConsultationNote = '5º dia útil (sábado conta) consultado no calendário em tempo real: $dateLabel';
+      } else {
+        // "ele me paga dia 10 / mês que vem / sexta": when to charge.
+        targetReminderDate = repaymentDate(CategoryNameMatcher.foldAccents(lower), DateTime.now());
+        if (targetReminderDate != null) resolvedDueDay = null;
       }
     } else if (isDividend && (lower.contains('lembr') || lower.contains('aviso') || lower.contains('quando') || lower.contains('cai') || lower.contains('dia') || lower.contains('receber'))) {
       isReminder = true;
@@ -1909,6 +1914,20 @@ class LocalFinancialNlpEngine {
         if (kin.length == 1) drafts[i] = _withCategory(d, kin.single);
       }
 
+      // "paguei 60 no barbeiro e 20 de gorjeta", "uber de 19 pra ir e 23 pra
+      // voltar": a tip or fee is of the kind of the item before it, and the
+      // way back is the same ride — not a new thing to ask about (R3 multi).
+      for (var i = 1; i < drafts.length; i++) {
+        final d = drafts[i], prev = drafts[i - 1];
+        if (!d.missingSlots.contains('category') || prev.category == 'unknown' || prev.missingSlots.contains('category')) continue;
+        final src = CategoryNameMatcher.foldAccents(sources[i].toLowerCase());
+        if (_returnTrip.hasMatch(src)) {
+          drafts[i] = _withCategory(d, prev.category).copyWith(description: prev.description);
+        } else if (_accessoryItem.hasMatch(src)) {
+          drafts[i] = _withCategory(d, prev.category);
+        }
+      }
+
       // "ambos no crédito em 3x", "os dois ontem", "cada um no débito": said
       // once for a group, it is for each item of it — not only the last one.
       // "ambos"/"os dois" are the last two items, "os 3" the last three;
@@ -1999,8 +2018,10 @@ class LocalFinancialNlpEngine {
       }
     }
     // "camiseta por 80 no crédito em 2x cada um": the how comes before the
-    // quantifier — it is the group piece "cada um no crédito em 2x".
-    final before = RegExp(r'^(.*?\d[\d.,]*(?:\s*(?:reais|real|conto|contos))?)\s+((?:no|na|em|via|pelo|pela|parcelad[oa]s?)\s+[^\d]*?(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*?)?)\s*,?\s+'
+    // quantifier — it is the group piece "cada um no crédito em 2x". (Only
+    // pieces ending with a quantifier pay for the long pattern below.)
+    final endsWithGroup = RegExp(r'\b(?:ambos|ambas|os\s+dois|as\s+duas|todos|todas|cada\s+um|cada\s+uma)\s*$').hasMatch(f);
+    final before = !endsWithGroup ? null : RegExp(r'^(.*?\d[\d.,]*(?:\s*(?:reais|real|conto|contos))?)\s+((?:no|na|em|via|pelo|pela|parcelad[oa]s?)\s+[^\d]*?(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*?)?)\s*,?\s+'
             r'(ambos|ambas|os\s+dois|as\s+duas|todos|todas|cada\s+um|cada\s+uma)\s*$')
         .firstMatch(f);
     if (before != null && _groupModifier('${before.group(3)} ${before.group(2)}') != null) {
@@ -2020,6 +2041,16 @@ class LocalFinancialNlpEngine {
 
   /// [d] with the category [category] (taken from the items bought with
   /// it), its question about the category gone.
+  /// "23 pra voltar", "na volta 21", "a ida foi 19": a leg of the trip
+  /// before it, with no name of its own.
+  static final RegExp _returnTrip = RegExp(
+      r'^(?:e\s+)?(?:(?:mais\s+)?(?:r\$\s*)?\d[\d.,]*\s*(?:reais|real|conto|contos|pila)?\s+)?(?:pra|para|na|de|da)\s+(?:voltar|volta|ir|ida|vinda|vir)\b|'
+      r'^(?:e\s+)?(?:a\s+)?(?:volta|ida|vinda)\s+(?:(?:foi|deu|saiu|custou|ficou)\s+)?(?:r\$\s*)?\d');
+
+  /// A tip, fee or delivery charge on top of the item before it.
+  static final RegExp _accessoryItem = RegExp(
+      r'\b(?:gorjetas?|caixinha|couvert|taxa\s+de\s+(?:servico|entrega|embalagem)|frete|dez\s+por\s+cento|10\s*%)\b');
+
   FinancialTransactionDraft _withCategory(FinancialTransactionDraft d, String category) {
     final missing = [...d.missingSlots]..remove('category');
     final complete = d.intent != 'unknown' && missing.isEmpty;
@@ -2228,6 +2259,8 @@ class LocalFinancialNlpEngine {
     p = p.replaceAll(RegExp(r'\s+(?:hoje|ontem|anteontem)\b(?=\s)'), '');
     p = p.replaceFirst(RegExp(r'^(?:e|mais|outros?|outras?|tambem|depois)\s+'), '');
     p = p.replaceFirst(RegExp(r'^[a-z]{3,}ei\s+'), '');
+    // "voltei de ônibus por 5,50": how one went, then its value.
+    p = p.replaceFirst(RegExp(r'^(?:de|do|da)\s+(?=[a-z]{2,}\s+(?:por|de|a)\s+(?:r\$\s*)?\d)'), '');
     p = p.replaceAll(RegExp(r'\bmais\s+(?=(?:r\$\s*)?\d)'), '');
     if (_contextVerb.hasMatch(p)) return null;
     if (_verblessItem.hasMatch(p)) return p;
@@ -3004,6 +3037,23 @@ class LocalFinancialNlpEngine {
       if (placeAnswer != null) updatedCategory = 'expense_other';
     }
 
+    // "paguei 90" ⏎ "luz": the answer names what was paid — the title was
+    // only the sentence itself ("paguei 90").
+    String? namedTitle;
+    if (placeAnswer == null &&
+        previousDraft.missingSlots.contains('category') &&
+        updatedCategory != previousDraft.category &&
+        _titleIsPlaceholder(previousDraft)) {
+      final said = followUpText.trim();
+      final title = _extractDescription(KeywordTypoCorrector.correctText(said, isKnownWord: _vocabulary.containsKey, accented: true), updatedCategory);
+      if (isCategoryLabel(title)) {
+        // "foi o encanador": the person or place said, not the category's label.
+        namedTitle = _placeAnswer(said);
+      } else if (title.toLowerCase() != said.toLowerCase() || said.split(RegExp(r'\s+')).length <= 2) {
+        namedTitle = title[0].toUpperCase() + title.substring(1);
+      }
+    }
+
     // 3. Contextual Payment resolution
     var updatedPayment = previousDraft.paymentMethod;
     if (updatedPayment == 'unknown') {
@@ -3012,6 +3062,11 @@ class LocalFinancialNlpEngine {
         updatedPayment = directPay;
       } else if (followUpParsed.paymentMethod != 'unknown') {
         updatedPayment = followUpParsed.paymentMethod;
+      } else if (previousDraft.missingSlots.contains('payment_method') &&
+          RegExp(r'^(?:(?:foi|era|e)\s+)?(?:(?:no|via|pelo|em|por|com)\s+)?(?:o\s+)?boletos?(?:\s+bancario)?$')
+              .hasMatch(CategoryNameMatcher.foldAccents(followUpText.toLowerCase()).replaceAll(RegExp(r'[!?.,]'), '').trim())) {
+        // "Qual a forma de pagamento?" ⏎ "boleto": the answer is the method.
+        updatedPayment = 'bank_slip';
       }
     }
 
@@ -3206,7 +3261,7 @@ class LocalFinancialNlpEngine {
             amount: updatedAmount,
             category: updatedCategory,
             paymentMethod: updatedPayment,
-            description: previousDraft.description,
+            description: namedTitle ?? previousDraft.description,
             missingSlots: missingSlots,
             rawText: mergedRaw,
             isRecurrent: updatedIsRecurrent,
@@ -3289,8 +3344,16 @@ class LocalFinancialNlpEngine {
       assumptionNote: weekendNote,
       // "em 7x, pra pagar todo dia 10" said as the answer.
       installmentDueDay: (updatedInstallments ?? 0) > 1 ? followUpParsed.installmentDueDay : null,
-      description: placeAnswer,
+      description: placeAnswer ?? namedTitle,
     ), turns: [...previousDraft.rawText.split(' + '), followUpText.trim()]);
+  }
+
+  /// The draft's title says nothing of its own: it is the sentence itself
+  /// ("paguei 90") or only a category label.
+  bool _titleIsPlaceholder(FinancialTransactionDraft d) {
+    final title = d.description.trim().toLowerCase();
+    final said = d.rawText.split(' + ').first.trim().toLowerCase();
+    return title.isEmpty || title == said || isCategoryLabel(d.description) || RegExp(r'\d').hasMatch(title);
   }
 
   /// Kept in [FinancialTransactionDraft.settledChecks] while the last answer
@@ -3515,7 +3578,20 @@ class LocalFinancialNlpEngine {
   );
 
   // Bakery = everyday groceries (was asked "onde foi o gasto?" every time).
-  static final RegExp _bakery = RegExp(r'\b(?:padarias?|panificadora)(?![a-zà-úç])');
+  static final RegExp _bakery = RegExp(r'\b(?:padarias?|panificadora|p[aã]ozinhos?|p[aã]o|p[aã]es)(?![a-zà-úç])');
+
+  // Everyday slang for what was bought (R3 gíria): "o rango de hoje", "happy
+  // hour", "o mototáxi", "a calibragem", "a padoca".
+  static final RegExp _slangLeisure = RegExp(
+    r'\b(?:rangos?|ranguinho|happy\s*hour|rol[eê]s?|rolezinho|buteco|prato\s+feito|self[\s-]?service|rod[ií]zio|quentinhas?|'
+    r'x[\s-]?(?:tudo|salada|bacon|egg|burg(?:u?er)?)|dog[aã]o|hot[\s-]?dog|espetinhos?|churrasquinhos?|jantas?|jantinha|petiscos?|gar[cç]o(?:m|nete)|'
+    r'por[cç](?:[aã]o|[oõ]es)\s+de)(?![a-zà-úç])',
+  );
+  static final RegExp _slangTransport = RegExp(
+    r'\b(?:moto[\s-]?t[aá]xis?|buz[aã]o|lota[cç][aã]o|calibragem|calibrar|borracharia|borracheiro|lava[\s-]?r[aá]pido|lava[\s-]?jato|'
+    r'guincho|vlt|brt|balsa)(?![a-zà-úç])',
+  );
+  static final RegExp _slangGroceries = RegExp(r'\b(?:padoca|quitanda|atacarejo|varej[aã]o)(?![a-zà-úç])');
 
   // Gifts and toys have an obvious category: "outros gastos",
   // without asking the category again.
@@ -3577,7 +3653,7 @@ class LocalFinancialNlpEngine {
     }
 
     // 5. TRANSPORTE, COMBUSTÍVEL & VEÍCULOS
-    if (_hasTermOrDiminutive(lower, 'gasolina') || _hasTermOrDiminutive(lower, 'etanol') || _hasTermOrDiminutive(lower, 'combustível') || _hasTermOrDiminutive(lower, 'combustivel') ||
+    if (_slangTransport.hasMatch(lower) || _hasTermOrDiminutive(lower, 'gasolina') || _hasTermOrDiminutive(lower, 'etanol') || _hasTermOrDiminutive(lower, 'combustível') || _hasTermOrDiminutive(lower, 'combustivel') ||
         _hasTermOrDiminutive(lower, 'diesel') || _hasTermOrDiminutive(lower, 'gnv') || _hasTermOrDiminutive(lower, 'aditivada') || _hasTermOrDiminutive(lower, 'posto ') ||
         _hasTermOrDiminutive(lower, 'posto shell') || _hasTermOrDiminutive(lower, 'posto ipiranga') || _hasTermOrDiminutive(lower, 'posto petrobras') || _hasTermOrDiminutive(lower, 'posto br') ||
         _hasTermOrDiminutive(lower, 'posto ale') || _hasTermOrDiminutive(lower, 'shell') || _hasTermOrDiminutive(lower, 'ipiranga') || _hasTermOrDiminutive(lower, 'petrobras') ||
@@ -3599,7 +3675,7 @@ class LocalFinancialNlpEngine {
     }
 
     // 6. ALIMENTAÇÃO, LAZER, FAST FOOD, INSTRUMENTOS & STREAMING
-    if (RegExp(r'\b(mc|bk)\b').hasMatch(lower) || _hasTermOrDiminutive(lower, 'mcdonald') || _hasTermOrDiminutive(lower, 'mequi') || _hasTermOrDiminutive(lower, 'méqui') ||
+    if (_slangLeisure.hasMatch(lower) || RegExp(r'\b(mc|bk)\b').hasMatch(lower) || _hasTermOrDiminutive(lower, 'mcdonald') || _hasTermOrDiminutive(lower, 'mequi') || _hasTermOrDiminutive(lower, 'méqui') ||
         _hasTermOrDiminutive(lower, 'burger king') || _hasTermOrDiminutive(lower, 'subway') || _hasTermOrDiminutive(lower, 'bobs') || _hasTermOrDiminutive(lower, 'giraffas') ||
         _hasTermOrDiminutive(lower, 'habibs') || _hasTermOrDiminutive(lower, 'ragazzo') || _hasTermOrDiminutive(lower, 'spoleto') || _hasTermOrDiminutive(lower, 'outback') ||
         _hasTermOrDiminutive(lower, 'madero') || _hasTermOrDiminutive(lower, 'jeronimo') || _hasTermOrDiminutive(lower, 'popeyes') || _hasTermOrDiminutive(lower, 'kfc') ||
@@ -3649,7 +3725,7 @@ class LocalFinancialNlpEngine {
     }
 
     // 7. SUPERMERCADO, HORTIFRUTI & COMPRAS DO MÊS
-    if (_hasTermOrDiminutive(lower, 'mercado') || _hasTermOrDiminutive(lower, 'supermercado') || _hasTermOrDiminutive(lower, 'feira') || _hasTermOrDiminutive(lower, 'hortifruti') ||
+    if (_slangGroceries.hasMatch(lower) || _hasTermOrDiminutive(lower, 'mercado') || _hasTermOrDiminutive(lower, 'supermercado') || _hasTermOrDiminutive(lower, 'feira') || _hasTermOrDiminutive(lower, 'hortifruti') ||
         _hasTermOrDiminutive(lower, 'sacolão') || _hasTermOrDiminutive(lower, 'sacolao') || _hasTermOrDiminutive(lower, 'açougue') || _hasTermOrDiminutive(lower, 'acougue') ||
         _hasTermOrDiminutive(lower, 'peixaria') || _hasTermOrDiminutive(lower, 'mercearia') || _hasTermOrDiminutive(lower, 'carrefour') || _hasTermOrDiminutive(lower, 'pão de açúcar') ||
         _hasTermOrDiminutive(lower, 'pao de acucar') || _hasTermOrDiminutive(lower, 'extra') || _hasTermOrDiminutive(lower, 'assai') || _hasTermOrDiminutive(lower, 'assaí') ||
@@ -3680,6 +3756,7 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'loft') || _hasTermOrDiminutive(lower, 'diarista') || _hasTermOrDiminutive(lower, 'faxina') || _hasTermOrDiminutive(lower, 'sofa') ||
         _hasTermOrDiminutive(lower, 'sofá') || _hasTermOrDiminutive(lower, 'cama') || _hasTermOrDiminutive(lower, 'colchão') || _hasTermOrDiminutive(lower, 'colchao') ||
         _hasTermOrDiminutive(lower, 'geladeira') || _hasTermOrDiminutive(lower, 'fogao') || _hasTermOrDiminutive(lower, 'fogão') || _hasTermOrDiminutive(lower, 'microondas') ||
+        RegExp(r'\b(?:tvs?|smart\s*tv|televis[aã]o|televisor)(?![a-zà-úç])').hasMatch(lower) ||
         _hasTermOrDiminutive(lower, 'micro-ondas') || _hasTermOrDiminutive(lower, 'airfryer') || _hasTermOrDiminutive(lower, 'air fryer') || _hasTermOrDiminutive(lower, 'liquidificador') || _hasTermOrDiminutive(lower, 'máquina de lavar') ||
         _hasTermOrDiminutive(lower, 'maquina de lavar') || _hasTermOrDiminutive(lower, 'secadora') || _hasTermOrDiminutive(lower, 'ar condicionado') || _hasTermOrDiminutive(lower, 'ventilador') ||
         _hasTermOrDiminutive(lower, 'aquecedor') || _hasTermOrDiminutive(lower, 'purificador de água') || _hasTermOrDiminutive(lower, 'purificador de agua') || _hasTermOrDiminutive(lower, 'aspirador de pó') ||
@@ -3766,7 +3843,44 @@ class LocalFinancialNlpEngine {
   static final RegExp _everydayHealth =
       RegExp(r'\b(?:cl[ií]nicas?|hospital|pronto[\s-]socorro|fisioterap\w*|nutricionista|pediatra|vacinas?|consult[oó]rio)(?![a-zà-úç])');
   static final RegExp _everydayServices = RegExp(
-      r'\b(?:cort(?:ar|e)\s+(?:o\s+|de\s+)?cabelo|barbeiro|barbearia|cabeleireir[oa]|manicure|banca(?:\s+de\s+(?:jornal|revista))?|lot[eé]rica|costureira|lavanderia|cart[oó]rio|xerox|despachante)(?![a-zà-úç])');
+      r'\b(?:cort(?:ar|e)\s+(?:o\s+|de\s+)?cabelo|barbeiro|barbearia|cabeleireir[oa]|manicure|banca(?:\s+de\s+(?:jornal|revista))?|lot[eé]rica|costureira|lavanderia|cart[oó]rio|xerox|despachante|'
+      r'sal[aã]o(?:\s+de\s+beleza)?|est[eé]tica|depila[cç][aã]o|sobrancelhas?|unhas|pedicure|massagem|tatuagem|tatuador|piercing)(?![a-zà-úç])');
+
+  /// When a loan is paid back, from what follows "me paga" in [folded]: "dia
+  /// 10" (the next 10th), "mês que vem", "semana que vem", a weekday,
+  /// "amanhã", "daqui a 15 dias". Null when the sentence doesn't say.
+  static DateTime? repaymentDate(String folded, DateTime now) {
+    final clause = EntrySafetyGate.loanRepayClause.firstMatch(folded)?.group(0);
+    if (clause == null) return null;
+    final today = DateTime(now.year, now.month, now.day);
+    final day = RegExp(r'\bdia\s+(\d{1,2})\b').firstMatch(clause);
+    if (day != null) {
+      final d = int.parse(day.group(1)!);
+      if (d < 1 || d > 31) return null;
+      final thisMonth = DateTime(today.year, today.month, d);
+      return thisMonth.isAfter(today) ? thisMonth : DateTime(today.year, today.month + 1, d);
+    }
+    if (RegExp(r'\b(?:mes\s+que\s+vem|proximo\s+mes)\b').hasMatch(clause)) return DateTime(today.year, today.month + 1, today.day);
+    if (RegExp(r'\b(?:semana\s+que\s+vem|proxima\s+semana)\b').hasMatch(clause)) return today.add(const Duration(days: 7));
+    if (RegExp(r'\bamanha\b').hasMatch(clause)) return today.add(const Duration(days: 1));
+    final later = RegExp(r'\bdaqui\s+a\s+(\d{1,3}|uma|um|duas|dois)\s+(dias?|semanas?|mes|meses)\b').firstMatch(clause);
+    if (later != null) {
+      final n = int.tryParse(later.group(1)!) ?? (later.group(1)!.startsWith('d') ? 2 : 1);
+      final unit = later.group(2)!;
+      if (unit.startsWith('dia')) return today.add(Duration(days: n));
+      if (unit.startsWith('semana')) return today.add(Duration(days: 7 * n));
+      return DateTime(today.year, today.month + n, today.day);
+    }
+    const weekdays = {'segunda': 1, 'terca': 2, 'quarta': 3, 'quinta': 4, 'sexta': 5, 'sabado': 6, 'domingo': 7};
+    for (final e in weekdays.entries) {
+      if (RegExp('\\b${e.key}\\b').hasMatch(clause)) {
+        var ahead = (e.value - today.weekday) % 7;
+        if (ahead == 0) ahead = 7;
+        return today.add(Duration(days: ahead));
+      }
+    }
+    return null;
+  }
 
   static String? _extractPersonName(String text) {
     final patterns = [
@@ -3793,6 +3907,12 @@ class LocalFinancialNlpEngine {
           }
         }
       }
+    }
+    // "pra minha irmã", "pro meu tio": the relative, when no name is said.
+    final relative = RegExp(r'(?:pr[oa]|para\s+[oa]|a[o]?|à)\s+(?:meu|minha|nosso|nossa)\s+(' '$_family' r')(?![a-zà-úç])', caseSensitive: false).firstMatch(text);
+    if (relative != null) {
+      final w = relative.group(1)!.toLowerCase();
+      return w[0].toUpperCase() + w.substring(1);
     }
     return null;
   }
@@ -4325,9 +4445,13 @@ class LocalFinancialNlpEngine {
     return null;
   }
 
+  // "no dinheirinho", "com o trocado", "em mãos", "na mão do cara".
+  static final RegExp _cashSlang = RegExp(r'\b(?:dinheirinho|trocad(?:o|inho)|em\s+m[aã]os|na\s+m[aã]o|cash)(?![a-zà-úç])');
+
   String _resolvePaymentMethod(String text, String modelPrediction) {
-    // "no credto", "no debto": forgive typos in the method itself.
-    final lower = KeywordTypoCorrector.correctText(text.toLowerCase(), isKnownWord: _vocabulary.containsKey);
+    // "no credto", "no debto": forgive typos in the method itself. ("crédito
+    // no celular" is a phone top-up, not the way it was paid.)
+    final lower = KeywordTypoCorrector.correctText(text.toLowerCase(), isKnownWord: _vocabulary.containsKey).replaceAll(_phoneCredit, 'recarga de celular');
     if (_hasTerm(lower, 'pix') || _hasTerm(lower, 'pixx') || _hasTerm(lower, 'pixi') || _hasTerm(lower, 'piks') || _hasTerm(lower, 'pics') ||
         _hasTerm(lower, 'piquis') || _hasTerm(lower, 'pyks')) {
       return 'pix';
@@ -4349,7 +4473,8 @@ class LocalFinancialNlpEngine {
     if (_hasTerm(lower, 'débito') || _hasTerm(lower, 'debito') || _hasTerm(lower, 'debto') || _hasTerm(lower, 'debitto')) {
       return 'debit_card';
     }
-    if (_hasTerm(lower, 'dinheiro') || _hasTerm(lower, 'dinhero') || _hasTerm(lower, 'dinheru') || _hasTerm(lower, 'dindin') || _hasTerm(lower, 'espécie') || _hasTerm(lower, 'especie') || _hasTerm(lower, 'notas')) {
+    if (_hasTerm(lower, 'dinheiro') || _hasTerm(lower, 'dinhero') || _hasTerm(lower, 'dinheru') || _hasTerm(lower, 'dindin') || _hasTerm(lower, 'espécie') || _hasTerm(lower, 'especie') || _hasTerm(lower, 'notas') ||
+        _cashSlang.hasMatch(lower)) {
       return 'cash';
     }
     // "boleto" is only a payment method if phrased as a method (e.g., "no boleto", "via boleto")
@@ -4452,6 +4577,15 @@ class LocalFinancialNlpEngine {
     'spotfy': 'spotify',
   };
 
+  static final RegExp _slangSpendVerb =
+      RegExp(r'\b(?:soltei|queimei|derreti|detonei|esbanjei|rasguei)(\s+(?:(?:uns|umas|mais|so|só|quase|r\$)\s*)?\d)');
+  static final RegExp _slangMoneyUnit = RegExp(r'(\d[\d.,]*)\s*(?:mangos?|pratas|pratinhas)(?![a-zà-úç])');
+  static final RegExp _phoneCredit = RegExp(r'\bcr[eé]ditos?\s+(?:no|do|pro|para\s+o|de)\s+(?:meu\s+)?celular(?![a-zà-úç])');
+  static const _family = r'(?:m[aã]e|pai|irm[aã]o?|filh[oa]|av[oóô]|v[oóô]|vov[oóô]|ti[oa]|prim[oa]|namorad[oa]|espos[oa]|marido|mulher|amig[oa]|sogr[oa]|'
+      r'cunhad[oa]|sobrinh[oa]|afilhad[oa]|madrinha|padrinho)';
+  static final RegExp _givenToFamily = RegExp(r'\b(?:dei|passei|enviei|pixei|repassei)(\s+(?:(?:uns|umas|mais|r\$)\s*)?\d[\d.,]*\s*(?:reais|real|conto|contos|pila)?\s+'
+      r'(?:pra|para|pro|ao|à|a)\s+(?:(?:o|a|meu|minha|nosso|nossa)\s+)?' '$_family' r'(?![a-zà-úç]))');
+
   String _normalizeText(String text) {
     // 1. Reduce 3+ repeated letters (e.g. gasteeeeii -> gastei), preserving numbers (1000, 3000)
     var clean = text.toLowerCase().replaceAllMapped(
@@ -4462,6 +4596,15 @@ class LocalFinancialNlpEngine {
     // segunda-feira" was titled "Feira" in groceries and taken for a new
     // purchase instead of the answer (CHAOS-B-018).
     clean = _withoutWeekdayFeira(clean);
+    // Slang for spending and for money (R3 gíria): "soltei/queimei/derreti 45
+    // no …" is "gastei 45 …"; "15 mangos/pratas" is "15 reais".
+    clean = clean
+        .replaceAllMapped(_slangSpendVerb, (m) => 'gastei${m.group(1)}')
+        .replaceAllMapped(_slangMoneyUnit, (m) => '${m.group(1)} reais')
+        // "coloquei 50 de crédito no celular" is a phone top-up, not the credit card.
+        .replaceAll(_phoneCredit, 'recarga de celular')
+        // "dei 100 pra minha irmã" is money sent to family, like "mandei".
+        .replaceAllMapped(_givenToFamily, (m) => 'mandei${m.group(1)}');
 
     // 2. Token-level typo normalization
     final tokens = clean.split(RegExp(r'\s+'));
@@ -5293,9 +5436,28 @@ class LocalFinancialNlpEngine {
       r'micro[\s-]ondas': 'Micro-ondas',
       r'cachorro[\s-]quente': 'Cachorro-quente',
       r'pe[\s-]de[\s-]moleque': 'Pé-de-moleque',
+      r'lava[\s-]?r[aá]pido': 'Lava-rápido',
+      r'lava[\s-]?jato': 'Lava-jato',
+      r'happy[\s-]?hour': 'Happy hour',
+      r'moto[\s-]?t[aá]xi': 'Mototáxi',
+      r'prato\s+feito': 'Prato feito',
+      r'self[\s-]?service': 'Self-service',
+      r'hot[\s-]?dog': 'Cachorro-quente',
+      r'taxa\s+de\s+servi[cç]o': 'Taxa de serviço',
+      r'taxa\s+de\s+entrega': 'Taxa de entrega',
+      r'(?:cr[eé]ditos?|recarga)\s+(?:no|do|pro|para\s+o|de)\s+(?:meu\s+)?celular': 'Recarga de celular',
+      r'sal[aã]o\s+de\s+beleza': 'Salão de beleza',
     };
     for (final c in compounds.entries) {
       if (RegExp('\\b${c.key}\\b').hasMatch(lower)) return c.value;
+    }
+    // "mandei 100 pra minha irmã", "dei 50 pro meu pai": named by who got it.
+    final relative = RegExp(r'\b(?:mandei|dei|passei|enviei|pixei|repassei|transferi|fiz\s+um\s+pix)\b.*?\b(?:pra|para|pro|ao|à|a)\s+(?:(?:o|a|meu|minha|nosso|nossa)\s+)?'
+            '($_family)' r'(?![a-zà-úç])')
+        .firstMatch(lower);
+    if (relative != null) {
+      final w = relative.group(1)!;
+      return w[0].toUpperCase() + w.substring(1);
     }
     // "comprei um ps5": a console named with its number (the generic reader
     // drops words with digits and left the whole sentence as the title).
@@ -5669,6 +5831,13 @@ class LocalFinancialNlpEngine {
       if (RegExp('(?:^|[\\s,])${e.key}(?:[\\s,.!]|\$)').hasMatch(lower)) return e.value;
     }
     final patterns = [
+      // The thing as the subject: "o rango de hoje saiu 34", "a pizza de
+      // ontem deu 60", "o conserto custou 200".
+      RegExp(r'^(?:(?:o|a|os|as|meu|minha|meus|minhas)\s+)' + word +
+          r'(?:\s+(?:de|do|da)\s+(?:hoje|ontem|anteontem|s[aá]bado|domingo|segunda|ter[cç]a|quarta|quinta|sexta))?\s+'
+          r'(?:saiu|sa[ií]ram|foi|foram|deu|deram|custou|custaram|ficou|ficaram)\b'),
+      // "voltei de ônibus por 5,50", "fui de uber, 23": how one went.
+      RegExp(r'\b(?:fui|voltei|vim|cheguei|volto|vou)\s+de\s+' + word),
       // "o pagamento do IPTU", "a quitação da mensalidade", "a conta de água".
       // "a mensalidade do pilates", "a assinatura da academia" (ACC-A-020).
       RegExp(r'\b(?:pagamento|quita[cç][aã]o|conta|fatura|taxa|boleto|parcela|presta[cç][aã]o|mensalidade|assinatura|plano)\s+(?:d[oa]s?|de)\s+(?:(?:minha|meu|uma|um)\s+)?' + word),

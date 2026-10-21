@@ -185,8 +185,8 @@ void main() {
     Future<ChatSim> withPending() async {
       final s = await fresh(olds());
       s.send('gastei 38 na mercearia no débito');
-      final ask = s.send('gastei 18 na quitanda no pix');
-      expect(ask.route, 'ask', reason: 'a quitanda fica pendente perguntando a categoria');
+      final ask = s.send('gastei 18 na relojoaria no pix');
+      expect(ask.route, 'ask', reason: 'a relojoaria fica pendente perguntando a categoria');
       return s;
     }
 
@@ -206,9 +206,9 @@ void main() {
       expect(created(s).single.title, 'Mercearia');
     });
 
-    test('rascunho pendente + "apaga a quitanda" (é o próprio rascunho) → só descarta', () async {
+    test('rascunho pendente + "apaga a relojoaria" (é o próprio rascunho) → só descarta', () async {
       final s = await withPending();
-      expect(s.send('apaga a quitanda').route, 'cancel_pending');
+      expect(s.send('apaga a relojoaria').route, 'cancel_pending');
       expect(created(s).single.title, 'Mercearia');
     });
 

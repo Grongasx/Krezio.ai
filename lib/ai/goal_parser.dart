@@ -1,3 +1,4 @@
+import 'category_name_matcher.dart';
 import 'local_nlp_engine.dart';
 
 /// "Quero juntar 5000 para uma viagem até dezembro" -> a new savings goal.
@@ -87,8 +88,27 @@ class GoalParser {
     if (title == null || title.isEmpty) return null;
 
     title = title.replaceAll(RegExp(r'[.!?]+$'), '').trim();
+    // "pra comprar um celular" is the "Celular", "pra fazer uma viagem" the
+    // "Viagem": the verb and its article aren't the name of the goal.
+    title = title.replaceFirst(RegExp(r'^(?:comprar|trocar\s+(?:de|o|a)|pagar|fazer|ter|quitar|dar\s+entrada\s+(?:n[oa]|em))\s+(?:(?:uma|um|o|a|meu|minha)\s+)?'), '').trim();
     if (title.isEmpty) return null;
     return title[0].toUpperCase() + title.substring(1);
+  }
+
+  /// The deadline said in [text]: a month (with or without the year), "fim
+  /// do ano", "ano que vem", "daqui a 6 meses". Null when none is said.
+  static DateTime? targetDateIn(String text) {
+    final lower = CategoryNameMatcher.foldAccents(text.toLowerCase());
+    final later = RegExp(r'\b(?:daqui\s+a|em|dentro\s+de)\s+(\d{1,2})\s+(meses|mes|anos|ano)\b').firstMatch(lower);
+    if (later != null) {
+      final n = int.parse(later.group(1)!) * (later.group(2)!.startsWith('ano') ? 12 : 1);
+      final now = DateTime.now();
+      return DateTime(now.year, now.month + n, 28);
+    }
+    if (RegExp(r'\b(?:ano\s+que\s+vem|proximo\s+ano)\b').hasMatch(lower) && !RegExp(r'\b(?:janeiro|fevereiro|marco|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b').hasMatch(lower)) {
+      return DateTime(DateTime.now().year + 1, 12, 31);
+    }
+    return _extractTargetDate(lower);
   }
 
   static DateTime? _extractTargetDate(String text) {
@@ -115,7 +135,9 @@ class GoalParser {
   }
 
   static double? _extractAmount(String text) {
-    final lower = text.toLowerCase();
+    // "10 mil", "1,5 mil", "3k" (the 10 alone was the target: R$ 10).
+    final lower = text.toLowerCase().replaceAllMapped(RegExp(r'(\d+(?:[.,]\d+)?)\s*(?:mil|k)\b'),
+        (m) => '${(double.parse(m.group(1)!.replaceAll('.', '').replaceAll(',', '.')) * 1000).round()} reais');
     final patterns = [
       RegExp(r'r\$\s*(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)'),
       RegExp(r'(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(?:reais|real|conto|contos|pila|pilas)\b'),

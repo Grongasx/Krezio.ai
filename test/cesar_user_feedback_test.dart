@@ -176,7 +176,7 @@ void main() {
     });
 
     test('lugar/serviço sem vocabulário continua perguntando a categoria', () {
-      final last = engine.parseMulti('comprei 40 de ração e 25 no borracheiro no débito').last;
+      final last = engine.parseMulti('comprei 40 de ração e 25 no relojoeiro no débito').last;
       expect(last.category, 'unknown');
       expect(last.missingSlots, contains('category'));
     });

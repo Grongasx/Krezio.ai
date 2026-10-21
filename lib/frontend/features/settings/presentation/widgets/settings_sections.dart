@@ -11,6 +11,8 @@ import '../../../../../backend/services/feedback_service.dart';
 import '../../../../../backend/services/tax_report.dart';
 import '../../../import/import_statement_screen.dart';
 import '../../../../../backend/config/app_version.dart';
+import '../../../../../ai/voice/native_tts.dart';
+import '../../../../../ai/voice/voice_synthesis_service.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../../backend/services/pin_lock.dart';
 import '../../../legal/legal_documents.dart';
@@ -450,6 +452,77 @@ class ToolsSection extends StatelessWidget {
         title: const Text('Relatório para o Imposto de Renda'),
         subtitle: const Text('Saúde, educação e rendimentos por fonte, por ano'),
         onTap: () => _taxReport(context),
+      ),
+    ]);
+  }
+}
+
+/// César's voice on this device: automatic (a male voice) or one chosen from
+/// the system voices in Portuguese, with a button to hear it.
+class VoiceSection extends StatefulWidget {
+  const VoiceSection({super.key});
+
+  @override
+  State<VoiceSection> createState() => _VoiceSectionState();
+}
+
+class _VoiceSectionState extends State<VoiceSection> {
+  FlutterNativeTts? get _tts {
+    final t = VoiceSynthesisService().nativeTts;
+    return t is FlutterNativeTts ? t : null;
+  }
+
+  Future<void> _choose(BuildContext context) async {
+    final tts = _tts;
+    if (tts == null) return;
+    final voices = await tts.voices();
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(KrezioSpace.lg, 0, KrezioSpace.lg, KrezioSpace.sm),
+              child: Text('Toque numa voz para ouvir e usar.', style: TextStyle(fontSize: KrezioFont.small)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple),
+              title: const Text('Automática (voz masculina)'),
+              onTap: () async {
+                await tts.useVoice(null);
+                await tts.speak('Olá! Eu sou o César.');
+              },
+            ),
+            if (voices.isEmpty)
+              const ListTile(title: Text('Nenhuma voz em português instalada. Instale nas configurações de voz do celular.')),
+            for (final v in voices)
+              ListTile(
+                leading: Icon(v.male ? Icons.man : Icons.record_voice_over_outlined),
+                title: Text(v.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('${v.locale}${v.male ? ' · masculina' : ''}${v.local ? '' : ' · precisa de internet'}'),
+                trailing: const Icon(Icons.play_arrow),
+                onTap: () async {
+                  await tts.useVoice(v.name);
+                  await tts.speak('Olá! Eu sou o César.');
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsGroup(title: 'Voz do César', children: [
+      ListTile(
+        leading: const Icon(Icons.record_voice_over_outlined, color: KrezioColors.aiPurple),
+        title: const Text('Escolher a voz'),
+        subtitle: const Text('Masculina por padrão; toque para ouvir as vozes do celular'),
+        onTap: () => _choose(context),
       ),
     ]);
   }
