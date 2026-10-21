@@ -7,6 +7,9 @@ import '../../../../theme/theme_controller.dart';
 import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/services/data_export.dart';
+import '../../../../../backend/services/feedback_service.dart';
+import '../../../../../backend/config/app_version.dart';
+import 'package:flutter/foundation.dart';
 import '../../../../../backend/services/pin_lock.dart';
 import '../../../legal/legal_documents.dart';
 import '../../../onboarding/onboarding_screen.dart';
@@ -345,6 +348,56 @@ class PrivacySection extends StatelessWidget {
         title: Text(onDeleteAccount != null ? 'Excluir minha conta' : 'Apagar todos os dados',
             style: const TextStyle(color: KrezioColors.budgetOver)),
         onTap: () => _delete(context),
+      ),
+    ]);
+  }
+}
+
+/// "Fale com a gente": the user's message goes out through the share sheet
+/// (e-mail, WhatsApp…) with the app version attached.
+class HelpSection extends StatelessWidget {
+  final FinancialRepository repository;
+  const HelpSection({super.key, required this.repository});
+
+  Future<void> _contact(BuildContext context) async {
+    final c = TextEditingController();
+    final send = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Fale com a gente'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Conte o que aconteceu ou o que você quer no app. Não inclua senhas.'),
+          const SizedBox(height: KrezioSpace.sm),
+          TextField(controller: c, maxLines: 5, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder())),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar')),
+        ],
+      ),
+    );
+    if (send != true || c.text.trim().isEmpty) return;
+    final text = FeedbackService(repository).compose(c.text, platform: kIsWeb ? 'web' : defaultTargetPlatform.name);
+    try {
+      await SharePlus.instance.share(ShareParams(text: text, subject: 'Krezio.ai — feedback ${AppVersion.label}'));
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível abrir o envio: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsGroup(title: 'Ajuda', children: [
+      ListTile(
+        leading: const Icon(Icons.forum_outlined, color: KrezioColors.aiPurple),
+        title: const Text('Fale com a gente'),
+        subtitle: const Text('Dúvidas, problemas e sugestões'),
+        onTap: () => _contact(context),
+      ),
+      ListTile(
+        leading: const Icon(Icons.info_outline, color: KrezioColors.aiPurple),
+        title: const Text('Versão'),
+        subtitle: Text('Krezio.ai ${AppVersion.label}'),
       ),
     ]);
   }

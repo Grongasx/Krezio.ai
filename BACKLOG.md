@@ -361,8 +361,8 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 9.1 Build e loja
 `50 pts` · 🟠 **Média** · `DevOps` `Design` `Produto` `QA`
-- [ ] `Design` Definir o ícone do app, a splash e o nome na loja (ícone adaptativo do Android em todas as densidades → legível em 48 px)
-- [ ] `DevOps` Configurar a assinatura do APK/AAB (keystore fora do git, senhas em variável de ambiente, backup da keystore → perder a keystore não pode acontecer)
+- [x] `Design` Definir o ícone do app, a splash e o nome na loja (ícone adaptativo do Android em todas as densidades → legível em 48 px)
+- [x] `DevOps` Configurar a assinatura do APK/AAB (keystore fora do git, senhas em variável de ambiente, backup da keystore → perder a keystore não pode acontecer)
 - [ ] `DevOps` Gerar os builds de release (AAB do Android com ofuscação; iOS se aplicável → app de release testado num aparelho real)
 - [ ] `Produto` Preparar a ficha da Play Store (descrição curta e longa, 6 prints, classificação etária, formulário de segurança de dados, link da política → ficha aprovada sem pendências)
 - [ ] `QA` Fazer um teste fechado com usuários reais (10 a 20 pessoas por 2 semanas, formulário de feedback → nenhum P0 aberto antes de publicar)
@@ -370,9 +370,9 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 9.2 Pós-lançamento
 `30 pts` · 🟡 **Baixa** · `Produto` `DevOps` `Frontend`
-- [ ] `Frontend` Criar a coleta de feedback no app ("Fale com a gente" em Configurações e "isso ajudou?" nas respostas do César → feedback chega com a versão do app)
+- [x] `Frontend` Criar a coleta de feedback no app ("Fale com a gente" em Configurações e "isso ajudou?" nas respostas do César → feedback chega com a versão do app)
 - [ ] `DevOps` Monitorar erros e crashes (Firebase Crashlytics, sem dados financeiros nos logs → alerta quando a taxa de crash passar de 1%)
-- [ ] `Produto` Fazer releases versionadas com changelog (uma release a cada 2 a 4 semanas, notas "O que há de novo" na loja → todo item corresponde a uma entrada do `CHANGELOG.md`)
+- [x] `Produto` Fazer releases versionadas com changelog (uma release a cada 2 a 4 semanas, notas "O que há de novo" na loja → todo item corresponde a uma entrada do `CHANGELOG.md`)
 
 ---
 

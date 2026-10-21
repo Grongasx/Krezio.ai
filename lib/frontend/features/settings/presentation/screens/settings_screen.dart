@@ -61,6 +61,7 @@ class SettingsScreen extends StatelessWidget {
           AppearanceSection(repository: repository),
           SecuritySection(lock: PinLock(PrefsPinStore()), biometric: BiometricAuth()),
           PrivacySection(repository: repository, userEmail: userEmail, onDeleteAccount: onDeleteAccount),
+          HelpSection(repository: repository),
 
 
           // Money: accounts and open bills/debtors
