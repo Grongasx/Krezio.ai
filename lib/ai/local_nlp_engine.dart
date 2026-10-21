@@ -1731,7 +1731,17 @@ class LocalFinancialNlpEngine {
     listBody = listBody.replaceFirstMapped(
         RegExp(r'(?<=\d)\s*,?\s+((?:ambos|ambas|os\s+dois|as\s+duas|tudo|todos|todas|cada\s+um|cada\s+uma)\b[^\d]*(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*)?)$',
             caseSensitive: false),
-        (m) => ', ${m.group(1)}');
+        (m) {
+          // "…e 3 refris de 5 cada um no pix": "cada" after a count and a
+          // price is the unit price of that item, not a group piece.
+          final before = CategoryNameMatcher.foldAccents(listBody.substring(0, m.start).toLowerCase());
+          if (m.group(1)!.toLowerCase().startsWith('cada') &&
+              RegExp(r'\b(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis)\s+[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:de|por|a)\s+(?:r\$\s*)?\d[\d.,]*\s*(?:reais)?\s*$')
+                  .hasMatch(before)) {
+            return m.group(0)!;
+          }
+          return ', ${m.group(1)}';
+        });
     final rawSegments = [
       for (final piece in listBody.split(separatorPattern).map((s) => s.trim()).where((s) => s.isNotEmpty)) ..._splitBatchPiece(piece),
     ];
@@ -1855,7 +1865,12 @@ class LocalFinancialNlpEngine {
             // "coloquei 100 de gasolina e…") is a purchase.
             final verb = drafts.isNotEmpty ? verbFor[drafts.first.intent] : (hasVerb ? null : 'gastei');
             if (verb != null) {
-              final inherited = parse('$verb $item');
+              // ("3 refris de 5 cada um" reads as a purchase of things.)
+              final itemVerb = verb == 'gastei' &&
+                      RegExp(r'^(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis)\s+[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:de|por|a)\s+(?:r\$\s*)?\d').hasMatch(item)
+                  ? 'comprei'
+                  : verb;
+              final inherited = parse('$itemVerb $item');
               // (Its name with the accents said: "colágeno", not "Colageno".)
               if (inherited.amount != null) draft = inherited.copyWith(description: _accentedAs(inherited.description, segTrim));
             }
@@ -1982,6 +1997,14 @@ class LocalFinancialNlpEngine {
       if (_firstPersonEntryVerb.hasMatch(f.substring(0, m.start)) && _pickAmount(f.substring(0, m.start), requireMoneyContext: false) != null && RegExp(r'\d').hasMatch(f.substring(m.end))) {
         return [..._splitBatchPiece(piece.substring(0, m.start).trim()), ..._splitBatchPiece(piece.substring(m.end).trim())];
       }
+    }
+    // "camiseta por 80 no crédito em 2x cada um": the how comes before the
+    // quantifier — it is the group piece "cada um no crédito em 2x".
+    final before = RegExp(r'^(.*?\d[\d.,]*(?:\s*(?:reais|real|conto|contos))?)\s+((?:no|na|em|via|pelo|pela|parcelad[oa]s?)\s+[^\d]*?(?:\d{1,2}\s*(?:x|vezes|parcelas)\b[^\d]*?)?)\s*,?\s+'
+            r'(ambos|ambas|os\s+dois|as\s+duas|todos|todas|cada\s+um|cada\s+uma)\s*$')
+        .firstMatch(f);
+    if (before != null && _groupModifier('${before.group(3)} ${before.group(2)}') != null) {
+      return [piece.substring(0, before.group(1)!.length).trim(), '${before.group(3)} ${before.group(2)!.trim()}'];
     }
     final q = RegExp(r'\d[^\d]*?\s*,?\s+'
             r'((?:ambos|ambas|os\s+dois|as\s+duas|(?:os|as)\s+(?:\d|tres|quatro|cinco|seis)|tudo|todos|todas|cada\s+um|cada\s+uma)\b.*)$')
@@ -2193,6 +2216,12 @@ class LocalFinancialNlpEngine {
     // "dois cafés 9", "3 pães 6": a count before the thing, then the value
     // of them all — the count is not part of the name nor the value
     // (ACC-C-003).
+    // "3 refris de 5 cada um": the count, the thing and its unit price —
+    // kept whole, so the value is 3 × 5.
+    if (RegExp(r'^(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:de|por|a)\s+(?:r\$\s*)?\d[\d.,]*\s*(?:reais\s+)?cada\b')
+        .hasMatch(p)) {
+      return p.replaceFirst(RegExp(r'\bcada\b(?!\s+uma?\b)'), 'cada um');
+    }
     p = p.replaceFirst(RegExp(r'^(?:\d{1,2}|dois|duas|tres|quatro|cinco|seis|sete|oito|nove|dez)\s+(?=[a-z]{3,}(?:\s+[a-z]+){0,3}?\s+(?:r\$\s*)?\d)'), '');
     // "30 hoje no mercado": a date word between the value and what it paid
     // is the item's date (read from the piece by [_shareDate]), not its name.
@@ -2757,7 +2786,14 @@ class LocalFinancialNlpEngine {
       frequency = 'monthly';
     }
 
-    if (lower.contains('indeterminado') || lower.contains('tempo indeterminado') || lower.contains('sem prazo') ||
+    // "comprei um notebook em 12 meses no cartão": installments, not a
+    // 12-month subscription (see [_parseInstallments]).
+    final installmentMonths = RegExp(r'\bem\s+\d{1,2}\s+meses\b').hasMatch(lower) &&
+        RegExp(r'\b(?:cart[aã]o|cr[eé]dito)\b').hasMatch(lower) &&
+        !RegExp(r'\b(?:assinatura|plano|mensalidade|anuidade)\b').hasMatch(lower);
+    if (installmentMonths) {
+      // (Nothing below: the months are how it was split.)
+    } else if (lower.contains('indeterminado') || lower.contains('tempo indeterminado') || lower.contains('sem prazo') ||
         lower.contains('não tem prazo') || lower.contains('nao tem prazo') || lower.contains('não tem tempo') ||
         lower.contains('nao tem tempo') || lower.contains('até cancelar') || lower.contains('ate cancelar')) {
       recurrenceDuration = 'indeterminado';
@@ -3602,7 +3638,7 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'paramount') || _hasTermOrDiminutive(lower, 'star+') || _hasTermOrDiminutive(lower, 'star plus') || _hasTermOrDiminutive(lower, 'audible') || _hasTermOrDiminutive(lower, 'kindle unlimited') ||
         _hasTermOrDiminutive(lower, 'steam') || _hasTermOrDiminutive(lower, 'playstation') || _hasTermOrDiminutive(lower, 'psn') || _hasTermOrDiminutive(lower, 'ps plus') || _hasTermOrDiminutive(lower, 'xbox') ||
         _hasTermOrDiminutive(lower, 'game pass') || _hasTermOrDiminutive(lower, 'gamepass') || _hasTermOrDiminutive(lower, 'nintendo') || _hasTermOrDiminutive(lower, 'epic games') || _hasTermOrDiminutive(lower, 'roblox') ||
-        _hasTermOrDiminutive(lower, 'videogame') || _hasTermOrDiminutive(lower, 'console') ||
+        _hasTermOrDiminutive(lower, 'videogame') || _hasTermOrDiminutive(lower, 'console') || RegExp(r'\bps[2-5]\b|\bpley\s*[2-5]\b|\bplay\s*[2-5]\b').hasMatch(lower) ||
         _hasTermOrDiminutive(lower, 'violão') || _hasTermOrDiminutive(lower, 'violao') || _hasTermOrDiminutive(lower, 'guitarra') || _hasTermOrDiminutive(lower, 'baixo') ||
         _hasTermOrDiminutive(lower, 'cavaquinho') || _hasTermOrDiminutive(lower, 'ukulele') || _hasTermOrDiminutive(lower, 'bateria') || _hasTermOrDiminutive(lower, 'teclado musical') ||
         _hasTermOrDiminutive(lower, 'piano') || _hasTermOrDiminutive(lower, 'flauta') || _hasTermOrDiminutive(lower, 'saxofone') || _hasTermOrDiminutive(lower, 'trompete') ||
@@ -3639,7 +3675,7 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'claro controle') || _hasTermOrDiminutive(lower, 'vivo controle') ||
         _hasTermOrDiminutive(lower, 'luz') || _hasTermOrDiminutive(lower, 'energia') ||
         _hasTermOrDiminutive(lower, 'água') || _hasTermOrDiminutive(lower, 'agua') || RegExp(r'\b(gás|gas)\b').hasMatch(lower) ||
-        _hasTermOrDiminutive(lower, 'botijão') || _hasTermOrDiminutive(lower, 'internet') || _hasTermOrDiminutive(lower, 'wifi') || _hasTermOrDiminutive(lower, 'aluguel') || _hasTermOrDiminutive(lower, 'aluguéis') || _hasTermOrDiminutive(lower, 'alugueis') ||
+        _hasTermOrDiminutive(lower, 'botijão') || _hasTermOrDiminutive(lower, 'internet') || _hasTermOrDiminutive(lower, 'wifi') || RegExp(r'\b(?:a|de|da|do)\s+net\b(?!flix)').hasMatch(lower) || _hasTermOrDiminutive(lower, 'aluguel') || _hasTermOrDiminutive(lower, 'aluguéis') || _hasTermOrDiminutive(lower, 'alugueis') ||
         _hasTermOrDiminutive(lower, 'condominio') || _hasTermOrDiminutive(lower, 'condomínio') || _hasTermOrDiminutive(lower, 'iptu') || _hasTermOrDiminutive(lower, 'quintoandar') ||
         _hasTermOrDiminutive(lower, 'loft') || _hasTermOrDiminutive(lower, 'diarista') || _hasTermOrDiminutive(lower, 'faxina') || _hasTermOrDiminutive(lower, 'sofa') ||
         _hasTermOrDiminutive(lower, 'sofá') || _hasTermOrDiminutive(lower, 'cama') || _hasTermOrDiminutive(lower, 'colchão') || _hasTermOrDiminutive(lower, 'colchao') ||
@@ -4245,6 +4281,16 @@ class LocalFinancialNlpEngine {
       }
     }
 
+    // "comprei um notebook em 12 meses no cartão": months on the card are
+    // installments (a subscription or plan "por 12 meses" is not).
+    final months = RegExp(r'\bem\s+(\d{1,2})\s+meses\b').firstMatch(lower);
+    if (months != null &&
+        RegExp(r'\b(?:cart[aã]o|cr[eé]dito)\b').hasMatch(lower) &&
+        !RegExp(r'\b(?:assinatura|plano|mensalidade|anuidade)\b').hasMatch(lower)) {
+      final count = int.parse(months.group(1)!);
+      if (count >= 2 && count <= 99) return count;
+    }
+
     // 4. Word numbers: "vinte e quatro vezes", "duas vezes", "três vezes", "quatro vezes", etc.
     final wordMap = {
       'vinte e quatro vezes': 24, 'vinte e quatro parcelas': 24, '24 vezes': 24,
@@ -4291,7 +4337,11 @@ class LocalFinancialNlpEngine {
         _hasTerm(lower, 'parcelamento') || _hasTerm(lower, 'parcelas') || RegExp(r'\b\d{1,2}\s*x\b').hasMatch(lower) ||
         // "em 6 vezes no cartão" is split like "6x": only the credit card is
         // (unless another way of paying is said).
-        (RegExp(r'\b(?:em|de)\s+\d{1,2}\s+vezes\b').hasMatch(lower) && !RegExp(r'\b(?:dinheiro|especie|espécie|debito|débito)\b').hasMatch(lower))) {
+        (RegExp(r'\b(?:em|de)\s+\d{1,2}\s+vezes\b').hasMatch(lower) && !RegExp(r'\b(?:dinheiro|especie|espécie|debito|débito)\b').hasMatch(lower)) ||
+        // "notebook de 4200 em 12 meses no cartão": months on a card are
+        // installments, and only the credit card is split.
+        (RegExp(r'\bem\s+\d{1,2}\s+meses\b').hasMatch(lower) && RegExp(r'\bcart[aã]o\b').hasMatch(lower) &&
+            !RegExp(r'\b(?:debito|débito)\b').hasMatch(lower))) {
       if (!_boletoAsMethod.hasMatch(lower)) {
         return 'credit_card';
       }
@@ -5233,6 +5283,24 @@ class LocalFinancialNlpEngine {
     if (RegExp(r'\b(?:na|no|pela|pelo|app)\s+99\b|\b99\s*(?:pop|taxis|taxi|moto)\b').hasMatch(lower)) {
       return "99";
     }
+    // Compound nouns read as one thing ("guarda chuva" was "Guarda").
+    const compounds = {
+      r'guarda[\s-]chuvas?': 'Guarda-chuva',
+      r'guarda[\s-]roupas?': 'Guarda-roupa',
+      r'porta[\s-]retratos?': 'Porta-retrato',
+      r'lava[\s-]lou[cç]as?': 'Lava-louças',
+      r'ar[\s-]condicionado': 'Ar-condicionado',
+      r'micro[\s-]ondas': 'Micro-ondas',
+      r'cachorro[\s-]quente': 'Cachorro-quente',
+      r'pe[\s-]de[\s-]moleque': 'Pé-de-moleque',
+    };
+    for (final c in compounds.entries) {
+      if (RegExp('\\b${c.key}\\b').hasMatch(lower)) return c.value;
+    }
+    // "comprei um ps5": a console named with its number (the generic reader
+    // drops words with digits and left the whole sentence as the title).
+    final console = RegExp(r'\b(?:ps|play(?:station)?\s*)([2-5])\b').firstMatch(lower);
+    if (console != null) return 'PlayStation ${console.group(1)}';
 
     // "gastei 75 pra lavar o carro" is "Lavagem do carro", not "Lavar".
     final action = _actionTitle(lower);

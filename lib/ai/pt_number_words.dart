@@ -58,6 +58,14 @@ class PtNumberWords {
   /// it is safe to run before any keyword matching. A lone "um"/"uma" is an
   /// article ("comprei um tênis") and only becomes 1 before "real"/"reais".
   static String normalize(String text) {
+    // "dia primeiro", "primeiro de outubro": the ordinal of the 1st is a
+    // date, said the way the date readers understand ("dia 1", "1 de outubro").
+    text = text
+        .replaceAllMapped(RegExp(r'\b(dia|no dia|desde o dia|até o dia|ate o dia)\s+primeiro\b', caseSensitive: false), (m) => '${m.group(1)} 1')
+        .replaceAllMapped(
+            RegExp(r'\bprimeiro\s+de\s+(janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)\b',
+                caseSensitive: false),
+            (m) => '1 de ${m.group(1)}');
     final tokens = _tokenize(text);
     if (tokens.isEmpty) return text;
     final out = StringBuffer();
