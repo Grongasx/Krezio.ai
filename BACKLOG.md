@@ -380,16 +380,16 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 10.1 Importação e integrações
 `80 pts` · 🟡 **Baixa** · `Backend` `ML`
-- [ ] `Backend` Importar extrato bancário (OFX e CSV dos principais bancos, com prévia antes de importar e detecção de duplicados → importar o mesmo arquivo duas vezes não duplica nada)
+- [x] `Backend` Importar extrato bancário (OFX e CSV dos principais bancos, com prévia antes de importar e detecção de duplicados → importar o mesmo arquivo duas vezes não duplica nada)
 - [x] `ML` Ler notificações bancárias (Nubank e outros, ex.: "Compra de R$ 25,90 aprovada em IFOOD" → vira rascunho com a data da notificação, nunca gravado sem passar pelas checagens)
 - [ ] `Backend` Integrar com Open Finance (conexão autorizada pelo usuário com o banco, sincronização diária → o usuário pode revogar a qualquer momento)
 
 ### 10.2 Recursos avançados
 `90 pts` · ⚪ **Muito baixa** · `Backend` `Frontend` `ML`
-- [ ] `Backend` Dividir uma conta entre várias pessoas ("o jantar deu 240, dividi com mais 3" → R$ 60 de gasto meu e R$ 180 a receber dos outros)
-- [ ] `Backend` Suporte a várias moedas (lançamento em USD ou EUR com cotação do dia guardada → totais sempre convertidos para a moeda padrão)
-- [ ] `Backend` Relatório para o Imposto de Renda (despesas dedutíveis: saúde e educação, rendimentos por fonte, por ano → PDF ou CSV por ano)
-- [ ] `Frontend` Widgets na tela inicial do celular (saldo do mês e botão "falar com o César" → atualiza a cada lançamento)
+- [x] `Backend` Dividir uma conta entre várias pessoas ("o jantar deu 240, dividi com mais 3" → R$ 60 de gasto meu e R$ 180 a receber dos outros)
+- [x] `Backend` Suporte a várias moedas (lançamento em USD ou EUR com cotação do dia guardada → totais sempre convertidos para a moeda padrão)
+- [x] `Backend` Relatório para o Imposto de Renda (despesas dedutíveis: saúde e educação, rendimentos por fonte, por ano → PDF ou CSV por ano)
+- [x] `Frontend` Widgets na tela inicial do celular (saldo do mês e botão "falar com o César" → atualiza a cada lançamento)
 - [ ] `ML` Atalhos de voz do sistema ("Ok Google, fala com o César: gastei 30 no uber" → abre o app já com a frase processada)
 
 ---

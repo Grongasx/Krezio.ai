@@ -20,6 +20,8 @@ import 'frontend/features/security/app_lock_gate.dart';
 import 'frontend/features/security/biometric_auth.dart';
 import 'backend/services/pin_lock.dart';
 import 'backend/services/pin_store_prefs.dart';
+import 'package:home_widget/home_widget.dart';
+import 'frontend/features/home_widget/home_widget_sync.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,6 +41,7 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
   final PinLock _pinLock = PinLock(PrefsPinStore());
   final BiometricAuth _biometric = BiometricAuth();
   bool _onboardingDone = true;
+  HomeWidgetSync? _widgetSync;
   LocalFinancialNlpEngine? _engine;
   final FinancialRepository _repository = FinancialRepository();
   bool _isRepositoryReady = false;
@@ -60,6 +63,17 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ThemeController.mode.addListener(_onThemeChanged);
+    // Opened by a link ("krezio://app/chat?frase=…", a shortcut, the widget).
+    final start = Uri.tryParse(WidgetsBinding.instance.platformDispatcher.defaultRouteName);
+    if (start != null && start.hasQuery) KrezioRoutes.pendingLink.value = start;
+    if (HomeWidgetSync.supported) {
+      HomeWidget.initiallyLaunchedFromHomeWidget().then((u) {
+        if (u != null) KrezioRoutes.pendingLink.value = KrezioRoutes.asRoute(u);
+      });
+      HomeWidget.widgetClicked.listen((u) {
+        if (u != null) KrezioRoutes.pendingLink.value = KrezioRoutes.asRoute(u);
+      });
+    }
     _loadNlpEngine();
     _loadRepository();
     _initFirebase();
@@ -85,6 +99,7 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
     await _repository.initialize();
     final savedTheme = _repository.preference(ThemeController.pref);
     if (savedTheme != null) ThemeController.mode.value = ThemeController.parse(savedTheme);
+    _widgetSync = HomeWidgetSync(_repository)..start();
     if (mounted) {
       setState(() {
         _isRepositoryReady = true;
@@ -153,6 +168,14 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  /// A link received while the app is open: handled here (switch tab, send
+  /// the sentence) instead of pushing a named route that doesn't exist.
+  @override
+  Future<bool> didPushRouteInformation(RouteInformation routeInformation) async {
+    KrezioRoutes.pendingLink.value = KrezioRoutes.asRoute(routeInformation.uri);
+    return true;
+  }
+
   /// "Seguir o sistema" follows the phone switching light/dark.
   @override
   void didChangePlatformBrightness() {
@@ -163,6 +186,7 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     ThemeController.mode.removeListener(_onThemeChanged);
+    _widgetSync?.stop();
     _cloudSync?.dispose();
     super.dispose();
   }

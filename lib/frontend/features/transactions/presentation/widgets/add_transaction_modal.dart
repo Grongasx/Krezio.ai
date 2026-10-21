@@ -4,6 +4,7 @@ import '../../../../../backend/models/financial_transaction.dart';
 import '../../../../../backend/models/budget_category.dart';
 import '../../../../../backend/models/financial_account.dart';
 import '../../../../../ai/local_nlp_engine.dart';
+import '../../../../../backend/services/currency_service.dart';
 
 class AddTransactionModal extends StatefulWidget {
   final bool isDark;
@@ -42,6 +43,8 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
   bool _isRecurrent = false;
   int? _dueDay;
   String _accountId = FinancialAccount.mainId;
+  String _currency = Currencies.base;
+  final _rateController = TextEditingController();
   late DateTime _date;
 
   bool get _isEditing => widget.initialTransaction != null;
@@ -61,12 +64,34 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
     _isRecurrent = tx.isRecurrent;
     _dueDay = tx.dueDay;
     _accountId = tx.account;
+    if (tx.originalCurrency != null && tx.originalAmount != null) {
+      _currency = tx.originalCurrency!;
+      _amountController.text = tx.originalAmount!.toStringAsFixed(2).replaceAll('.', ',');
+      _rateController.text = (tx.exchangeRate ?? 1).toStringAsFixed(4).replaceAll('.', ',');
+    }
+  }
+
+  /// The typed value in reais, at the typed rate.
+  double? get _converted {
+    final v = LocalFinancialNlpEngine.cleanAndParseAmount(_amountController.text);
+    final r = LocalFinancialNlpEngine.cleanAndParseAmount(_rateController.text);
+    return v == null || r == null ? null : Currencies.toBase(v, r);
+  }
+
+  Future<void> _setCurrency(String c) async {
+    setState(() => _currency = c);
+    if (c == Currencies.base) return;
+    final rate = await CurrencyService().rateToBrl(c);
+    if (rate != null && mounted && _currency == c) {
+      setState(() => _rateController.text = rate.toStringAsFixed(4).replaceAll('.', ','));
+    }
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _amountController.dispose();
+    _rateController.dispose();
     super.dispose();
   }
 
@@ -106,7 +131,16 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
 
   void _submit() {
     final title = _titleController.text.trim();
-    final amount = LocalFinancialNlpEngine.cleanAndParseAmount(_amountController.text);
+    final typed = LocalFinancialNlpEngine.cleanAndParseAmount(_amountController.text);
+    final foreign = _currency != Currencies.base;
+    final rate = foreign ? LocalFinancialNlpEngine.cleanAndParseAmount(_rateController.text) : 1.0;
+    if (foreign && (rate == null || rate <= 0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe a cotação (quantos reais vale 1 unidade da moeda).')),
+      );
+      return;
+    }
+    final amount = typed == null ? null : (foreign ? Currencies.toBase(typed, rate!) : typed);
 
     if (title.isEmpty || amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -138,6 +172,9 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
       notes: original?.notes,
       accountId: _accountId == FinancialAccount.mainId ? null : _accountId,
       toAccountId: original?.toAccountId,
+      originalCurrency: foreign ? _currency : null,
+      originalAmount: foreign ? typed : null,
+      exchangeRate: foreign ? rate : null,
     );
 
     widget.onAdd(tx);
@@ -211,17 +248,46 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
             ),
             const SizedBox(height: KrezioSpace.md),
 
-            // Amount Field
-            TextField(
-              controller: _amountController,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Valor (R\$)',
-                hintText: '0,00',
-                prefixText: 'R\$ ',
-                border: OutlineInputBorder(borderRadius: KrezioTheme.borderRadius),
-              ),
+            // Amount Field (+ currency; totals are always in reais)
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _amountController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: 'Valor (${Currencies.symbols[_currency]})',
+                      hintText: '0,00',
+                      prefixText: '${Currencies.symbols[_currency]} ',
+                      border: OutlineInputBorder(borderRadius: KrezioTheme.borderRadius),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: KrezioSpace.sm),
+                DropdownButton<String>(
+                  value: _currency,
+                  underline: const SizedBox.shrink(),
+                  items: [for (final c in Currencies.symbols.keys) DropdownMenuItem(value: c, child: Text(c))],
+                  onChanged: (c) {
+                    if (c != null) _setCurrency(c);
+                  },
+                ),
+              ],
             ),
+            if (_currency != Currencies.base) ...[
+              const SizedBox(height: KrezioSpace.sm),
+              TextField(
+                controller: _rateController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  labelText: 'Cotação do dia (R\$ por 1 ${Currencies.names[_currency]})',
+                  helperText: _converted == null ? 'Buscando a cotação…' : '= ${Currencies.format('BRL', _converted!)} no seu saldo',
+                  border: OutlineInputBorder(borderRadius: KrezioTheme.borderRadius),
+                ),
+              ),
+            ],
             const SizedBox(height: KrezioSpace.md),
 
             // Date
