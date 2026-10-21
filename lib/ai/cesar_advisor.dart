@@ -3,8 +3,10 @@ import 'dart:math';
 import '../backend/models/financial_goal.dart';
 import '../backend/models/financial_transaction.dart';
 import '../backend/repositories/financial_repository.dart';
+import 'analytics/cash_flow_forecast.dart';
 import 'analytics/financial_profile.dart';
 import 'cesar_text.dart';
+import 'transaction_code.dart';
 
 /// One piece of advice: chat text, the short spoken version and a route name.
 class Advice {
@@ -34,7 +36,10 @@ class CesarAdvisor {
   Advice? answer(String text) {
     final s = CesarText.simplify(text);
     if (s.isEmpty) return null;
-    return _averages(s) ??
+    return _why(s) ??
+        _duplicates(s) ??
+        _insights(s) ??
+        _averages(s) ??
         _yearly(s) ??
         _weekdayPeak(s) ??
         _peakMonth(s) ??
@@ -46,6 +51,7 @@ class CesarAdvisor {
         _payNamed(s) ??
         _whereToSave(s) ??
         _monthProjection(s) ??
+        _balanceOn(s) ??
         _forecastBill(s) ??
         _subscriptions(s);
   }
@@ -397,6 +403,314 @@ class CesarAdvisor {
         '(${month.length} ${month.length == 1 ? 'vez' : 'vezes'}).';
     final year = yearAvg > 0 ? '\n\nNo ritmo dos últimos meses, $term custa uns ${CesarText.money(yearAvg * 12)} por ano.' : '';
     return Advice('🧮 $spoken$year $_simNote', '$spoken $_simNote', 'hypothesis');
+  }
+
+  // ───────────────────────── why, duplicates, insights, balance ahead ─────────────────────────
+
+  /// Spending of [items] by category.
+  static Map<String, double> _byCategory(Iterable<FinancialTransaction> items) {
+    final out = <String, double>{};
+    for (final t in items) {
+      out[t.category] = (out[t.category] ?? 0) + t.amount;
+    }
+    return out;
+  }
+
+  /// Day-to-day spending: fixed bills move on their own calendar (a rent
+  /// missing from last month's data is not "spending more").
+  Iterable<FinancialTransaction> get _variable => _expenses.where((t) => !t.isRecurrent);
+
+  /// This month's variable spending up to today, and the average of the same
+  /// days of the months before that have data (up to 3) — null when there is none.
+  ({Map<String, double> cur, Map<String, double>? ref, int months}) _monthToDate() {
+    final now = _today;
+    final cur = _byCategory(_variable.where((t) => t.date.year == now.year && t.date.month == now.month && !CesarText.dayOnly(t.date).isAfter(now)));
+    final refs = <Map<String, double>>[];
+    for (var back = 1; back <= 3; back++) {
+      final m = DateTime(now.year, now.month - back);
+      if (!repository.transactions.any((t) => t.date.year == m.year && t.date.month == m.month)) continue;
+      final until = min(now.day, DateTime(m.year, m.month + 1, 0).day);
+      refs.add(_byCategory(_variable.where((t) => t.date.year == m.year && t.date.month == m.month && t.date.day <= until)));
+    }
+    if (refs.isEmpty) return (cur: cur, ref: null, months: 0);
+    final ref = <String, double>{};
+    for (final r in refs) {
+      r.forEach((k, v) => ref[k] = (ref[k] ?? 0) + v / refs.length);
+    }
+    return (cur: cur, ref: ref, months: refs.length);
+  }
+
+  /// The purchases behind a category this month: "Aluguel (R$ 1.400,00)",
+  /// "iFood 3× (R$ 230,00)".
+  String _behind(String category) {
+    final now = _today;
+    final groups = <String, List<FinancialTransaction>>{};
+    for (final t in _variable.where((t) => t.category == category && t.date.year == now.year && t.date.month == now.month && !CesarText.dayOnly(t.date).isAfter(now))) {
+      groups.putIfAbsent(t.title, () => []).add(t);
+    }
+    final ranked = groups.entries.toList()
+      ..sort((a, b) => b.value.fold(0.0, (x, t) => x + t.amount).compareTo(a.value.fold(0.0, (x, t) => x + t.amount)));
+    return ranked.take(2).map((e) {
+      final sum = e.value.fold(0.0, (x, t) => x + t.amount);
+      return e.value.length > 1 ? '${e.key} ${e.value.length}× (${CesarText.money(sum)})' : '${e.key} (${CesarText.money(sum)})';
+    }).join(' e ');
+  }
+
+  /// "por que eu gastei tanto esse mês?", "por que meu saldo caiu?", "o que
+  /// aconteceu com meu dinheiro?": this month against the same days of the
+  /// months before, category by category, with the purchases behind it.
+  Advice? _why(String s) {
+    if (!RegExp(r'\bpor\s*que\b.*\b(?:gastei|gastando|gastos?|sobrou|sobra|saldo|dinheiro|grana|despesas?|mes)\b|'
+            r'\bo\s+que\s+(?:aconteceu|houve)\s+com\s+(?:o\s+|a\s+)?(?:meu\s+|minha\s+)?(?:dinheiro|saldo|mes|grana|conta)\b|\bonde\s+(?:eu\s+)?errei\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    final now = _today;
+    final m = _monthToDate();
+    final curTotal = m.cur.values.fold(0.0, (a, v) => a + v);
+    String name(String code) => CesarText.categoryName(code, repository.budgets);
+    if (m.ref == null) {
+      final top = m.cur.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      if (top.isEmpty) {
+        const t = 'Ainda não tem gastos registrados este mês para explicar.';
+        return const Advice('🔍 $t', t, 'advice:why');
+      }
+      final lines = top.take(3).map((e) => '- **${name(e.key)}**: ${CesarText.money(e.value)} — ${_behind(e.key)}').join('\n');
+      final t = 'Seus gastos do dia a dia somam ${CesarText.money(curTotal)} este mês. Ainda não tenho meses anteriores para comparar, mas o que mais pesou foi:';
+      return Advice('🔍 $t\n$lines', '$t ${name(top.first.key)}.', 'advice:why');
+    }
+    final ref = m.ref!;
+    final refTotal = ref.values.fold(0.0, (a, v) => a + v);
+    final diffs = {for (final c in {...m.cur.keys, ...ref.keys}) c: (m.cur[c] ?? 0) - (ref[c] ?? 0)};
+    final up = diffs.entries.where((e) => e.value >= 20).toList()..sort((a, b) => b.value.compareTo(a.value));
+    final lines = up.take(3).map((e) => '- **${name(e.key)}**: +${CesarText.money(e.value)} — ${_behind(e.key)}').join('\n');
+    final window = 'no mesmo período ${m.months == 1 ? 'do mês passado' : 'dos últimos ${m.months} meses'}';
+    final String head;
+    if (curTotal > refTotal * 1.05) {
+      head = 'Até hoje (dia ${now.day}), seus gastos do dia a dia somam ${CesarText.money(curTotal)} — ${CesarText.money(curTotal - refTotal)} a mais que $window '
+          '(${CesarText.money(refTotal)}).${up.isEmpty ? '' : ' O que mais pesou:'}';
+    } else if (curTotal < refTotal * 0.95) {
+      head = 'Na verdade, no dia a dia você gastou menos que o normal: ${CesarText.money(curTotal)} até hoje, contra ${CesarText.money(refTotal)} $window. 👏'
+          '${up.isEmpty ? '' : ' Só subiram:'}';
+    } else {
+      head = 'No dia a dia você está no seu ritmo normal: ${CesarText.money(curTotal)} até hoje, contra ${CesarText.money(refTotal)} $window.'
+          '${up.isEmpty ? '' : ' O que subiu:'}';
+    }
+    // "por que meu saldo caiu?": what came in matters too.
+    var income = '';
+    if (RegExp(r'\b(?:saldo|sobrou|sobra|dinheiro|grana)\b').hasMatch(s)) {
+      final inNow = repository.transactions
+          .where((t) => t.type == TransactionType.income && t.date.year == now.year && t.date.month == now.month && !CesarText.dayOnly(t.date).isAfter(now))
+          .fold(0.0, (a, t) => a + t.amount);
+      final avgIn = _monthlyAverageIncome();
+      if (avgIn > 0 && inNow < avgIn * 0.9) {
+        income = '\n\n💰 E entrou menos: ${CesarText.money(inNow)} até agora, contra uns ${CesarText.money(avgIn)} num mês normal.';
+      }
+    }
+    // The fixed bills apart: they are the month's, not a change of habit.
+    final fixedNow = _expenses
+        .where((t) => t.isRecurrent && t.date.year == now.year && t.date.month == now.month && !CesarText.dayOnly(t.date).isAfter(now))
+        .toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
+    final fixed = fixedNow.isEmpty
+        ? ''
+        : '\n\n🔁 Fora isso, as contas fixas já pagas este mês somam ${CesarText.money(fixedNow.fold(0.0, (a, t) => a + t.amount))} '
+            '(${fixedNow.take(3).map((t) => t.title).join(', ')}).';
+    final close = curTotal > refTotal * 1.05 ? '\n\nQuer que eu veja onde dá pra cortar? Pergunte "o que eu devo cortar?".' : '';
+    return Advice('🔍 $head${lines.isEmpty ? '' : '\n$lines'}$fixed$income$close', head.replaceAll(' 👏', ''), 'advice:why');
+  }
+
+  /// Average monthly income over the last full months (up to 3).
+  double _monthlyAverageIncome() {
+    final now = _today;
+    final sums = <double>[];
+    for (var back = 1; back <= 3; back++) {
+      final m = DateTime(now.year, now.month - back);
+      final inMonth = repository.transactions.where((t) => t.type == TransactionType.income && t.date.year == m.year && t.date.month == m.month);
+      if (inMonth.isEmpty) continue;
+      sums.add(inMonth.fold(0.0, (a, t) => a + t.amount));
+    }
+    return sums.isEmpty ? 0 : sums.reduce((a, b) => a + b) / sums.length;
+  }
+
+  /// "tem algum lançamento duplicado?", "lancei duas vezes?": the same name
+  /// and value within a day, in the last 60 days.
+  Advice? _duplicates(String s) {
+    if (!RegExp(r'\bduplicad[oa]s?\b|\brepetid[oa]s?\b|\b(?:lancei|registrei|anotei|lancou|registrou|anotou|salvou|salvei)\s+(?:algo\s+|alguma\s+coisa\s+|algum\s+gasto\s+)?'
+            r'(?:duas\s+vezes|em\s+dobro|repetido|duplicado)\b|\bem\s+dobro\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    final since = _today.subtract(const Duration(days: 60));
+    final groups = <String, List<FinancialTransaction>>{};
+    for (final t in repository.transactions.where((t) => !t.date.isBefore(since) && !t.isInternalTransfer)) {
+      groups.putIfAbsent('${t.type.name}|${CesarText.fold(t.title)}|${(t.amount * 100).round()}', () => []).add(t);
+    }
+    final pairs = <(FinancialTransaction, FinancialTransaction)>[];
+    for (final g in groups.values) {
+      g.sort((a, b) => a.date.compareTo(b.date));
+      for (var i = 1; i < g.length; i++) {
+        if (CesarText.dayOnly(g[i].date).difference(CesarText.dayOnly(g[i - 1].date)).inDays <= 1) pairs.add((g[i - 1], g[i]));
+      }
+    }
+    if (pairs.isEmpty) {
+      const t = 'Não achei lançamentos repetidos nos últimos 60 dias (mesmo nome e mesmo valor em até um dia). 👍';
+      return const Advice('✅ $t', t, 'advice:duplicates');
+    }
+    pairs.sort((a, b) => b.$2.date.compareTo(a.$2.date));
+    final lines = pairs.take(5).map((p) => '- **${p.$1.title}** ${CesarText.money(p.$1.amount)}: ${CesarText.ddmm(p.$1.date)} ${TransactionCode.label(p.$1.id)} '
+        'e ${CesarText.ddmm(p.$2.date)} ${TransactionCode.label(p.$2.id)}');
+    final t = 'Achei ${pairs.length} ${pairs.length == 1 ? 'possível repetido' : 'possíveis repetidos'} (mesmo nome e valor em até um dia):';
+    return Advice('🔁 $t\n${lines.join('\n')}\n\nSe for repetido mesmo, diga "apaga o ${TransactionCode.label(pairs.first.$2.id)}". '
+        'Se foram duas compras de verdade, pode deixar.', t, 'advice:duplicates');
+  }
+
+  /// "o que você notou nos meus gastos?", "me dá uma dica": a few things the
+  /// numbers say, the most telling first.
+  Advice? _insights(String s) {
+    if (!RegExp(r'\bo\s+que\s+(?:voce\s+)?(?:notou|percebeu|observou|reparou|descobriu|acha\s+dos\s+meus\s+gastos)\b|'
+            r'\bme\s+(?:conta|diz|fala|mostra)\s+(?:algo|alguma\s+coisa|umas?\s+coisas?)\s+(?:interessante|curios[oa]|sobre\s+(?:os\s+)?meus\s+gastos|que\s+voce\s+(?:notou|percebeu))|'
+            r'\b(?:me\s+da|me\s+de|tem|manda|da)\s+(?:uma\s+|alguma\s+)?dica\b|\binsights?\b|\bcuriosidades?\b|\btem\s+algo\s+(?:estranho|diferente|fora\s+do\s+normal)\b|'
+            r'\balguma\s+novidade\b|\banalis[ae]\s+(?:os\s+)?meus\s+gastos\b|\bcomo\s+(?:eu\s+)?(?:to|estou)\s+gastando\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    if (repository.transactions.isEmpty) {
+      const t = 'Ainda não tenho lançamentos para analisar. Me conte seus gastos (ex.: "gastei 30 no uber no pix") que eu começo a notar os padrões.';
+      return const Advice('💡 $t', t, 'advice:insights');
+    }
+    final now = _today;
+    final notes = <String>[];
+    // 1. Out of the ordinary in the last 7 days.
+    notes.addAll(unusualSpending().take(1).map((a) => a.text));
+    // 2. A category above its usual pace.
+    final m = _monthToDate();
+    if (m.ref != null) {
+      final up = {for (final c in m.cur.keys) c: (m.cur[c] ?? 0) - (m.ref![c] ?? 0)}.entries.where((e) => e.value >= 50).toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      if (up.isNotEmpty) {
+        notes.add('📈 **${CesarText.categoryName(up.first.key, repository.budgets)}** está ${CesarText.money(up.first.value)} acima do normal '
+            'para esta altura do mês (${_behind(up.first.key)}).');
+      }
+    }
+    // 3. What is left this month.
+    final income = _monthIncome, spent = _monthExpense;
+    if (income > 0) {
+      final left = income - spent;
+      notes.add(left >= 0
+          ? '💰 Este mês sobraram ${CesarText.money(left)} até agora (${(left / income * 100).round()}% do que entrou).'
+          : '⚠️ Este mês já saiu ${CesarText.money(-left)} a mais do que entrou.');
+    }
+    // 4. Small purchases.
+    final small = _expenses.where((t) => t.date.year == now.year && t.date.month == now.month && t.amount <= 30 && !t.isRecurrent).toList();
+    if (small.length >= 5) {
+      final sum = small.fold(0.0, (a, t) => a + t.amount);
+      notes.add('☕ Foram ${small.length} compras pequenas (até R\$ 30) este mês, somando ${CesarText.money(sum)} — '
+          'no ritmo de um ano, uns ${CesarText.money(sum / now.day * 365)}.');
+    }
+    // 5. Delivery.
+    final delivery = _expenses.where((t) => t.date.year == now.year && t.date.month == now.month && FinancialProfile.deliveryTitles.hasMatch(CesarText.fold(t.title))).toList();
+    if (delivery.length >= 2) {
+      notes.add('🛵 Você pediu delivery ${delivery.length} vezes este mês (${CesarText.money(delivery.fold(0.0, (a, t) => a + t.amount))}).');
+    }
+    // 6. The biggest purchase outside the fixed bills.
+    final big = _expenses.where((t) => t.date.year == now.year && t.date.month == now.month && !t.isRecurrent).toList()..sort((a, b) => b.amount.compareTo(a.amount));
+    if (big.isNotEmpty && notes.length < 4) {
+      notes.add('🛍️ Sua maior compra do mês, fora as contas fixas, foi **${big.first.title}** (${CesarText.money(big.first.amount)}).');
+    }
+    // 7. Fixed costs.
+    final fixed = _recurring();
+    if (fixed.isNotEmpty && notes.length < 4) {
+      final total = fixed.fold(0.0, (a, t) => a + t.amount);
+      notes.add('🔁 Seus gastos fixos somam ${CesarText.money(total)} por mês (${fixed.take(3).map((t) => t.title).join(', ')}${fixed.length > 3 ? '…' : ''}).');
+    }
+    if (notes.isEmpty) {
+      const t = 'Nada fora do comum por aqui: seus gastos estão no seu ritmo de sempre. 👏';
+      return const Advice('💡 $t', t, 'advice:insights');
+    }
+    final shown = notes.take(4).toList();
+    return Advice('💡 O que eu notei:\n${shown.map((n) => '- $n').join('\n')}', shown.first.replaceAll('**', ''), 'advice:insights');
+  }
+
+  /// The day a question asks about: "dia 25", "fim do mês", "quando cair o
+  /// salário", "semana que vem", "sexta", "amanhã", "daqui a 10 dias".
+  DateTime? _targetDay(String s) {
+    final today = _today;
+    final day = RegExp(r'\bdia\s+(\d{1,2})\b').firstMatch(s);
+    if (day != null) {
+      final d = int.parse(day.group(1)!);
+      if (d < 1 || d > 31) return null;
+      final thisMonth = DateTime(today.year, today.month, min(d, DateTime(today.year, today.month + 1, 0).day));
+      return thisMonth.isBefore(today) ? DateTime(today.year, today.month + 1, d) : thisMonth;
+    }
+    if (RegExp(r'\b(?:fim|final)\s+do\s+mes\b').hasMatch(s)) return DateTime(today.year, today.month + 1, 0);
+    if (RegExp(r'\b(?:quando|depois\s+que|assim\s+que)\s+(?:cair|entrar|chegar|receber)\s+(?:o\s+|meu\s+)?(?:salario|pagamento)\b|\bno\s+dia\s+do\s+(?:salario|pagamento)\b').hasMatch(s)) {
+      return _nextSalaryDay();
+    }
+    if (RegExp(r'\b(?:antes\s+do|ate\s+o)\s+(?:proximo\s+)?(?:salario|pagamento)\b').hasMatch(s)) return _nextSalaryDay()?.subtract(const Duration(days: 1));
+    if (RegExp(r'\b(?:semana\s+que\s+vem|proxima\s+semana)\b').hasMatch(s)) return today.add(const Duration(days: 7));
+    if (RegExp(r'\b(?:mes\s+que\s+vem|proximo\s+mes)\b').hasMatch(s)) return DateTime(today.year, today.month + 1, today.day);
+    if (RegExp(r'\bamanha\b').hasMatch(s)) return today.add(const Duration(days: 1));
+    final later = RegExp(r'\bdaqui\s+a\s+(\d{1,3})\s+dias?\b').firstMatch(s);
+    if (later != null) return today.add(Duration(days: int.parse(later.group(1)!)));
+    const weekdays = {'segunda': 1, 'terca': 2, 'quarta': 3, 'quinta': 4, 'sexta': 5, 'sabado': 6, 'domingo': 7};
+    for (final e in weekdays.entries) {
+      if (RegExp('\\b${e.key}\\b').hasMatch(s)) {
+        var ahead = (e.value - today.weekday) % 7;
+        if (ahead == 0) ahead = 7;
+        return today.add(Duration(days: ahead));
+      }
+    }
+    return null;
+  }
+
+  /// The next day the salary should come in, from the last one received.
+  DateTime? _nextSalaryDay() {
+    final salaries = repository.transactions.where((t) => t.type == TransactionType.income && t.category == 'salary').toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    if (salaries.isEmpty) return null;
+    final day = salaries.first.dueDay ?? salaries.first.date.day;
+    final today = _today;
+    final thisMonth = DateTime(today.year, today.month, day);
+    return thisMonth.isAfter(today) ? thisMonth : DateTime(today.year, today.month + 1, day);
+  }
+
+  /// "quanto vou ter dia 25?", "quanto vou ter quando cair o salário?": the
+  /// balance ahead — salary, bills and the usual day to day until then.
+  Advice? _balanceOn(String s) {
+    if (!RegExp(r'\bquanto\s+(?:eu\s+)?(?:vou|vai|irei|devo|deveria)\s+ter\b|\bquanto\s+(?:vai\s+)?(?:estar|ficar)\s+(?:o\s+)?(?:meu\s+)?saldo\b|'
+            r'\b(?:meu\s+)?saldo\s+(?:vai\s+)?(?:estar|ficar|ser)\b|\bcom\s+quanto\s+(?:eu\s+)?(?:vou\s+)?(?:chegar|ficar)\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    final target = _targetDay(s);
+    if (target == null) return null;
+    final today = _today;
+    final days = target.difference(today).inDays;
+    if (days < 0 || days > 120) return null;
+    final when = days == 0 ? 'hoje' : (days == 1 ? 'amanhã' : 'no dia ${CesarText.ddmm(target)}');
+    final profile = FinancialProfile.build(repository.transactions, now: _clock());
+    final events = CashFlowForecast.knownEvents(profile, transactions: repository.transactions, openBills: repository.openBills, days: days + 1)
+        .where((e) => !CesarText.dayOnly(e.day).isAfter(target))
+        .toList()
+      ..sort((a, b) => a.day.compareTo(b.day));
+    final balance = repository.totalBalance;
+    String median, pessimistic = '';
+    if (profile.hasHistory && days > 0) {
+      final f = CashFlowForecast.run(profile, startBalance: balance, days: days + 1, events: events);
+      median = CesarText.money(f.medianOn(target));
+      pessimistic = ' (num cenário mais apertado, ${CesarText.money(f.p10On(target))})';
+    } else {
+      final daily = _daysOfData > 0 ? _monthExpense / max(1, _today.day) : 0.0;
+      final known = events.fold(0.0, (a, e) => a + e.amount);
+      median = CesarText.money(balance + known - daily * days);
+    }
+    final ins = events.where((e) => e.amount > 0).map((e) => '+${CesarText.money(e.amount)} ${e.label} (${CesarText.ddmm(e.day)})');
+    final outs = events.where((e) => e.amount < 0).take(4).map((e) => '−${CesarText.money(-e.amount)} ${e.label} (${CesarText.ddmm(e.day)})');
+    final steps = [...ins, ...outs];
+    final detail = steps.isEmpty ? '' : '\n\nAté lá: ${steps.join('; ')}, além do dia a dia.';
+    final t = 'Hoje seu saldo é ${CesarText.money(balance)}. ${when[0].toUpperCase()}${when.substring(1)}, a previsão é você ter uns **$median**$pessimistic.';
+    return Advice('🔮 $t$detail', t.replaceAll('**', ''), 'advice:balance_on');
   }
 
   // ───────────────────────── 5.5: "e se…?" ─────────────────────────

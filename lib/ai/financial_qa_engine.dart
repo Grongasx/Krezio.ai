@@ -4,6 +4,7 @@ import '../backend/models/financial_transaction.dart';
 import '../backend/repositories/financial_repository.dart';
 import 'cesar_text.dart';
 import 'financial_report_rag_engine.dart';
+import 'local_nlp_engine.dart';
 import 'temporal_date_parser.dart';
 
 /// What a question asks for. Each kind is answered from the repository.
@@ -20,6 +21,7 @@ enum QaKind {
   freeUntilIncome,
   goals,
   savings,
+  search,
   budgetRemaining,
   comparison,
   count,
@@ -49,10 +51,27 @@ class QaQuery {
   /// Position in a ranking: "o segundo maior gasto" is rank 2.
   final int rank;
 
-  const QaQuery(this.kind, {this.term = '', this.period, this.limit = 5, this.rank = 1});
+  /// Search filters ("acima de 100", "abaixo de 50", "no crédito",
+  /// receitas instead of gastos) — see [QaKind.search].
+  final double? minAmount;
+  final double? maxAmount;
+  final String? payment;
+  final bool incomeOnly;
 
-  QaQuery copyWith({QaKind? kind, String? term, String? period, int? limit, int? rank}) =>
-      QaQuery(kind ?? this.kind, term: term ?? this.term, period: period ?? this.period, limit: limit ?? this.limit, rank: rank ?? this.rank);
+  const QaQuery(this.kind,
+      {this.term = '', this.period, this.limit = 5, this.rank = 1, this.minAmount, this.maxAmount, this.payment, this.incomeOnly = false});
+
+  QaQuery copyWith({QaKind? kind, String? term, String? period, int? limit, int? rank, double? minAmount, double? maxAmount, String? payment}) => QaQuery(
+        kind ?? this.kind,
+        term: term ?? this.term,
+        period: period ?? this.period,
+        limit: limit ?? this.limit,
+        rank: rank ?? this.rank,
+        minAmount: minAmount ?? this.minAmount,
+        maxAmount: maxAmount ?? this.maxAmount,
+        payment: payment ?? this.payment,
+        incomeOnly: incomeOnly,
+      );
 
   @override
   String toString() => 'QaQuery($kind, term="$term", period=$period)';
@@ -214,6 +233,54 @@ class FinancialQaEngine {
   static final _extremeLead = RegExp('\\b((?:(?:segund|terceir|quart|quint)[oa]\\s+)?(?:$_bigWords|$_smallWords))\\s+(?:gastos?|despesas?|compras?|lancamentos?|saidas?)\\b');
   static final _extremeTail = RegExp('\\b(?:gastos?|despesas?|compras?)\\s+(?:mais\\s+)?($_bigWords|$_smallWords|(?:segund|terceir|quart|quint)[oa]\\s+(?:maior|menor))\\b');
 
+  static const _value = r'(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)(\s*mil)?';
+  static final _minFilter = RegExp(r'\b(?:acima\s+de|mais\s+de|maior(?:es)?\s+(?:que|do\s+que|de)|superior(?:es)?\s+a|a\s+partir\s+de|pelo\s+menos|no\s+minimo)\s+(?:r\$\s*)?' + _value);
+  static final _maxFilter = RegExp(r'\b(?:abaixo\s+de|menos\s+de|menor(?:es)?\s+(?:que|do\s+que|de)|inferior(?:es)?\s+a|ate|no\s+maximo)\s+(?:r\$\s*)?' + _value + r'(?!\s*(?:dias?|semanas?|mes|meses|anos?|horas?)\b)');
+  static final _betweenFilter = RegExp(r'\bentre\s+(?:r\$\s*)?' + _value + r'\s+e\s+(?:r\$\s*)?' + _value);
+  static final _paymentFilter = RegExp(r'\b(?:no|na|pelo|pela|em|via|com\s+o|com\s+a|usando\s+o)\s+(pix|cartao\s+de\s+credito|credito|cartao\s+de\s+debito|debito|dinheiro|especie|boleto)\b');
+  static final _listing = RegExp(r'^(?:me\s+)?(?:mostra|mostre|lista|liste|exibe|exiba|filtra|filtre|procura|procure|busca|busque|ve|veja|ver)\b|'
+      r'\bquais\s+(?:foram\s+|sao\s+)?(?:os\s+|as\s+|meus\s+|minhas\s+)?(?:gastos|compras|lancamentos|despesas|pagamentos|transacoes|receitas|entradas)\b|'
+      r'^(?:e\s+)?(?:o\s+)?que\s+(?:eu\s+)?(?:comprei|paguei)\b');
+
+  static double _filterValue(String digits, String? thousand) {
+    final v = LocalFinancialNlpEngine.cleanAndParseAmount(digits) ?? 0;
+    return thousand != null && thousand.trim().isNotEmpty ? v * 1000 : v;
+  }
+
+  /// [s] as a search, when it filters by value, or lists with a payment
+  /// method or a name. Null otherwise.
+  static QaQuery? _searchQuery(String s, String? period) {
+    final min = _minFilter.firstMatch(s), max = _maxFilter.firstMatch(s), between = _betweenFilter.firstMatch(s);
+    final pay = _paymentFilter.firstMatch(s);
+    final listing = _listing.hasMatch(s);
+    var rest = s;
+    for (final m in [min, max, between, pay]) {
+      if (m != null) rest = rest.replaceFirst(m.group(0)!, ' ');
+    }
+    rest = rest
+        .replaceAll(_listing, ' ')
+        // ("os últimos 2 lançamentos" is the recent list, not a search for "últimos 2".)
+        .replaceAll(RegExp(r'\bultim[oa]s?(?:\s+(?:\d+|dois|duas|tres|cinco|dez))?\b'), ' ')
+        .replaceAll(RegExp(r'\b(?:todos|todas|tudo|lancamentos?|compras?|pagamentos?|transacoes|fiz|feitas?|feitos?|eu|meus|minhas|desde\s+sempre|de\s+sempre|desde\s+o\s+inicio)\b'), ' ');
+    final term = _termOf(rest);
+    final hasValueFilter = min != null || max != null || between != null;
+    if (!hasValueFilter && !(listing && (pay != null || term.isNotEmpty))) return null;
+    // A value filter needs a question or a listing: "gastei mais de 100 no mercado" is an entry.
+    if (!listing && !RegExp(r'\b(?:quais|qual|quantos|quantas|quanto|mostra|lista|tem|teve|houve)\b').hasMatch(s)) return null;
+    final income = RegExp(r'\b(?:receitas?|entradas?|recebi|ganhei|recebimentos?)\b').hasMatch(s);
+    final always = RegExp(r'\b(?:desde\s+sempre|de\s+sempre|desde\s+o\s+inicio|de\s+todos\s+os\s+tempos)\b').hasMatch(s);
+    return QaQuery(
+      QaKind.search,
+      term: term,
+      period: always ? 'sempre' : period,
+      minAmount: between != null ? _filterValue(between.group(1)!, between.group(2)) : (min == null ? null : _filterValue(min.group(1)!, min.group(2))),
+      maxAmount: between != null ? _filterValue(between.group(3)!, between.group(4)) : (max == null ? null : _filterValue(max.group(1)!, max.group(2))),
+      payment: pay == null ? null : _paymentCode(pay.group(1)!.replaceFirst(RegExp(r'^cartao\s+de\s+'), '')),
+      incomeOnly: income,
+      limit: 10,
+    );
+  }
+
   /// "segundo maior" → 2; anything else → 1.
   static int _rankOf(String w) =>
       const {'segund': 2, 'terceir': 3, 'quart': 4, 'quint': 5}[RegExp(r'(segund|terceir|quart|quint)').firstMatch(w)?.group(1)] ?? 1;
@@ -329,6 +396,12 @@ class FinancialQaEngine {
       return QaQuery(QaKind.debtors, term: person == null || notNames.contains(person) ? '' : person);
     }
 
+    // A search with filters: "mostra os gastos acima de 100 no crédito",
+    // "quais compras eu fiz no ifood em setembro?", "o que eu paguei no pix
+    // essa semana?" (before the rankings: "gastos maiores que 200" is a filter).
+    final search = _searchQuery(s, period);
+    if (search != null) return search;
+
     // Largest / smallest expense ("o mais salgado", "o segundo maior").
     final extreme = _extremeLead.firstMatch(s) ?? _extremeTail.firstMatch(s);
     if (extreme != null) {
@@ -424,6 +497,21 @@ class FinancialQaEngine {
     if (m == null) return null;
     final rest = m.group(1)!;
     if (rest.split(' ').length > 6) return null;
+    // A search refined: "e no débito?", "e acima de 200?", "e em setembro?".
+    if (previous.kind == QaKind.search) {
+      final next = _searchQuery('mostra $rest', null);
+      final period = periodIn(rest) ?? monthIn(rest);
+      if (next != null || period != null) {
+        return QaQuery(QaKind.search,
+            term: next != null && next.term.isNotEmpty ? next.term : previous.term,
+            period: period ?? previous.period,
+            minAmount: next?.minAmount ?? previous.minAmount,
+            maxAmount: next?.maxAmount ?? previous.maxAmount,
+            payment: next?.payment ?? previous.payment,
+            incomeOnly: previous.incomeOnly,
+            limit: previous.limit);
+      }
+    }
     // A number isn't a filter ("e 30 na padaria" is a new expense).
     if (RegExp(r'\d').hasMatch(rest)) return null;
     // "e o menor?", "e o segundo maior?", "e o segundo?": the other end (or
@@ -510,6 +598,8 @@ class FinancialQaEngine {
         return _goals(q);
       case QaKind.savings:
         return _savings(q);
+      case QaKind.search:
+        return _search(q, originalText);
       case QaKind.freeUntilIncome:
         return _freeUntilIncome(q);
       case QaKind.budgetRemaining:
@@ -880,6 +970,69 @@ class FinancialQaEngine {
       spoken = 'Você tem ${CesarText.money(free)} livres $when$billsNote. Dá uns ${CesarText.money(free / days)} por dia ($days ${days == 1 ? 'dia' : 'dias'}).';
     }
     return QaAnswer(text: '🧮 $spoken', spokenText: spoken, query: q);
+  }
+
+  /// The filters of a search as they read in the answer: " com ifood acima
+  /// de R$ 100,00 no Pix".
+  String _filtersPhrase(QaQuery q, [String? originalText]) {
+    final parts = <String>[];
+    if (q.term.isNotEmpty) {
+      // A brand as its titles spell it ("iFood"), else the user's own accents ("remédio").
+      final brand = _titleSpelling(q.term);
+      parts.add(' com ${brand != q.term ? brand : _originalSpelling(q.term, originalText)}');
+    }
+    if (q.minAmount != null && q.maxAmount != null) {
+      parts.add(' entre ${CesarText.money(q.minAmount!)} e ${CesarText.money(q.maxAmount!)}');
+    } else if (q.minAmount != null) {
+      parts.add(' acima de ${CesarText.money(q.minAmount!)}');
+    } else if (q.maxAmount != null) {
+      parts.add(' até ${CesarText.money(q.maxAmount!)}');
+    }
+    if (q.payment != null) parts.add(q.payment == 'pix' ? ' no Pix' : ' no ${CesarText.paymentName(q.payment!)}');
+    return parts.join();
+  }
+
+  /// "mostra os gastos acima de 100 no crédito esse mês": every record that
+  /// passes all the filters, newest first, with the total.
+  QaAnswer _search(QaQuery q, String? originalText) {
+    final always = q.period == 'sempre';
+    final r = always ? null : _range(q.period);
+    final folded = CesarText.fold(q.term);
+    // A name found in some title ("ifood") or note ("churrasco") filters by
+    // titles and notes only — not its whole category (the Cinemark is
+    // leisure too).
+    bool Function(FinancialTransaction)? named;
+    if (q.term.isNotEmpty) {
+      bool said(FinancialTransaction t) => CesarText.fold(t.title).contains(folded) || CesarText.fold(t.notes ?? '').contains(folded);
+      named = repository.transactions.any(said) ? said : (t) => _matchesTerm(t, q.term);
+    }
+    final items = repository.transactions.where((t) {
+      if (q.incomeOnly ? t.type != TransactionType.income : t.type != TransactionType.expense) return false;
+      if (r != null && !r.contains(t.date)) return false;
+      if (q.minAmount != null && t.amount < q.minAmount! - 0.001) return false;
+      if (q.maxAmount != null && t.amount > q.maxAmount! + 0.001) return false;
+      if (q.payment != null && t.paymentMethod != q.payment) return false;
+      if (named != null && !named(t)) return false;
+      return true;
+    }).toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+    final what = q.incomeOnly ? 'receitas' : 'gastos';
+    final when = always ? ' desde o início' : ' ${_periodPhrase(r!.label)}';
+    final filters = _filtersPhrase(q, originalText);
+    if (items.isEmpty) {
+      final text = 'Não achei $what$filters$when.';
+      return QaAnswer(text: '🔎 $text', spokenText: text, query: q);
+    }
+    final total = items.fold(0.0, (a, t) => a + t.amount);
+    final head = '${items.length} ${items.length == 1 ? (q.incomeOnly ? 'receita' : 'gasto') : what}$filters$when, somando ${CesarText.money(total)}';
+    final list = items
+        .take(q.limit)
+        .map((t) => '- ${CesarText.ddmm(t.date)} · ${t.title} — ${CesarText.money(t.amount)}'
+            '${t.paymentMethod == 'unknown' ? '' : ' (${CesarText.paymentName(t.paymentMethod)})'}'
+            '${(t.notes ?? '').isEmpty ? '' : ' — 📝 ${t.notes}'}')
+        .join('\n');
+    final more = items.length > q.limit ? '\n… e mais ${items.length - q.limit}.' : '';
+    return QaAnswer(text: '🔎 $head:\n$list$more', spokenText: 'Achei $head.', query: q);
   }
 
   /// "quanto eu economizei esse mês?": income minus spending in the period.

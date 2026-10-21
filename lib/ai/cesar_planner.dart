@@ -11,6 +11,7 @@ import 'affordability_analyzer.dart';
 import 'analytics/financial_advisors.dart';
 import 'analytics/financial_profile.dart';
 import 'cesar_commentary.dart';
+import 'goal_parser.dart';
 
 /// A reply from the planner. [createdReminderIds]/[createdGoalId] let the
 /// assistant offer "desfaz" for what was created.
@@ -25,8 +26,11 @@ class PlannerReply {
   /// Anything else to put back on "desfaz" (a debt payment, a paid bill).
   final bool Function(FinancialRepository repository)? undo;
 
+  /// What "desfaz" says it put back ("A meta voltou a R$ 10.000,00.").
+  final String? undoNote;
+
   const PlannerReply(this.text, this.route,
-      {String? spoken, this.createdReminderIds = const [], this.createdGoalId, this.previousBudgets = const {}, this.undo})
+      {String? spoken, this.createdReminderIds = const [], this.createdGoalId, this.previousBudgets = const {}, this.undo, this.undoNote})
       : spokenText = spoken ?? text;
 }
 
@@ -55,6 +59,12 @@ class _DebtFlow extends _Flow {
   /// note it: a "sim" creates it as told.
   bool offered = false;
   _DebtFlow();
+}
+
+/// "cancelei a netflix": waiting for the "sim" to stop counting it as fixed.
+class _CancelSubFlow extends _Flow {
+  final List<FinancialTransaction> records;
+  _CancelSubFlow(this.records);
 }
 
 /// "quer que eu baixe o limite de lazer para 500?": waiting for the "sim".
@@ -140,6 +150,7 @@ class CesarPlanner {
     final s = expandShorthand(CesarText.simplify(text));
     if (s.isEmpty) return null;
     return _alertLimit(s) ??
+        _goalEdit(s, text) ??
         _scenario(s) ??
         _cutsAdvice(s) ??
         _saveMore(s) ??
@@ -200,7 +211,165 @@ class CesarPlanner {
         return _purchaseContinue(flow, s, text);
       case _LimitFlow():
         return _limitContinue(flow, s);
+      case _CancelSubFlow():
+        return _cancelSubContinue(flow, s);
     }
+  }
+
+  // ───────────────────────── subscriptions ─────────────────────────
+
+  static final _cancelSub = RegExp(
+      r'^(?:(?:eu|ja|hoje|ontem|finalmente)\s+)*(?:cancelei|cancela|cancelar|cancele|desassinei|desassina|desassinar|parei\s+de\s+pagar|nao\s+pago\s+mais|nao\s+assino\s+mais|encerrei|encerra|encerre)\s+'
+      r'(?:a\s+|o\s+|minha\s+|meu\s+)?(?:assinatura\s+(?:d[aoe]\s+)?|plano\s+(?:d[aoe]\s+)?|mensalidade\s+(?:d[aoe]\s+)?)?([a-z0-9+][a-z0-9+ ]{1,30}?)\s*$');
+
+  /// The fixed expenses, the latest record of each name.
+  List<FinancialTransaction> get _subscriptions {
+    final latest = <String, FinancialTransaction>{};
+    for (final t in repository.transactions.where((t) => t.type == TransactionType.expense && (t.isRecurrent || t.dueDay != null))) {
+      final key = CesarText.fold(t.title);
+      final cur = latest[key];
+      if (cur == null || t.date.isAfter(cur.date)) latest[key] = t;
+    }
+    return latest.values.toList();
+  }
+
+  /// "cancelei a netflix", "cancela a assinatura do spotify": stop counting a
+  /// fixed expense — it leaves the bills ahead and the forecast; what was
+  /// paid stays in the history. Asks "sim" first. Null when [text] names no
+  /// fixed expense ("cancela aquele ifood de 41,50" deletes a record instead).
+  PlannerReply? cancelSubscription(String text) {
+    final m = _cancelSub.firstMatch(CesarText.simplify(text));
+    if (m == null) return null;
+    final term = m.group(1)!.trim();
+    final matches = _subscriptions.where((t) {
+      final title = CesarText.fold(t.title);
+      return title.contains(term) || term.split(' ').where((w) => w.length >= 3).any(title.contains);
+    }).toList();
+    if (matches.isEmpty) return null;
+    _flow = _CancelSubFlow(matches);
+    final monthly = matches.fold(0.0, (a, t) => a + t.amount);
+    final names = matches.map((t) => '**${t.title}** (${CesarText.money(t.amount)}/mês)').join(' e ');
+    final t = 'Vou parar de contar $names como gasto fixo: ${matches.length == 1 ? 'ela sai' : 'elas saem'} das contas a vencer e da previsão. '
+        'O que você já pagou continua no histórico. Confirma? (sim/não)';
+    return PlannerReply('✂️ $t', 'planner:cancel_subscription_ask',
+        spoken: 'Vou parar de contar ${matches.map((t) => t.title).join(' e ')} como gasto fixo, ${CesarText.money(monthly)} por mês. Confirma?');
+  }
+
+  PlannerReply? _cancelSubContinue(_CancelSubFlow f, String s) {
+    _flow = null;
+    if (!_yes(s)) return null;
+    final before = <FinancialTransaction>[];
+    final stamp = CesarText.ddmm(_today);
+    for (final t in f.records) {
+      final now = repository.transactions.where((x) => x.id == t.id).firstOrNull;
+      if (now == null) continue;
+      before.add(now);
+      repository.updateTransaction(FinancialTransaction(
+        id: now.id,
+        title: now.title,
+        amount: now.amount,
+        type: now.type,
+        category: now.category,
+        paymentMethod: now.paymentMethod,
+        date: now.date,
+        installments: now.installments,
+        currentInstallment: now.currentInstallment,
+        bankSource: now.bankSource,
+        notes: [if ((now.notes ?? '').isNotEmpty) now.notes!, 'Assinatura cancelada em $stamp'].join(' · '),
+        accountId: now.accountId,
+        toAccountId: now.toAccountId,
+        originalCurrency: now.originalCurrency,
+        originalAmount: now.originalAmount,
+        exchangeRate: now.exchangeRate,
+      ));
+    }
+    if (before.isEmpty) return const PlannerReply('Não achei mais essa assinatura por aqui — nada mudou.', 'planner:cancel_subscription');
+    final monthly = before.fold(0.0, (a, t) => a + t.amount);
+    final t = 'Pronto! ${before.map((t) => t.title).join(' e ')} saiu dos gastos fixos. São ${CesarText.money(monthly)} por mês a menos — '
+        '${CesarText.money(monthly * 12)} por ano. 🎉';
+    return PlannerReply('✂️ $t\n\nSe foi engano, diga "desfaz".', 'planner:cancel_subscription',
+        spoken: t.replaceAll(' 🎉', ''),
+        undoNote: '${before.map((t) => t.title).join(' e ')} voltou para os gastos fixos.', undo: (repo) {
+      for (final t in before) {
+        repo.updateTransaction(t);
+      }
+      return true;
+    });
+  }
+
+  // ───────────────────────── goals: editing ─────────────────────────
+
+  /// "aumenta a meta da viagem pra 12 mil", "adia a meta do carro pra julho
+  /// do ano que vem", "renomeia a meta da moto pra moto nova".
+  PlannerReply? _goalEdit(String s, String text) {
+    if (!RegExp(r'\bmetas?\b').hasMatch(s)) return null;
+    final rename = RegExp(r'\b(?:renomeia|renomeie|renomear|muda\s+o\s+nome\s+d[ae]|troca\s+o\s+nome\s+d[ae]|altera\s+o\s+nome\s+d[ae])\s+(?:a\s+|minha\s+)?meta\s+(?:d[aoe]s?\s+)?(.+?)\s+(?:pra|para)\s+(.+)$')
+        .firstMatch(s);
+    final deadline = RegExp(r'\b(?:muda|mude|altera|altere|passa|troca|adia|adie|adiar|antecipa|antecipe|estende|estenda|prorroga|prorrogue|empurra)\s+(?:o\s+prazo\s+d[ae]\s+)?(?:a\s+|minha\s+)?meta\s+'
+            r'(?:d[aoe]s?\s+)?(.+?)\s+(?:pra|para|ate)\s+(.+)$')
+        .firstMatch(s);
+    final target = RegExp(r'\b(?:muda|mude|altera|altere|aumenta|aumente|diminui|diminua|reduz|reduza|ajusta|ajuste|passa|coloca|troca|sobe|baixa)\s+'
+                r'(?:o\s+(?:valor|alvo|objetivo)\s+d[ae]\s+)?(?:a\s+|minha\s+)?meta\s+(?:d[aoe]s?\s+)?(.+?)\s+(?:pra|para|em)\s+(?:r\s*)?(\d[\d.,]*(?:\s*mil)?)\s*(?:reais)?$')
+            .firstMatch(s) ??
+        RegExp(r'^(?:a\s+)?meta\s+d[aoe]s?\s+(.+?)\s+(?:agora\s+)?(?:e|eh|vai\s+ser|passa\s+a\s+ser|fica)\s+(?:de\s+)?(?:r\s*)?(\d[\d.,]*(?:\s*mil)?)\s*(?:reais)?$').firstMatch(s);
+    final RegExpMatch? m;
+    final String kind;
+    if (rename != null) {
+      m = rename;
+      kind = 'nome';
+    } else if (target != null) {
+      m = target;
+      kind = 'valor';
+    } else if (deadline != null && GoalParser.targetDateIn(deadline.group(2)!) != null) {
+      m = deadline;
+      kind = 'prazo';
+    } else {
+      return null;
+    }
+    final term = m.group(1)!.replaceFirst(RegExp(r'^(?:(?:a|o|minha|meu)\s+)+'), '').trim();
+    final found = repository.findGoalsByTitle(term);
+    if (found.isEmpty) {
+      final all = repository.goals.where((g) => !g.isCompleted).map((g) => '"${g.title}"').join(', ');
+      return PlannerReply('Não achei a meta "$term".${all.isEmpty ? ' Você ainda não tem metas.' : ' Suas metas: $all.'}', 'planner:goal_not_found');
+    }
+    if (found.length > 1) {
+      return PlannerReply('Achei mais de uma meta com "$term": ${found.map((g) => '"${g.title}"').join(', ')}. Qual delas?', 'planner:goal_choose');
+    }
+    final old = found.first;
+    final FinancialGoal updated;
+    final String what;
+    switch (kind) {
+      case 'nome':
+        // The new name as typed (accents and case kept).
+        final said = RegExp(r'\s(?:pra|para)\s+(.+?)\s*[.!]*$', caseSensitive: false).allMatches(' ${text.trim()}').lastOrNull?.group(1)?.trim() ?? m.group(2)!;
+        final title = said.replaceAll(RegExp(r'''^["']|["']$'''), '');
+        updated = old.copyWith(title: title[0].toUpperCase() + title.substring(1));
+        what = 'O nome da meta agora é **${updated.title}** (antes "${old.title}").';
+      case 'valor':
+        final v = money(m.group(2)!);
+        if (v == null || v <= 0) return null;
+        updated = old.copyWith(targetAmount: v);
+        what = 'A meta **${old.title}** agora é de **${CesarText.money(v)}** (antes ${CesarText.money(old.targetAmount)}).';
+      default:
+        final d = GoalParser.targetDateIn(m.group(2)!)!;
+        updated = old.copyWith(targetDate: d);
+        const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+        String label(DateTime x) => '${months[x.month - 1]} de ${x.year}';
+        what = 'O prazo da meta **${old.title}** agora é **${label(d)}**${old.targetDate == null ? '' : ' (antes ${label(old.targetDate!)})'}.';
+    }
+    repository.updateGoal(updated);
+    final now = repository.goals.where((g) => g.id == old.id).firstOrNull ?? updated;
+    final monthly = now.suggestedMonthlyContribution;
+    final plan = now.remaining <= 0
+        ? ' Com o que você já guardou, ela está concluída! 🎉'
+        : ' Faltam ${CesarText.money(now.remaining)}${monthly != null ? '; guardando ${CesarText.money(monthly)} por mês você chega lá no prazo' : ''}.';
+    final t = '$what$plan';
+    return PlannerReply('🎯 $t\n\nSe foi engano, diga "desfaz".', 'planner:goal_edited',
+        spoken: t.replaceAll('**', '').replaceAll(' 🎉', ''), undoNote: 'A meta "${old.title}" voltou a ser como era.', undo: (repo) {
+      if (!repo.goals.any((g) => g.id == old.id)) return false;
+      repo.updateGoal(old);
+      return true;
+    });
   }
 
   // ───────────────────────── comments and limits ─────────────────────────
@@ -233,7 +402,8 @@ class CesarPlanner {
         : 'Você já usou ${CesarText.money(now.currentSpent)} este mês; sobram ${CesarText.money(now.remaining)}.';
     final t = 'Pronto! O limite de **${b.name}** agora é **${CesarText.money(limit)}** por mês'
         '${old > 0 && old != limit ? ' (antes: ${CesarText.money(old)})' : ''}. $status Eu te aviso quando chegar perto. 🎯';
-    return PlannerReply(t, 'budget_set', spoken: t.replaceAll('**', '').replaceAll(' 🎯', ''), previousBudgets: {category: old});
+    return PlannerReply(t, 'budget_set',
+        spoken: t.replaceAll('**', '').replaceAll(' 🎯', ''), previousBudgets: {category: old}, undoNote: 'O limite de ${b.name} voltou a ser ${CesarText.money(old)}.');
   }
 
   /// "me avisa se eu passar de 500 no lazer": the budget limit of that
@@ -786,10 +956,17 @@ class CesarPlanner {
       r'\b(?:quero|preciso|vou|pretendo)\s+(?:juntar|guardar|economizar|poupar)\s+(?:(?:grana|dinheiro)\s+)?(?:pra|para)\s+(?:comprar\s+|trocar\s+de\s+|ter\s+)?(?:(?:um|uma|o|a|meu|minha)\s+)?([a-z]{3,})');
 
   PlannerReply? _goalStart(String s, String text) {
+    // "quanto vou ter dia 25?" asks about the balance ahead, not a goal.
+    if (RegExp(r'^(?:e\s+)?(?:quanto|qto|com\s+quanto)\b').hasMatch(s)) return null;
     final m = _goalWords.firstMatch(s);
     if (m == null) return null;
     final item = (m.group(1) ?? m.group(2) ?? m.group(3))?.trim();
-    if (item == null || item.length < 3 || const {'dinheiro', 'isso', 'algo', 'coisa', 'gasto', 'pix', 'compra', 'reserva', 'uma', 'meu', 'minha', 'divida', 'dividas'}.contains(item)) return null;
+    if (item == null ||
+        item.length < 3 ||
+        const {'dinheiro', 'isso', 'algo', 'coisa', 'gasto', 'pix', 'compra', 'reserva', 'uma', 'meu', 'minha', 'divida', 'dividas'}.contains(item) ||
+        RegExp(r'^(?:dia|quando|semana|mes|ano|hoje|amanha|depois|tempo|saldo|sobrando)\b').hasMatch(item)) {
+      return null;
+    }
     // A purchase being told ("quero registrar que comprei…") is not a plan:
     // only with a planning word or no past purchase verb.
     if (RegExp(r'\b(?:comprei|paguei|gastei)\b').hasMatch(s)) return null;

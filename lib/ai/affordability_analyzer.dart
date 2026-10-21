@@ -1,4 +1,5 @@
 import 'analytics/financial_advisors.dart';
+import 'financial_calculator.dart';
 import 'local_nlp_engine.dart';
 import '../backend/repositories/financial_repository.dart';
 import '../backend/models/budget_category.dart';
@@ -57,6 +58,9 @@ class AffordabilityAnalyzer {
 
   AffordabilityResult? analyze(String text) {
     if (!isAffordabilityQuestion(text)) return null;
+    // "vale a pena comprar à vista com 10% de desconto ou em 10x?" is the
+    // calculator's comparison, not whether the purchase fits.
+    if (FinancialCalculator.answer(text) != null) return null;
     // "consigo comprar uma moto de 15 mil até o fim do ano?": a plan with a
     // deadline — César's planner answers how to get there.
     if (RegExp(r'\b(?:at[eé]\s+(?:o\s+)?(?:fim|final)|at[eé]\s+(?:janeiro|fevereiro|mar[cç]o|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro)|'
