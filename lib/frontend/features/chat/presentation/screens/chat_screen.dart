@@ -162,7 +162,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _textController.dispose();
     _scrollController.dispose();
     _voiceController.dispose();
-    _voiceSynthesis.dispose();
+    // VoiceSynthesisService is an app-wide singleton: disposing it here killed
+    // its notifiers for the rest of the session (e.g. voice broke after
+    // signing out and back in, which rebuilds this screen). Just stop it.
+    _voiceSynthesis.stop();
     super.dispose();
   }
 
@@ -983,7 +986,7 @@ class _ChatScreenState extends State<ChatScreen> {
         title: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(KrezioSpace.sm),
               decoration: BoxDecoration(
                 color: KrezioColors.aiPurple.withOpacity(0.15),
                 shape: BoxShape.circle,
@@ -994,21 +997,21 @@ class _ChatScreenState extends State<ChatScreen> {
                 size: 20,
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: KrezioSpace.md),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'César • Krezio.ai',
                   style: TextStyle(
-                    fontSize: 18,
+                    fontSize: KrezioFont.title,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
                 Text(
                   'Seu Copiloto Financeiro On-Device',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: KrezioFont.caption,
                     color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                   ),
                 ),
@@ -1022,7 +1025,7 @@ class _ChatScreenState extends State<ChatScreen> {
             builder: (context, env, _) {
               if (env != AppEnvironment.homologation) return const SizedBox.shrink();
               return Padding(
-                padding: const EdgeInsets.only(right: 6),
+                padding: const EdgeInsets.only(right: KrezioSpace.sm),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () {
@@ -1040,7 +1043,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     );
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [KrezioColors.aiPurple, Color(0xFF6366F1)],
@@ -1058,12 +1061,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(Icons.hub, color: Colors.white, size: 14),
-                        SizedBox(width: 4),
+                        SizedBox(width: KrezioSpace.xs),
                         Text(
                           'NEURAL',
                           style: TextStyle(
                             color: Colors.white,
-                            fontSize: 10,
+                            fontSize: KrezioFont.micro,
                             fontWeight: FontWeight.bold,
                             letterSpacing: 0.5,
                           ),
@@ -1077,8 +1080,8 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           if (_lastLatencyMs > 0)
             Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              margin: const EdgeInsets.only(right: KrezioSpace.sm),
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
               decoration: BoxDecoration(
                 color: KrezioColors.emeraldGreen.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
@@ -1087,12 +1090,12 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 children: [
                   const Icon(Icons.bolt, color: KrezioColors.emeraldGreen, size: 14),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: KrezioSpace.xs),
                   Text(
                     '${_lastLatencyMs.toStringAsFixed(1)} ms',
                     style: const TextStyle(
                       color: KrezioColors.emeraldGreen,
-                      fontSize: 11,
+                      fontSize: KrezioFont.caption,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1106,8 +1109,8 @@ class _ChatScreenState extends State<ChatScreen> {
               borderRadius: BorderRadius.circular(12),
               onTap: _openVoiceConversationModal,
               child: Container(
-                margin: const EdgeInsets.only(right: 6),
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                margin: const EdgeInsets.only(right: KrezioSpace.sm),
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [KrezioColors.aiPurple, Color(0xFF6366F1)],
@@ -1125,12 +1128,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.record_voice_over, color: Colors.white, size: 14),
-                    SizedBox(width: 4),
+                    SizedBox(width: KrezioSpace.xs),
                     Text(
                       'VOZ',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: KrezioFont.micro,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
                       ),
@@ -1157,7 +1160,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Row(
                   children: [
                     const Text('🇧🇷 '),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     Text('Português (Brasil)', style: TextStyle(fontWeight: _selectedLocaleId.contains('pt') ? FontWeight.bold : FontWeight.normal)),
                   ],
                 ),
@@ -1167,7 +1170,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Row(
                   children: [
                     const Text('🇺🇸 '),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     Text('English (US)', style: TextStyle(fontWeight: _selectedLocaleId.contains('en') ? FontWeight.bold : FontWeight.normal)),
                   ],
                 ),
@@ -1177,7 +1180,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Row(
                   children: [
                     const Text('🇪🇸 '),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: KrezioSpace.sm),
                     Text('Español (España)', style: TextStyle(fontWeight: _selectedLocaleId.contains('es') ? FontWeight.bold : FontWeight.normal)),
                   ],
                 ),
@@ -1202,16 +1205,16 @@ class _ChatScreenState extends State<ChatScreen> {
             // Quick Suggestions Bar
             Container(
               height: 48,
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: KrezioSpace.sm),
               child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg),
                 scrollDirection: Axis.horizontal,
                 itemCount: _quickSuggestions.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (_, __) => const SizedBox(width: KrezioSpace.sm),
                 itemBuilder: (context, index) {
                   final text = _quickSuggestions[index];
                   return ActionChip(
-                    label: Text(text, style: const TextStyle(fontSize: 12)),
+                    label: Text(text, style: const TextStyle(fontSize: KrezioFont.small)),
                     avatar: const Icon(Icons.flash_on, size: 14, color: KrezioColors.aiPurple),
                     backgroundColor: bgSurface,
                     side: BorderSide(
@@ -1228,7 +1231,7 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(KrezioSpace.lg),
                 itemCount: _messages.length,
                 itemBuilder: (context, index) {
                   final msg = _messages[index];
@@ -1239,7 +1242,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
             // Input Bar
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(KrezioSpace.md),
               decoration: BoxDecoration(
                 color: bgSurface,
                 border: Border(
@@ -1258,10 +1261,10 @@ class _ChatScreenState extends State<ChatScreen> {
                       decoration: InputDecoration(
                         hintText: 'Digite um gasto (ex: gastei 50 no mercado)...',
                         hintStyle: TextStyle(
-                          fontSize: 14,
+                          fontSize: KrezioFont.body,
                           color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                         ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
                         filled: true,
                         fillColor: isDark ? KrezioColors.darkBackground : KrezioColors.lightBackground,
                         border: OutlineInputBorder(
@@ -1281,7 +1284,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: KrezioSpace.sm),
                   Material(
                     color: _isListening ? Colors.redAccent : (isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface),
                     borderRadius: KrezioTheme.borderRadius,
@@ -1289,7 +1292,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       borderRadius: KrezioTheme.borderRadius,
                       onTap: _toggleListening,
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(KrezioSpace.md),
                         child: Icon(
                           _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
                           color: _isListening ? Colors.white : (isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText),
@@ -1298,7 +1301,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: KrezioSpace.sm),
                   Material(
                     color: KrezioColors.aiPurple,
                     borderRadius: KrezioTheme.borderRadius,
@@ -1306,7 +1309,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       borderRadius: KrezioTheme.borderRadius,
                       onTap: () => _sendMessage(_textController.text),
                       child: const Padding(
-                        padding: EdgeInsets.all(12),
+                        padding: EdgeInsets.all(KrezioSpace.md),
                         child: Icon(Icons.send_rounded, color: Colors.white, size: 20),
                       ),
                     ),
@@ -1329,33 +1332,33 @@ class _ChatScreenState extends State<ChatScreen> {
 
     for (final line in lines) {
       if (line.trim().isEmpty) {
-        children.add(const SizedBox(height: 8));
+        children.add(const SizedBox(height: KrezioSpace.sm));
         continue;
       }
 
       if (line.startsWith('#### ')) {
         children.add(Padding(
-          padding: const EdgeInsets.only(top: 2, bottom: 4),
+          padding: const EdgeInsets.only(top: KrezioSpace.hair, bottom: KrezioSpace.xs),
           child: Text(
             line.substring(5),
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: textColor),
+            style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.w700, color: textColor),
           ),
         ));
       } else if (line.startsWith('### ')) {
         children.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.only(bottom: KrezioSpace.sm),
           child: Text(
             line.substring(4),
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textColor),
+            style: TextStyle(fontSize: KrezioFont.bodyLarge, fontWeight: FontWeight.w700, color: textColor),
           ),
         ));
       } else if (line.startsWith('- ')) {
         children.add(Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.only(bottom: KrezioSpace.xs),
           child: RichText(
             text: TextSpan(
               children: [
-                TextSpan(text: '•  ', style: TextStyle(fontSize: 14, height: 1.4, color: textColor)),
+                TextSpan(text: '•  ', style: TextStyle(fontSize: KrezioFont.body, height: 1.4, color: textColor)),
                 ..._parseInlineMarkdown(line.substring(2), textColor),
               ],
             ),
@@ -1363,7 +1366,7 @@ class _ChatScreenState extends State<ChatScreen> {
         ));
       } else {
         children.add(Padding(
-          padding: const EdgeInsets.only(bottom: 3),
+          padding: const EdgeInsets.only(bottom: KrezioSpace.xs),
           child: RichText(text: TextSpan(children: _parseInlineMarkdown(line, textColor))),
         ));
       }
@@ -1378,7 +1381,7 @@ class _ChatScreenState extends State<ChatScreen> {
   List<InlineSpan> _parseInlineMarkdown(String text, Color textColor) {
     final spans = <InlineSpan>[];
     final pattern = RegExp(r'\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`');
-    final baseStyle = TextStyle(fontSize: 14, height: 1.4, color: textColor);
+    final baseStyle = TextStyle(fontSize: KrezioFont.body, height: 1.4, color: textColor);
     int last = 0;
 
     for (final match in pattern.allMatches(text)) {
@@ -1439,7 +1442,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final isUser = msg.sender == MessageSender.user;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: KrezioSpace.lg),
       child: Column(
         crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
@@ -1449,18 +1452,18 @@ class _ChatScreenState extends State<ChatScreen> {
             children: [
               if (!isUser) ...[
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(KrezioSpace.sm),
                   decoration: BoxDecoration(
                     color: KrezioColors.aiPurple.withOpacity(0.15),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 16),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: KrezioSpace.sm),
               ],
               Flexible(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
                   decoration: BoxDecoration(
                     color: isUser
                         ? KrezioColors.aiPurple
@@ -1482,7 +1485,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           msg.text,
                           style: const TextStyle(
                             color: Colors.white,
-                            fontSize: 14,
+                            fontSize: KrezioFont.body,
                             height: 1.4,
                           ),
                         )
@@ -1495,7 +1498,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
                             ),
                             if (msg.chart != null) ...[
-                              const SizedBox(height: 12),
+                              const SizedBox(height: KrezioSpace.md),
                               _buildReportChart(msg.chart!, isDark),
                             ],
                           ],
@@ -1503,7 +1506,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ),
               if (!isUser) ...[
-                const SizedBox(width: 6),
+                const SizedBox(width: KrezioSpace.sm),
                 IconButton(
                   icon: const Icon(Icons.volume_up_outlined, size: 18),
                   color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
@@ -1518,18 +1521,18 @@ class _ChatScreenState extends State<ChatScreen> {
 
           // Contextual Quick Action Chips for Missing Slots
           if (!isUser && msg.draft != null && !msg.draft!.isComplete) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: KrezioSpace.sm),
             Padding(
-              padding: const EdgeInsets.only(left: 32),
+              padding: const EdgeInsets.only(left: KrezioSpace.xxxl),
               child: _buildMissingSlotsQuickChips(msg.draft!, isDark),
             ),
           ],
 
           // Embedded Transaction Inspector Card if draft present
           if (msg.draft != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: KrezioSpace.sm),
             Padding(
-              padding: const EdgeInsets.only(left: 32),
+              padding: const EdgeInsets.only(left: KrezioSpace.xxxl),
               child: _buildTransactionInspectorCard(msg.draft!, isDark, msg.isMergedUpdate),
             ),
           ],
@@ -1556,7 +1559,7 @@ class _ChatScreenState extends State<ChatScreen> {
           return ActionChip(
             label: Text(
               opt['label']!,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600),
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
@@ -1584,7 +1587,7 @@ class _ChatScreenState extends State<ChatScreen> {
           return ActionChip(
             label: Text(
               opt['label']!,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600),
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
@@ -1626,7 +1629,7 @@ class _ChatScreenState extends State<ChatScreen> {
           return ActionChip(
             label: Text(
               opt['label']!,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600),
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
@@ -1660,7 +1663,7 @@ class _ChatScreenState extends State<ChatScreen> {
           return ActionChip(
             label: Text(
               opt['label']!,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600),
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
@@ -1702,7 +1705,7 @@ class _ChatScreenState extends State<ChatScreen> {
           return ActionChip(
             label: Text(
               opt['label']!,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w600),
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
@@ -1720,7 +1723,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(KrezioSpace.md),
       decoration: BoxDecoration(
         color: isDark ? KrezioColors.darkSurfaceVariant : const Color(0xFFF3F4F6),
         borderRadius: KrezioTheme.borderRadius,
@@ -1738,7 +1741,7 @@ class _ChatScreenState extends State<ChatScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
                     decoration: BoxDecoration(
                       color: _getIntentColor(draft.intent).withOpacity(0.15),
                       borderRadius: BorderRadius.circular(8),
@@ -1747,15 +1750,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       _formatIntentName(draft.intent),
                       style: TextStyle(
                         color: _getIntentColor(draft.intent),
-                        fontSize: 11,
+                        fontSize: KrezioFont.caption,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                   if (isMerged) ...[
-                    const SizedBox(width: 6),
+                    const SizedBox(width: KrezioSpace.sm),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
                       decoration: BoxDecoration(
                         color: KrezioColors.aiPurple.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(6),
@@ -1764,7 +1767,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         '🔄 Atualizado',
                         style: TextStyle(
                           color: KrezioColors.aiPurple,
-                          fontSize: 10,
+                          fontSize: KrezioFont.micro,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
@@ -1779,12 +1782,12 @@ class _ChatScreenState extends State<ChatScreen> {
                     size: 14,
                     color: statusColor,
                   ),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: KrezioSpace.xs),
                   Text(
                     draft.isComplete ? 'Completo' : 'Incompleto',
                     style: TextStyle(
                       color: statusColor,
-                      fontSize: 11,
+                      fontSize: KrezioFont.caption,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1792,7 +1795,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: KrezioSpace.sm),
 
           // Detail Grid
           Row(
@@ -1817,7 +1820,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: KrezioSpace.sm),
           Row(
             children: [
               Expanded(
@@ -1840,25 +1843,25 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
 
           if (draft.bankSource != null || draft.isRecurrent) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: KrezioSpace.sm),
             Wrap(
               spacing: 6,
               children: [
                 if (draft.bankSource != null)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
                     decoration: BoxDecoration(
                       color: KrezioColors.aiPurple.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Text(
                       '🏦 ${draft.bankSource}',
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: KrezioColors.aiPurple),
+                      style: const TextStyle(fontSize: KrezioFont.micro, fontWeight: FontWeight.w600, color: KrezioColors.aiPurple),
                     ),
                   ),
                 if (draft.isRecurrent)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
                     decoration: BoxDecoration(
                       color: KrezioColors.emeraldGreen.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(6),
@@ -1867,7 +1870,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       draft.dueDay != null || draft.dueBusinessDay != null
                           ? '🔁 Recorrente (${draft.dueBusinessDay != null ? "${draft.dueBusinessDay}º dia útil" : "Dia ${draft.dueDay}"}${draft.recurrenceDuration != null ? " • ${draft.recurrenceDuration}" : ""})'
                           : '🔁 Assinatura Mensal${draft.recurrenceDuration != null ? " (${draft.recurrenceDuration})" : ""}',
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: KrezioColors.emeraldGreen),
+                      style: const TextStyle(fontSize: KrezioFont.micro, fontWeight: FontWeight.w600, color: KrezioColors.emeraldGreen),
                     ),
                   ),
               ],
@@ -1875,9 +1878,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
 
           if (draft.isReminder) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: KrezioSpace.sm),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
               decoration: BoxDecoration(
                 color: KrezioColors.friendlyOrange.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(6),
@@ -1886,11 +1889,11 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 children: [
                   const Icon(Icons.event_available, size: 14, color: KrezioColors.friendlyOrange),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: KrezioSpace.sm),
                   Expanded(
                     child: Text(
                       draft.calendarConsultationNote ?? '🔔 Lembrete agendado via Calendário em Tempo Real',
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: KrezioColors.friendlyOrange),
+                      style: const TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: KrezioColors.friendlyOrange),
                     ),
                   ),
                 ],
@@ -1899,9 +1902,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ],
 
           if (draft.missingSlots.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: KrezioSpace.sm),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
               decoration: BoxDecoration(
                 color: KrezioColors.friendlyOrange.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(6),
@@ -1910,7 +1913,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 'Slots ausentes: ${draft.missingSlots.map(_formatMissingSlotName).join(", ")}',
                 style: const TextStyle(
                   color: KrezioColors.friendlyOrange,
-                  fontSize: 11,
+                  fontSize: KrezioFont.caption,
                 ),
               ),
             ),
@@ -1921,7 +1924,7 @@ class _ChatScreenState extends State<ChatScreen> {
             builder: (context, env, _) {
               if (env != AppEnvironment.homologation) return const SizedBox.shrink();
               return Padding(
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: KrezioSpace.sm),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(6),
                   onTap: () {
@@ -1938,7 +1941,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   },
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
                     decoration: BoxDecoration(
                       color: KrezioColors.aiPurple.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(6),
@@ -1948,11 +1951,11 @@ class _ChatScreenState extends State<ChatScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.hub_outlined, color: KrezioColors.aiPurple, size: 13),
-                        SizedBox(width: 6),
+                        SizedBox(width: KrezioSpace.sm),
                         Text(
                           'Inspecionar Pensamento Neural (Homologação)',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: KrezioFont.caption,
                             fontWeight: FontWeight.bold,
                             color: KrezioColors.aiPurple,
                           ),
@@ -1973,7 +1976,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Row(
       children: [
         Icon(icon, size: 14, color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText),
-        const SizedBox(width: 4),
+        const SizedBox(width: KrezioSpace.xs),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1981,14 +1984,14 @@ class _ChatScreenState extends State<ChatScreen> {
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 9,
+                  fontSize: KrezioFont.micro,
                   color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                 ),
               ),
               Text(
                 value,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: KrezioFont.small,
                   fontWeight: FontWeight.w600,
                   color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
                 ),
