@@ -29,6 +29,13 @@ class FinancialTransaction {
   final String? bankSource;
   final String? notes;
 
+  /// Account the money left from or came into; null = the main account.
+  final String? accountId;
+
+  /// Transfers between own accounts: where the money went. A transfer with
+  /// it doesn't change the total balance, only the accounts'.
+  final String? toAccountId;
+
   FinancialTransaction({
     required this.id,
     required this.title,
@@ -47,6 +54,8 @@ class FinancialTransaction {
     this.recurrenceDuration,
     this.bankSource,
     this.notes,
+    this.accountId,
+    this.toAccountId,
   });
 
   FinancialTransaction copyWith({
@@ -67,6 +76,8 @@ class FinancialTransaction {
     String? recurrenceDuration,
     String? bankSource,
     String? notes,
+    String? accountId,
+    String? toAccountId,
   }) {
     return FinancialTransaction(
       id: id ?? this.id,
@@ -86,6 +97,8 @@ class FinancialTransaction {
       recurrenceDuration: recurrenceDuration ?? this.recurrenceDuration,
       bankSource: bankSource ?? this.bankSource,
       notes: notes ?? this.notes,
+      accountId: accountId ?? this.accountId,
+      toAccountId: toAccountId ?? this.toAccountId,
     );
   }
 
@@ -108,6 +121,8 @@ class FinancialTransaction {
       'recurrenceDuration': recurrenceDuration,
       'bankSource': bankSource,
       'notes': notes,
+      if (accountId != null) 'accountId': accountId,
+      if (toAccountId != null) 'toAccountId': toAccountId,
     };
   }
 
@@ -133,8 +148,16 @@ class FinancialTransaction {
       recurrenceDuration: json['recurrenceDuration'] as String?,
       bankSource: json['bankSource'] as String?,
       notes: json['notes'] as String?,
+      accountId: json['accountId'] as String?,
+      toAccountId: json['toAccountId'] as String?,
     );
   }
+
+  /// Account id, with the main account for records saved without one.
+  String get account => accountId ?? 'main';
+
+  /// A transfer between own accounts: moves money, the total stays the same.
+  bool get isInternalTransfer => type == TransactionType.transfer && toAccountId != null;
 
   /// "5º dia útil" or "Dia 12".
   String get dueLabel => dueBusinessDay != null ? '$dueBusinessDayº dia útil' : 'Dia ${dueDay ?? date.day}';

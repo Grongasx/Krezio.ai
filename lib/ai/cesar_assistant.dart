@@ -1069,7 +1069,7 @@ class CesarAssistant {
   AssistantReply _runCategoryCommand(CategoryCommand c) {
     switch (c.kind) {
       case CategoryCommandKind.create:
-        final existing = repository.budgets.where((b) => CesarText.fold(b.name) == CesarText.fold(c.name)).firstOrNull;
+        final existing = repository.existingCategoryNamed(c.name);
         if (existing != null && (!existing.isCustom || c.limit == null)) {
           return AssistantReply('A categoria **${existing.name}** já existe. '
               '${c.limit == null ? 'Se quiser mudar o limite, diga "meu limite de ${existing.name.toLowerCase()} é 500".' : ''}'.trim(),

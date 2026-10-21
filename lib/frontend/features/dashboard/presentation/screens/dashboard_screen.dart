@@ -8,6 +8,7 @@ import '../widgets/ai_insight_card.dart';
 import '../widgets/category_donut_chart.dart';
 import '../../../transactions/presentation/widgets/transaction_list_tile.dart';
 import '../../../transactions/presentation/widgets/add_transaction_modal.dart';
+import '../../../reminders/presentation/screens/open_items_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   final FinancialRepository repository;
@@ -276,6 +277,14 @@ class DashboardScreen extends StatelessWidget {
                                     ),
                                   ],
                                 ),
+                                const Spacer(),
+                                TextButton(
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => OpenItemsScreen(repository: repository, isDark: isDark)),
+                                  ),
+                                  child: const Text('Ver tudo', style: TextStyle(fontSize: KrezioFont.small)),
+                                ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
                                   decoration: BoxDecoration(
@@ -461,6 +470,7 @@ class DashboardScreen extends StatelessWidget {
         isDark: isDark,
         onAdd: (tx) => repository.addTransaction(tx),
         customCategories: repository.budgets.where((b) => b.isCustom).toList(),
+        accounts: repository.activeAccounts,
       ),
     );
   }
@@ -475,6 +485,7 @@ class DashboardScreen extends StatelessWidget {
         initialTransaction: tx,
         onAdd: (updated) => repository.updateTransaction(updated),
         customCategories: repository.budgets.where((b) => b.isCustom).toList(),
+        accounts: repository.activeAccounts,
       ),
     );
   }

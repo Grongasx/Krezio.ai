@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../accounts/presentation/screens/accounts_screen.dart';
+import '../../../reminders/presentation/screens/open_items_screen.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
@@ -84,6 +86,37 @@ class SettingsScreen extends StatelessWidget {
                   value: isDark,
                   activeColor: KrezioColors.aiPurple,
                   onChanged: (_) => onToggleTheme(),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: KrezioSpace.lg),
+
+          // Money: accounts and open bills/debtors
+          KrezioCard(
+            padding: EdgeInsets.zero,
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.account_balance_wallet_outlined, color: KrezioColors.aiPurple),
+                  title: const Text('Contas e carteiras'),
+                  subtitle: const Text('Saldo por conta, transferências e fatura do cartão'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => AccountsScreen(repository: repository, isDark: isDark)),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.receipt_long, color: KrezioColors.aiPurple),
+                  title: const Text('Contas e devedores'),
+                  subtitle: const Text('Contas em aberto e quem te deve'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => OpenItemsScreen(repository: repository, isDark: isDark)),
+                  ),
                 ),
               ],
             ),
