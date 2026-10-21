@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import '../../../../../ai/local_nlp_engine.dart';
+import '../../../../../ai/chat_draft_tracker.dart';
+import '../../../../../ai/transaction_code.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/models/financial_reminder.dart';
@@ -33,6 +35,13 @@ class ChatMessage {
   final String? spokenText;
   final ReportChartData? chart;
 
+  /// Identity of the draft this card shows: its quick-reply chips act on
+  /// that draft (or on what it was saved as), not on the pending one.
+  final String? draftKey;
+
+  /// Records this card was saved as — their codes ("#4821") are shown on it.
+  final List<String> transactionIds;
+
   ChatMessage({
     required this.id,
     required this.sender,
@@ -42,6 +51,8 @@ class ChatMessage {
     this.isMergedUpdate = false,
     this.spokenText,
     this.chart,
+    this.draftKey,
+    this.transactionIds = const [],
   });
 }
 
@@ -83,6 +94,9 @@ class _ChatScreenState extends State<ChatScreen> {
   /// daily payments), so a follow-up correction ("na verdade é roupas") or
   /// "cancela" changes the real records, not just the chat card.
   List<String> _lastSavedTransactionIds = const [];
+
+  /// Which card each draft belongs to, and what it was saved as.
+  final ChatDraftTracker _drafts = ChatDraftTracker();
   double _lastLatencyMs = 0.0;
 
   late final VoiceSynthesisService _voiceSynthesis = VoiceSynthesisService();
@@ -119,6 +133,7 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() {
         _lastCompletedDraft = completedDraft;
         _activeDraft = null;
+        _drafts.dropped();
         _lastLatencyMs = completedDraft.latencyMs;
       });
       _saveCompletedDraft(completedDraft);
@@ -126,6 +141,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _voiceController.onAssistantReply = (reply) {
       if (!mounted) return;
       _syncAfterAssistant(reply);
+      _drafts.dropped();
       setState(() {
         _activeDraft = null;
         _messages.add(ChatMessage(
@@ -369,6 +385,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // drop it instead of merging the words into it and asking again.
     if (_activeDraft != null && !_activeDraft!.isComplete && widget.engine.isCancelCommand(text, pending: _activeDraft)) {
       _activeDraft = null;
+      _drafts.dropped();
       _replyAsAssistant('Tudo bem, descartei esse lançamento. Nada foi registrado. 👍');
       return;
     }
@@ -664,6 +681,7 @@ class _ChatScreenState extends State<ChatScreen> {
         setState(() {
           _messages.add(assistantMsg);
           _activeDraft = null;
+          _drafts.dropped();
         });
         _scrollToBottom();
       });
@@ -680,6 +698,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (multiDrafts.length >= 2) {
         final dropped = draftPending ? LocalFinancialNlpEngine.discardedDraftNotice(_activeDraft!) : null;
         _activeDraft = null;
+        _drafts.dropped();
         // Items with something missing (no payment method said) are asked
         // about first — saving them as they were lost/mixed data.
         final prompt = widget.engine.multiClarificationPrompt(multiDrafts);
@@ -711,6 +730,7 @@ class _ChatScreenState extends State<ChatScreen> {
       }
       draft = widget.engine.parse(text);
     }
+    final draftKey = isMerged ? _drafts.continueDraft() : _drafts.startDraft();
 
     // Show the category the user already taught César for items like this one,
     // so the chat card matches what actually gets saved to the repository.
@@ -723,9 +743,11 @@ class _ChatScreenState extends State<ChatScreen> {
     // A question ("qual meu saldo?") is "complete" too, but it is not a
     // record: saving it or making it the last transaction meant "apaga o
     // último" then claimed to delete the question and kept the real one.
-    if (LocalFinancialNlpEngine.isRecordable(draft)) {
+    final recordable = LocalFinancialNlpEngine.isRecordable(draft);
+    if (recordable) {
       _lastSavedTransactionIds = _saveDraft(draft);
       _assistant?.recordCreated(_lastSavedTransactionIds);
+      _drafts.saved(_lastSavedTransactionIds);
 
       if (draft.isReminder && widget.repository != null) {
         final reminder = FinancialReminder(
@@ -786,8 +808,11 @@ class _ChatScreenState extends State<ChatScreen> {
       } else if (draft.intent == 'transfer') {
         responseText = 'Pronto! Transferência de $amountStr$itemOrPlace$bankTag registrada com sucesso. 💸';
       } else if (draft.paymentMethod == 'credit_card' && draft.installments != null && draft.installments! > 1 && draft.amount != null) {
-        final perInst = (draft.amount! / draft.installments!).toStringAsFixed(2).replaceAll('.', ',');
-        responseText = 'Pronto! Registrei $amountStr$itemOrPlace no crédito em ${draft.installments}x de R\$ $perInst$recurrentTag. 🎉';
+        final perInst = (draft.installmentValue ?? draft.amount! / draft.installments!).toStringAsFixed(2).replaceAll('.', ',');
+        // "todo dia 10" with installments is when each installment is due —
+        // not a monthly charge of the whole price.
+        final dueTag = draft.installmentDueDay != null ? ', com vencimento todo dia ${draft.installmentDueDay}' : '';
+        responseText = 'Pronto! Registrei $amountStr$itemOrPlace no crédito em ${draft.installments}x de R\$ $perInst$dueTag$recurrentTag. 🎉';
       } else if (draft.paymentMethod != 'unknown') {
         final payName = _formatPayment(draft.paymentMethod, draft.installments);
         responseText = 'Pronto! Despesa de $amountStr$itemOrPlace no $payName$bankTag$recurrentTag registrada com sucesso. 🎉';
@@ -813,9 +838,11 @@ class _ChatScreenState extends State<ChatScreen> {
     if (draft.intent == 'query') {
       responseText = widget.engine.replyForQuestion(draft);
       _activeDraft = null;
+      _drafts.dropped();
     } else if (draft.intent == 'unknown' && !isMerged) {
       responseText = draft.clarificationPrompt ?? 'Como posso te ajudar com suas finanças hoje?';
       _activeDraft = null;
+      _drafts.dropped();
     }
 
     if (preface != null) responseText = '$preface\n\n$responseText';
@@ -830,6 +857,8 @@ class _ChatScreenState extends State<ChatScreen> {
       timestamp: DateTime.now(),
       draft: draft.intent != 'unknown' ? draft : null,
       isMergedUpdate: isMerged,
+      draftKey: draftKey,
+      transactionIds: recordable ? _lastSavedTransactionIds : const [],
     );
 
     Future.delayed(const Duration(milliseconds: 150), () {
@@ -846,6 +875,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showAssistantReply(AssistantReply reply, {required bool speak}) {
     _syncAfterAssistant(reply);
     _activeDraft = null;
+    _drafts.dropped();
     final notice = _assistant?.takeNotice();
     final text = notice == null ? reply.text : '$notice\n\n${reply.text}';
     if (speak) _voiceSynthesis.speak(reply.spokenText);
@@ -901,19 +931,24 @@ class _ChatScreenState extends State<ChatScreen> {
   void _saveBatch(List<FinancialTransactionDraft> drafts, {String? notice}) {
     final buffer = StringBuffer();
     if (notice != null) buffer.writeln(notice);
+    final allIds = <String>[];
+    final idsPerDraft = <List<String>>[];
+    for (final d in drafts) {
+      _lastSavedTransactionIds = _saveDraft(d);
+      _assistant?.recordCreated(_lastSavedTransactionIds);
+      idsPerDraft.add(_lastSavedTransactionIds);
+      allIds.addAll(_lastSavedTransactionIds);
+    }
+
     buffer.writeln('Identifiquei ${drafts.length} lançamentos:');
     for (int i = 0; i < drafts.length; i++) {
       final d = drafts[i];
       final amt = d.amount != null ? 'R\$ ${d.amount!.toStringAsFixed(2).replaceAll('.', ',')}' : '';
       final pay = _formatPayment(d.paymentMethod, d.installments);
-      buffer.writeln('${i + 1}. $amt com ${d.description} ($pay)');
+      final code = idsPerDraft[i].isEmpty ? '' : ' ${TransactionCode.label(idsPerDraft[i].first)}';
+      buffer.writeln('${i + 1}. $amt com ${d.description} ($pay)$code');
     }
     buffer.write('\nTodos foram registrados com sucesso! 🎉');
-
-    for (final d in drafts) {
-      _lastSavedTransactionIds = _saveDraft(d);
-      _assistant?.recordCreated(_lastSavedTransactionIds);
-    }
 
     _lastCompletedDraft = drafts.last;
     _lastLatencyMs = drafts.fold(0.0, (acc, d) => acc + d.latencyMs);
@@ -924,6 +959,7 @@ class _ChatScreenState extends State<ChatScreen> {
       text: buffer.toString(),
       timestamp: DateTime.now(),
       draft: drafts.first,
+      transactionIds: allIds,
     );
 
     Future.delayed(const Duration(milliseconds: 150), () {
@@ -970,6 +1006,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _messages.clear();
       _activeDraft = null;
+      _drafts.dropped();
       _lastLatencyMs = 0.0;
       _addInitialWelcomeMessage();
     });
@@ -1524,7 +1561,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: KrezioSpace.sm),
             Padding(
               padding: const EdgeInsets.only(left: KrezioSpace.xxxl),
-              child: _buildMissingSlotsQuickChips(msg.draft!, isDark),
+              child: _buildMissingSlotsQuickChips(msg, isDark),
             ),
           ],
 
@@ -1533,7 +1570,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: KrezioSpace.sm),
             Padding(
               padding: const EdgeInsets.only(left: KrezioSpace.xxxl),
-              child: _buildTransactionInspectorCard(msg.draft!, isDark, msg.isMergedUpdate),
+              child: _buildTransactionInspectorCard(msg.draft!, isDark, msg.isMergedUpdate, ids: msg.transactionIds),
             ),
           ],
         ],
@@ -1541,7 +1578,34 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildMissingSlotsQuickChips(FinancialTransactionDraft draft, bool isDark) {
+  /// A quick-reply chip acts on the card it belongs to: the pending draft, the
+  /// records that card was saved as ("muda o #4821 pra pix"), or the draft that
+  /// was left aside, brought back.
+  void _onSlotChip(ChatMessage msg, String value) {
+    final key = msg.draftKey;
+    if (key == null) {
+      _sendMessage(value);
+      return;
+    }
+    switch (_drafts.targetFor(key)) {
+      case ChipOnActiveDraft():
+        _sendMessage(value);
+      case ChipOnSavedRecords(:final transactionIds):
+        _sendMessage('muda o ${TransactionCode.label(transactionIds.first)} pra $value');
+      case ChipOnStaleDraft():
+        final back = msg.draft;
+        if (back == null) {
+          _sendMessage(value);
+          return;
+        }
+        _activeDraft = back;
+        _drafts.reactivate(key);
+        _sendMessage(value);
+    }
+  }
+
+  Widget _buildMissingSlotsQuickChips(ChatMessage msg, bool isDark) {
+    final draft = msg.draft!;
     if (draft.missingSlots.contains('installments')) {
       final installmentOptions = [
         {'label': '⚡ À vista (1x)', 'value': 'à vista'},
@@ -1563,7 +1627,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
-            onPressed: () => _sendMessage(opt['value']!),
+            onPressed: () => _onSlotChip(msg, opt['value']!),
           );
         }).toList(),
       );
@@ -1591,7 +1655,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
-            onPressed: () => _sendMessage(opt['value']!),
+            onPressed: () => _onSlotChip(msg, opt['value']!),
           );
         }).toList(),
       );
@@ -1633,7 +1697,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
-            onPressed: () => _sendMessage(opt['value']!),
+            onPressed: () => _onSlotChip(msg, opt['value']!),
           );
         }).toList(),
       );
@@ -1667,7 +1731,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
-            onPressed: () => _sendMessage(opt['value']!),
+            onPressed: () => _onSlotChip(msg, opt['value']!),
           );
         }).toList(),
       );
@@ -1709,7 +1773,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             backgroundColor: isDark ? KrezioColors.darkSurface : Colors.white,
             side: const BorderSide(color: KrezioColors.aiPurple, width: 1),
-            onPressed: () => _sendMessage(opt['value']!),
+            onPressed: () => _onSlotChip(msg, opt['value']!),
           );
         }).toList(),
       );
@@ -1718,7 +1782,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return const SizedBox.shrink();
   }
 
-  Widget _buildTransactionInspectorCard(FinancialTransactionDraft draft, bool isDark, bool isMerged) {
+  Widget _buildTransactionInspectorCard(FinancialTransactionDraft draft, bool isDark, bool isMerged, {List<String> ids = const []}) {
     final statusColor = draft.isComplete ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange;
 
     return Container(
@@ -1755,6 +1819,21 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                   ),
+                  if (ids.isNotEmpty) ...[
+                    const SizedBox(width: KrezioSpace.sm),
+                    // The card code: "apaga o #4821", "o #4821 foi 50".
+                    Tooltip(
+                      message: 'Use este código para falar deste lançamento, ex.: "apaga o ${TransactionCode.label(ids.first)}"',
+                      child: Text(
+                        ids.length == 1 ? TransactionCode.label(ids.first) : '${TransactionCode.label(ids.first)} +${ids.length - 1}',
+                        style: TextStyle(
+                          color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                          fontSize: KrezioFont.caption,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                   if (isMerged) ...[
                     const SizedBox(width: KrezioSpace.sm),
                     Container(

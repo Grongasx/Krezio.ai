@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../../ai/transaction_code.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 
 class TransactionListTile extends StatelessWidget {
@@ -91,7 +92,7 @@ class TransactionListTile extends StatelessWidget {
                     Row(
                       children: [
                         Text(
-                          '$dateStr • ${transaction.paymentMethodLabel}',
+                          '$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}',
                           style: TextStyle(
                             fontSize: KrezioFont.caption,
                             color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
