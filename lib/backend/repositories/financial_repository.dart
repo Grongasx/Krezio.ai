@@ -60,6 +60,7 @@ class FinancialRepository extends ChangeNotifier {
   final List<FinancialGoal> _goals = [];
   final Map<String, String> _categoryOverrides = {};
   final List<FinancialAccount> _accounts = [FinancialAccount.main];
+  final Map<String, String> _preferences = {};
   final PersistenceService _persistence;
   bool _isInitialized = false;
 
@@ -137,6 +138,7 @@ class FinancialRepository extends ChangeNotifier {
         _persistence.loadGoals(),
         _persistence.loadCategoryOverrides(),
         _persistence.loadAccounts(),
+        _persistence.loadPreferences(),
       ]);
 
       // A cloud snapshot or a "Limpar Histórico" landed while we were reading
@@ -173,6 +175,9 @@ class FinancialRepository extends ChangeNotifier {
         ..clear()
         ..addAll(results[4] as Map<String, String>);
       _setAccounts(results[5] as List<FinancialAccount>);
+      _preferences
+        ..clear()
+        ..addAll(results[6] as Map<String, String>);
 
       _recalculateBudgets();
       loaded.complete();
@@ -206,6 +211,7 @@ class FinancialRepository extends ChangeNotifier {
           _persistence.saveGoals(_goals),
           _persistence.saveCategoryOverrides(_categoryOverrides),
           _persistence.saveAccounts(_accounts),
+          _persistence.savePreferences(_preferences),
         ]);
         // Any real save — including the first one after clearAllData() wiped
         // the "seeded" flag — means there's now real data on disk. Without
@@ -887,6 +893,7 @@ class FinancialRepository extends ChangeNotifier {
     _goals.clear();
     _categoryOverrides.clear();
     _setAccounts(const []);
+    _preferences.clear();
     _budgets.clear();
     _initializeDefaultBudgets();
     // Chained onto _pendingPersist (not called standalone) so an in-flight
@@ -1015,6 +1022,54 @@ class FinancialRepository extends ChangeNotifier {
     if (key.isEmpty) return;
     _categoryOverrides[key] = category;
     _persistAll();
+  }
+
+  /// Puts a remembered category back as it was ([previous] null = forgets it).
+  void restoreCategoryOverride(String descriptionKey, String? previous) {
+    final key = _foldAccents(descriptionKey.toLowerCase().trim());
+    if (key.isEmpty) return;
+    if (previous == null) {
+      _categoryOverrides.remove(key);
+    } else {
+      _categoryOverrides[key] = previous;
+    }
+    _persistAll();
+  }
+
+  // ── USER PREFERENCES ──
+
+  /// Small settings César and the app remember: how to call the user
+  /// ([prefUserName]), muted warnings, the last weekly summary shown.
+  String? preference(String key) => _preferences[key];
+
+  void setPreference(String key, String? value) {
+    if (value == null) {
+      _preferences.remove(key);
+    } else {
+      _preferences[key] = value;
+    }
+    // No notifyListeners: no screen shows these, and the chat sets one while
+    // it is being built.
+    _persistAll();
+  }
+
+  Map<String, String> get preferences => Map.unmodifiable(_preferences);
+
+  static const prefUserName = 'user_name';
+  static const prefMutedUnusual = 'muted_unusual';
+  static const prefWeeklySummaryWeek = 'weekly_summary_week';
+
+  /// The payment method used most in the last 90 days, or null with too few
+  /// records to tell (fewer than 5).
+  String? get mostUsedPaymentMethod {
+    final since = DateTime.now().subtract(const Duration(days: 90));
+    final count = <String, int>{};
+    for (final t in _transactions) {
+      if (t.type != TransactionType.expense || t.date.isBefore(since) || t.paymentMethod == 'unknown') continue;
+      count[t.paymentMethod] = (count[t.paymentMethod] ?? 0) + 1;
+    }
+    if (count.values.fold(0, (a, b) => a + b) < 5) return null;
+    return count.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
   }
 
   /// Looks up a remembered category override for a transaction description, or

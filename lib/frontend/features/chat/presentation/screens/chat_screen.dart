@@ -334,7 +334,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ChatMessage(
         id: 'welcome',
         sender: MessageSender.assistant,
-        text: 'Olá! Eu sou o César, seu copiloto financeiro no Krezio.ai, guiado por dados e 100% on-device. Como posso te ajudar com suas finanças hoje?\n\nDigite um gasto, receita, agende um lembrete, cole notificações de banco ou me pergunte o que quiser!',
+        text: 'Olá${_assistant?.userName != null ? ', ${_assistant!.userName}' : ''}! Eu sou o César, seu copiloto financeiro no Krezio.ai, guiado por dados e 100% on-device. Como posso te ajudar com suas finanças hoje?\n\nDigite um gasto, receita, agende um lembrete, cole notificações de banco ou me pergunte o que quiser!',
         timestamp: DateTime.now(),
       ),
     );
@@ -352,6 +352,15 @@ class _ChatScreenState extends State<ChatScreen> {
           timestamp: DateTime.now(),
         ),
       );
+    }
+    // Weekly summary (once a week) and out-of-pattern spending.
+    for (final note in _assistant?.openingNotes() ?? const <String>[]) {
+      _messages.add(ChatMessage(
+        id: 'note-${DateTime.now().microsecondsSinceEpoch}-${_messages.length}',
+        sender: MessageSender.assistant,
+        text: note,
+        timestamp: DateTime.now(),
+      ));
     }
   }
 
@@ -474,7 +483,11 @@ class _ChatScreenState extends State<ChatScreen> {
       // "cancela") — otherwise only the chat card changed.
       if (widget.repository != null) {
         final before = widget.repository!.transactions.where((t) => _lastSavedTransactionIds.contains(t.id)).toList();
-        if (!updated.isCanceled) _assistant?.recordExternalEdit(before);
+        final learnsCategory = !updated.isCanceled && updated.category != previousDraft.category;
+        if (!updated.isCanceled) {
+          _assistant?.recordExternalEdit(before,
+              learned: learnsCategory ? {updated.description: widget.repository!.recallCategoryOverride(updated.description)} : const {});
+        }
         for (final savedId in _lastSavedTransactionIds) {
           if (updated.isCanceled) {
             widget.repository!.deleteTransaction(savedId);
@@ -1719,6 +1732,14 @@ class _ChatScreenState extends State<ChatScreen> {
               {'label': '💵 Dinheiro', 'value': 'em dinheiro'},
               {'label': '📄 Boleto', 'value': 'no boleto'},
             ];
+      // The method used most goes first, marked — a suggestion, never assumed.
+      const valueOf = {'pix': 'no pix', 'debit_card': 'no débito', 'credit_card': 'no crédito', 'cash': 'em dinheiro', 'bank_slip': 'no boleto'};
+      final usual = valueOf[widget.repository?.mostUsedPaymentMethod];
+      final usualIdx = paymentOptions.indexWhere((o) => o['value'] == usual);
+      if (usualIdx >= 0) {
+        final o = paymentOptions.removeAt(usualIdx);
+        paymentOptions.insert(0, {'label': '${o['label']} · o que você mais usa', 'value': o['value']!});
+      }
 
       return Wrap(
         spacing: 6,
