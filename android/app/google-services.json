@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "676221048408",
+    "project_id": "krezio-ai",
+    "storage_bucket": "krezio-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:676221048408:android:d6c9d59ee73ce095cddc2d",
+        "android_client_info": {
+          "package_name": "com.krezio.ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDSg1JdiMadoszzx2lYL6iHIcHVGXSeMz8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

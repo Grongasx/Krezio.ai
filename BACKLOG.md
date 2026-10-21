@@ -91,7 +91,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 2.3 Criar a autenticação de usuário
 `50 pts` · 🔴 **Alta** · `Backend` `Frontend` `DevOps`
-- [ ] `DevOps` Criar o projeto no Firebase e rodar `flutterfire configure` (plataformas web, Android e Windows → `lib/firebase_options.dart` sem `REPLACE_ME`)
+- [x] `DevOps` Criar o projeto no Firebase e rodar `flutterfire configure` (plataformas web, Android e Windows → `lib/firebase_options.dart` sem `REPLACE_ME`)
 - [ ] `DevOps` Ativar o login por e-mail e senha no console do Firebase (Authentication → Métodos de login → E-mail/senha → cadastro de teste funciona no console)
 - [x] `Frontend` Criar a tela de login (e-mail + senha, mostrar/ocultar senha, botão desabilitado até os campos serem válidos, carregando durante o envio → erro em PT, ex.: "E-mail ou senha incorretos")
 - [x] `Frontend` Criar a tela de cadastro (nome, e-mail, senha e confirmação, aceite dos termos obrigatório → só envia com senhas iguais e termos aceitos)
@@ -103,7 +103,7 @@ O texto depois do `→` é o que precisa ser verdade para marcar a tarefa como f
 
 ### 2.4 Sincronizar com a nuvem
 `70 pts` · 🟠 **Média** · `Backend` `DevOps` `QA`
-- [ ] `DevOps` Criar o banco Firestore (região `southamerica-east1`, modo produção → custo e latência de região Brasil)
+- [x] `DevOps` Criar o banco Firestore (região `southamerica-east1`, modo produção → custo e latência de região Brasil)
 - [x] `Backend` Escrever as regras de segurança (ler e gravar só `users/{uid}` quando `request.auth.uid == uid` → teste no emulador: outro usuário recebe "permissão negada")
 - [x] `Backend` Ativar a persistência offline do Firestore (`persistenceEnabled: true` → sem internet o app continua funcionando e envia ao reconectar)
 - [x] `Backend` Criar o serviço de sincronização (local-first: grava local na hora e envia à nuvem com debounce de 2 s → a tela nunca espera a rede)

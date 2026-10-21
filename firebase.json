@@ -1,5 +1,1 @@
-{
-  "firestore": {
-    "rules": "firestore.rules"
-  }
-}
+{"firestore":{"rules":"firestore.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"krezio-ai","appId":"1:676221048408:android:d6c9d59ee73ce095cddc2d","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"krezio-ai","configurations":{"android":"1:676221048408:android:d6c9d59ee73ce095cddc2d","web":"1:676221048408:web:28da0a880d443efbcddc2d","windows":"1:676221048408:web:9853dddd8c86debccddc2d"}}}}}}
