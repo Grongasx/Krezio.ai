@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../legal/legal_documents.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/services/auth_service.dart';
 import '../../../../../backend/services/auth_validators.dart';
@@ -10,7 +11,10 @@ class LoginScreen extends StatefulWidget {
   final AuthService authService;
   final bool isDark;
 
-  const LoginScreen({super.key, required this.authService, required this.isDark});
+  /// Called once an account is created (the terms were accepted).
+  final VoidCallback? onTermsAccepted;
+
+  const LoginScreen({super.key, required this.authService, required this.isDark, this.onTermsAccepted});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -24,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
 
   bool _isSignUp = false;
+  bool _acceptedTerms = false;
   bool _isLoading = false;
   bool _showPassword = false;
   String? _errorMessage;
@@ -51,7 +56,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool get _canSubmit =>
       AuthValidators.email(_emailController.text) == null &&
       _passwordRule(_passwordController.text) == null &&
-      (!_isSignUp || AuthValidators.confirmPassword(_confirmController.text, _passwordController.text) == null);
+      (!_isSignUp ||
+          (AuthValidators.confirmPassword(_confirmController.text, _passwordController.text) == null && _acceptedTerms));
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -67,6 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _passwordController.text,
           displayName: _nameController.text,
         );
+        widget.onTermsAccepted?.call();
       } else {
         await widget.authService.signIn(
           email: _emailController.text.trim(),
@@ -187,6 +194,29 @@ class _LoginScreenState extends State<LoginScreen> {
                         obscureText: !_showPassword,
                         decoration: _inputDecoration('Repita a senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText),
                         validator: (v) => AuthValidators.confirmPassword(v, _passwordController.text),
+                      ),
+                      const SizedBox(height: KrezioSpace.sm),
+                      // Accepting the terms is required to create an account.
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        value: _acceptedTerms,
+                        activeColor: KrezioColors.aiPurple,
+                        onChanged: (v) => setState(() => _acceptedTerms = v ?? false),
+                        title: Wrap(children: [
+                          Text('Li e aceito os ', style: TextStyle(color: primaryText, fontSize: KrezioFont.small)),
+                          GestureDetector(
+                            onTap: () => LegalDocuments.open(context, title: 'Termos de uso', asset: LegalDocuments.termsAsset),
+                            child: const Text('Termos de uso',
+                                style: TextStyle(color: KrezioColors.aiPurple, fontSize: KrezioFont.small, decoration: TextDecoration.underline)),
+                          ),
+                          Text(' e a ', style: TextStyle(color: primaryText, fontSize: KrezioFont.small)),
+                          GestureDetector(
+                            onTap: () => LegalDocuments.open(context, title: 'Política de privacidade', asset: LegalDocuments.privacyAsset),
+                            child: const Text('Política de privacidade',
+                                style: TextStyle(color: KrezioColors.aiPurple, fontSize: KrezioFont.small, decoration: TextDecoration.underline)),
+                          ),
+                        ]),
                       ),
                     ],
                     if (_errorMessage != null) ...[
