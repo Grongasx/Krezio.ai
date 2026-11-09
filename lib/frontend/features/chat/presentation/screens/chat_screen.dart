@@ -1600,7 +1600,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 const SizedBox(width: KrezioSpace.sm),
                 ValueListenableBuilder<VoiceAvailability>(
                   valueListenable: _voiceSynthesis.availabilityNotifier,
-                  builder: (_, availability, _) => availability == VoiceAvailability.unavailable
+                  builder: (_, availability, child) => availability == VoiceAvailability.unavailable
                     ? const SizedBox.shrink()
                     : IconButton(
                   icon: const Icon(Icons.volume_up_outlined, size: 18),

@@ -41,57 +41,65 @@ class CategoryDonutChart extends StatelessWidget {
     final sortedEntries = categoryData.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    return Column(
-      children: [
-        SizedBox(
-          height: 160,
-          width: 160,
-          child: CustomPaint(
-            painter: _DonutChartPainter(
-              entries: sortedEntries,
-              total: total,
-              isDark: isDark,
-            ),
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    totalLabel,
-                    style: TextStyle(
-                      fontSize: KrezioFont.caption,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
-                    ),
-                  ),
-                  const SizedBox(height: KrezioSpace.hair),
-                  SizedBox(width: 104, child: FittedBox(fit: BoxFit.scaleDown, child: Text(
-                    Money.brl(total),
-                    style: TextStyle(
-                      fontSize: KrezioFont.bodyLarge,
-                      fontWeight: FontWeight.bold,
-                      color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
-                    ),
-                  ))),
-                ],
+    final chart = SizedBox(
+      height: 160,
+      width: 160,
+      child: CustomPaint(
+        painter: _DonutChartPainter(
+          entries: sortedEntries,
+          total: total,
+          isDark: isDark,
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                totalLabel,
+                style: TextStyle(
+                  fontSize: KrezioFont.caption,
+                  fontWeight: FontWeight.w500,
+                  color: isDark
+                      ? KrezioColors.darkSecondaryText
+                      : KrezioColors.lightSecondaryText,
+                ),
               ),
-            ),
+              const SizedBox(height: KrezioSpace.hair),
+              SizedBox(
+                  width: 104,
+                  child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        Money.brl(total),
+                        style: TextStyle(
+                          fontSize: KrezioFont.bodyLarge,
+                          fontWeight: FontWeight.bold,
+                          color: isDark
+                              ? KrezioColors.darkPrimaryText
+                              : KrezioColors.lightPrimaryText,
+                        ),
+                      ))),
+            ],
           ),
         ),
-        const SizedBox(height: KrezioSpace.lg),
-        Column(
-          children: sortedEntries.take(4).map((e) {
-            final percentage = (e.value / total * 100).toStringAsFixed(0);
-            final dummyTx = FinancialTransaction(
-              id: '',
-              title: '',
-              amount: 0,
-              type: TransactionType.expense,
-              category: e.key,
-              paymentMethod: '',
-              date: DateTime.now(),
-            );
-            return Padding(padding: const EdgeInsets.only(bottom: KrezioSpace.xs), child: Row(
+      ),
+    );
+    final legend = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: sortedEntries.take(4).map((e) {
+        final percentage = (e.value / total * 100).toStringAsFixed(0);
+        final dummyTx = FinancialTransaction(
+          id: '',
+          title: '',
+          amount: 0,
+          type: TransactionType.expense,
+          category: e.key,
+          paymentMethod: '',
+          date: DateTime.now(),
+        );
+        return Padding(
+            padding: const EdgeInsets.only(bottom: KrezioSpace.xs),
+            child: Row(
               children: [
                 Container(
                   width: 8,
@@ -102,20 +110,41 @@ class CategoryDonutChart extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: KrezioSpace.xs),
-                Expanded(child: Text(
+                Expanded(
+                    child: Text(
                   categoryNames[e.key] ?? dummyTx.categoryLabel,
                   style: TextStyle(
                     fontSize: KrezioFont.caption,
-                    color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                    color: isDark
+                        ? KrezioColors.darkSecondaryText
+                        : KrezioColors.lightSecondaryText,
                     fontWeight: FontWeight.w500,
                   ),
                 )),
                 Text('$percentage%'),
               ],
             ));
-          }).toList(),
-        ),
-      ],
+      }).toList(),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth >= 420) {
+          return Row(
+            children: [
+              chart,
+              const SizedBox(width: KrezioSpace.xxl),
+              Expanded(child: legend),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            chart,
+            const SizedBox(height: KrezioSpace.lg),
+            legend,
+          ],
+        );
+      },
     );
   }
 }

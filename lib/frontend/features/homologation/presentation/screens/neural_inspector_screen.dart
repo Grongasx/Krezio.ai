@@ -696,7 +696,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
               _buildSlotAuditItem(
                 label: 'Valor Monetário (Amount)',
                 value: trace.parsedAmount != null
-                    ? '${Money.brl(trace.parsedAmount!)}'
+                    ? Money.brl(trace.parsedAmount!)
                     : 'Não identificado',
                 isSatisfied: trace.parsedAmount != null && trace.parsedAmount! > 0,
                 primaryText: primaryText,
@@ -1270,7 +1270,7 @@ class NeuralNetworkPainter extends CustomPainter {
     final isExempt = trace.installmentDecision.isExempt;
     final isAnnual = trace.installmentDecision.isAnnual;
     final decLabels = [
-      trace.parsedAmount != null ? 'R\$ ${trace.parsedAmount!.toStringAsFixed(2)}' : 'Valor N/D',
+      trace.parsedAmount != null ? Money.brl(trace.parsedAmount!) : 'Valor N/D',
       isExempt
           ? '🛡️ Assinatura: NÃO Parcelada (1x)'
           : (isAnnual ? '📅 Assinatura: Anual (${trace.installmentDecision.installments ?? 'a esclarecer'}x)' : '💳 Crédito Padrão'),

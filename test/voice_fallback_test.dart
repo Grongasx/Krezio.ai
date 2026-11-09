@@ -11,8 +11,37 @@ class FakeNativeTts implements NativeTts {
   Future<void> stop() async {}
 }
 
+class UnavailableNativeTts extends FakeNativeTts {
+  @override
+  Future<void> speak(String text, {double rate = 1.0, double volume = 1.0}) async {
+    throw StateError('voz indisponível');
+  }
+}
+
 void main() {
   group('6.2 voz nativa como alternativa', () {
+    test('falha das duas vozes encerra a tentativa uma vez', () async {
+      var errors = 0;
+      var completions = 0;
+      final service = VoiceSynthesisService.internal()
+        ..preferNative = false
+        ..nativeTts = UnavailableNativeTts()
+        ..onnxPlayer = (url, {onCompletion, onError}) async {
+          return false;
+        }
+        ..onError = (_) {
+          errors++;
+        }
+        ..onCompletion = () {
+          completions++;
+        };
+      await service.speak('Oi');
+      expect(service.availabilityNotifier.value, VoiceAvailability.unavailable);
+      expect(service.isSpeakingNotifier.value, isFalse);
+      expect(errors, 1);
+      expect(completions, 1);
+    });
+
     test('servidor ONNX não responde em 1 s: fala com a voz do sistema', () async {
       final native = FakeNativeTts();
       var completed = 0;

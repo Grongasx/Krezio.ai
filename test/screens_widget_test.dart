@@ -9,6 +9,7 @@ import 'package:krezio_ai/backend/models/financial_transaction.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:krezio_ai/backend/services/auth_service.dart';
 import 'package:krezio_ai/backend/services/pin_lock.dart';
+import 'package:krezio_ai/frontend/features/dashboard/presentation/widgets/category_donut_chart.dart';
 import 'package:krezio_ai/frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:krezio_ai/frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:krezio_ai/frontend/features/onboarding/onboarding_screen.dart';
@@ -38,6 +39,33 @@ Future<void> phone(WidgetTester tester) async {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('a legenda fica abaixo da rosca no celular e ao lado na web', (tester) async {
+    for (final width in [360.0, 720.0]) {
+      await tester.pumpWidget(MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: width,
+            child: const CategoryDonutChart(
+              categoryData: {'supermarket': 128450.90},
+              isDark: true,
+              totalLabel: 'Gastos do mês',
+            ),
+          ),
+        ),
+      ));
+      final title = tester.getCenter(find.text('Gastos do mês'));
+      final category = tester.getCenter(find.text('Supermercado'));
+      expect(find.text('R\$ 128.450,90'), findsOneWidget);
+      if (width == 360) {
+        expect(category.dy, greaterThan(title.dy));
+      } else {
+        expect(category.dx, greaterThan(title.dx));
+        expect((category.dy - title.dy).abs(), lessThan(35));
+      }
+      expect(tester.takeException(), isNull);
+    }
+  });
 
   testWidgets('sugestão de gasto preenche o campo sem registrar em produção', (tester) async {
     await phone(tester);

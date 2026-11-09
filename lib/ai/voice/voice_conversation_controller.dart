@@ -487,6 +487,20 @@ class VoiceConversationController {
     _speakAsCesar('${notice}Anotado!${drafts.length} lançamentos registrados, somando ${Money.brl(total)}.');
   }
 
+  Future<void> previewVoice() async {
+    if (_isDisposed ||
+        isSpeakerMutedNotifier.value ||
+        stateNotifier.value == VoiceState.thinking ||
+        _endAfterSpeaking) {
+      return;
+    }
+    if (stateNotifier.value == VoiceState.listening) {
+      await stopListening();
+      if (_isDisposed || isSpeakerMutedNotifier.value) return;
+    }
+    await _speakAsCesar('Olá! Sou o César. Esta é uma amostra da minha voz.');
+  }
+
   Future<void> _speakAsCesar(String text) async {
     cesarSpeechNotifier.value = text;
     stateNotifier.value = VoiceState.speaking;
