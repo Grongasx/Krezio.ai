@@ -69,25 +69,29 @@ class DashboardScreen extends StatelessWidget {
                       child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 20),
                     ),
                     const SizedBox(width: KrezioSpace.md),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Krezio.ai',
-                          style: TextStyle(
-                            fontSize: KrezioFont.bodyLarge,
-                            fontWeight: FontWeight.bold,
-                            color: primaryTextColor,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Krezio.ai',
+                            style: TextStyle(
+                              fontSize: KrezioFont.bodyLarge,
+                              fontWeight: FontWeight.bold,
+                              color: primaryTextColor,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Gestão Inteligente On-Device',
-                          style: TextStyle(
-                            fontSize: KrezioFont.micro,
-                            color: secondaryTextColor,
+                          Text(
+                            'Gestão Inteligente On-Device',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: KrezioFont.micro,
+                              color: secondaryTextColor,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -110,7 +114,11 @@ class DashboardScreen extends StatelessWidget {
                       alignment: Alignment.centerRight,
                       child: IconButton(
                         tooltip: hideAmounts ? 'Mostrar valores' : 'Ocultar valores',
-                        onPressed: () => repository.setPreference(_hideAmounts, (!hideAmounts).toString()),
+                        onPressed: () => repository.setPreference(
+                          _hideAmounts,
+                          (!hideAmounts).toString(),
+                          notify: true,
+                        ),
                         icon: Icon(hideAmounts ? Icons.visibility_off_outlined : Icons.visibility_outlined),
                       ),
                     ),
@@ -181,14 +189,17 @@ class DashboardScreen extends StatelessWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'Gastos por Categoria',
-                                style: TextStyle(
-                                  fontSize: KrezioFont.body,
-                                  fontWeight: FontWeight.bold,
-                                  color: primaryTextColor,
+                              Expanded(
+                                child: Text(
+                                  'Gastos por Categoria',
+                                  style: TextStyle(
+                                    fontSize: KrezioFont.body,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryTextColor,
+                                  ),
                                 ),
                               ),
+                              const SizedBox(width: KrezioSpace.sm),
                               Text(
                                 'Este Mês',
                                 style: TextStyle(

@@ -9,6 +9,7 @@ import 'package:krezio_ai/backend/models/financial_transaction.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:krezio_ai/backend/services/auth_service.dart';
 import 'package:krezio_ai/backend/services/pin_lock.dart';
+import 'package:krezio_ai/frontend/features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'package:krezio_ai/frontend/features/dashboard/presentation/widgets/category_donut_chart.dart';
 import 'package:krezio_ai/frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:krezio_ai/frontend/features/chat/presentation/screens/chat_screen.dart';
@@ -39,6 +40,40 @@ Future<void> phone(WidgetTester tester) async {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('o botão de privacidade atualiza o saldo imediatamente', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final repository = FinancialRepository(seedDemo: false, persistChanges: false);
+    repository.addTransaction(FinancialTransaction(
+      id: 'salario',
+      title: 'Salário',
+      amount: 128450.90,
+      type: TransactionType.income,
+      category: 'salary',
+      paymentMethod: 'pix',
+      date: DateTime.now(),
+    ));
+    await phone(tester);
+    await tester.pumpWidget(app(DashboardScreen(
+      repository: repository,
+      isDark: true,
+      onNavigateToChat: () {},
+      onNavigateToTransactions: () {},
+    )));
+
+    expect(find.text(r'R$ 128.450,90'), findsWidgets);
+    await tester.tap(find.byTooltip('Ocultar valores'));
+    await tester.pump();
+    expect(find.text(r'R$ 128.450,90'), findsNothing);
+    expect(find.text('••••'), findsWidgets);
+    expect(find.bySemanticsLabel(RegExp('Valor oculto')), findsWidgets);
+    expect(find.bySemanticsLabel(RegExp(r'128\.450,90')), findsNothing);
+
+    await tester.tap(find.byTooltip('Mostrar valores'));
+    await tester.pump();
+    expect(find.text(r'R$ 128.450,90'), findsWidgets);
+  });
 
   testWidgets('a legenda fica abaixo da rosca no celular e ao lado na web', (tester) async {
     for (final width in [360.0, 720.0]) {

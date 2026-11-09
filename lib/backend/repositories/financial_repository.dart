@@ -1132,15 +1132,15 @@ class FinancialRepository extends ChangeNotifier {
   /// ([prefUserName]), muted warnings, the last weekly summary shown.
   String? preference(String key) => _preferences[key];
 
-  void setPreference(String key, String? value) {
+  void setPreference(String key, String? value, {bool notify = false}) {
     if (value == null) {
       _preferences.remove(key);
     } else {
       _preferences[key] = value;
     }
-    // No notifyListeners: no screen shows these, and the chat sets one while
-    // it is being built.
     _persistAll();
+    // Some preferences are saved while building the chat.
+    if (notify) notifyListeners();
   }
 
   Map<String, String> get preferences => Map.unmodifiable(_preferences);
