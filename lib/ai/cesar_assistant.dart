@@ -861,7 +861,7 @@ class CesarAssistant {
           final g = pending.goal!;
           final undo = repository.deleteGoalWithUndo(g.id);
           if (undo == null) return const AssistantReply('Essa meta já foi apagada.', route: 'goal_not_found');
-          history.push(ChatAction.custom((_) => undo(), 'A meta "${g.title}" está de volta.'));
+          history.push(ChatAction.restoration((_) => undo(), 'A meta "${g.title}" está de volta.'));
           _lastMutationTurn = _turn;
           return AssistantReply('Pronto, apaguei a meta "${g.title}". Se foi engano, diga "desfaz". 🗑️', route: 'goal_deleted');
         }
@@ -1412,7 +1412,7 @@ class CesarAssistant {
   AssistantReply _deleteCategory(BudgetCategory b) {
     final undo = repository.deleteBudgetCategoryWithUndo(b.category);
     if (undo == null) return const AssistantReply('Essa categoria já foi apagada.', route: 'category_not_found');
-    history.push(ChatAction.custom((_) => undo(), 'A categoria ${b.name} está de volta.'));
+    history.push(ChatAction.restoration((_) => undo(), 'A categoria ${b.name} está de volta.'));
     _lastMutationTurn = _turn;
     return AssistantReply('Pronto, apaguei a categoria **${b.name}**. Se foi engano, diga "desfaz". 🗑️', route: 'category_deleted');
   }

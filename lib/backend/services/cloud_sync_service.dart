@@ -49,8 +49,12 @@ class CloudSyncService {
   bool _baseLoaded = false;
   bool _applying = false;
   bool _disposed = false;
-  bool _needsInitialRead = false;
   Future<void>? _running;
+
+  // A new device already has built-in budgets and a main account. Treat these
+  // defaults as the common ancestor until the first remote snapshot is saved.
+  // Offline edits and new records still differ from this ancestor after restart.
+  static final _pristineBase = _initialSnapshot();
 
   CloudSyncService({
     required this.repository,
@@ -75,23 +79,13 @@ class CloudSyncService {
   }
 
   /// The initial session load reads this account before any uploads start.
-  Future<void> pullFromCloud({bool firstLoad = false}) {
-    _needsInitialRead = _needsInitialRead || firstLoad;
-    return _serialize(_readBeforeUpload);
-  }
+  Future<void> pullFromCloud() => _serialize(() => _syncOnce(readOnly: true));
 
-  Future<void> _readBeforeUpload() async {
-    await _syncOnce(readOnly: true, firstLoad: _needsInitialRead);
-    _needsInitialRead = false;
-  }
   Future<void> pushToCloud() => sync();
 
   /// Merges this device with the cloud and applies the result to both sides.
   /// Calls made while one is running wait for it and then run once more.
-  Future<void> sync() => _serialize(() async {
-    if (_needsInitialRead) await _readBeforeUpload();
-    await _syncOnce();
-  });
+  Future<void> sync() => _serialize(_syncOnce);
 
   Future<void> _serialize(Future<void> Function() operation) async {
     while (_running != null) {
@@ -112,7 +106,7 @@ class CloudSyncService {
 
   static int _epoch(Map<String, dynamic>? data) => data?['resetEpoch'] as int? ?? 0;
 
-  Future<void> _syncOnce({bool readOnly = false, bool firstLoad = false}) async {
+  Future<void> _syncOnce({bool readOnly = false}) async {
     await _loadBase();
     if (_disposed) return;
     final local = _localSnapshot();
@@ -127,9 +121,9 @@ class CloudSyncService {
       remoteReset = _epoch(remote) > _epoch(_base);
       merged = remote == null
           ? local
-          : remoteReset || firstLoad
+          : remoteReset
               ? _strip(remote)
-              : _merge(_base, local, remote);
+              : _merge(_base ?? _pristineBase, local, _strip(remote));
       if (!_disposed && !readOnly && (remote == null || !_sameData(merged, remote))) {
         tx.set(_userDoc, {...merged, 'updatedAt': FieldValue.serverTimestamp()});
       }
@@ -142,10 +136,13 @@ class CloudSyncService {
       // Edits can land locally while the transaction is waiting for Firestore.
       final current = _localSnapshot();
       final latest = _sameData(current, local) ? merged : _merge(local, current, merged);
-      if (!_sameData(latest, current)) _apply(latest);
+      if (!_sameData(latest, current)) {
+        _apply(latest);
+        await repository.flushPendingWrites();
+      }
     }
     final base = readOnly ? remoteBase : merged;
-    if (base != null) await _saveBase(base);
+    if (!_disposed && base != null) await _saveBase(base);
   }
 
   Future<void> resetCloudData() => _serialize(() async {
@@ -225,9 +222,20 @@ class CloudSyncService {
 
   Map<String, dynamic> _localSnapshot() => {
         if (_epoch(_base) > 0) 'resetEpoch': _epoch(_base),
+        ..._snapshot(repository),
+      };
+
+  static Map<String, dynamic> _initialSnapshot() {
+    final initial = FinancialRepository(seedDemo: false, persistChanges: false);
+    final snapshot = _snapshot(initial);
+    initial.dispose();
+    return snapshot;
+  }
+
+  static Map<String, dynamic> _snapshot(FinancialRepository repository) => {
         'transactions': repository.transactions.map((t) => t.toJson()).toList(),
         'reminders': repository.reminders.map((r) => r.toJson()).toList(),
-        'budgets': repository.budgets.map((b) => b.toJson()).toList(),
+        'budgets': repository.budgets.map((b) => b.toJson()..remove('currentSpent')).toList(),
         'goals': repository.goals.map((g) => g.toJson()).toList(),
         'accounts': repository.accounts.map((a) => a.toJson()).toList(),
         'categoryOverrides': Map<String, String>.from(repository.categoryOverrides),
@@ -271,13 +279,21 @@ class CloudSyncService {
         accounts: data['accounts'] == null ? null : decode('accounts', FinancialAccount.fromJson),
         categoryOverrides:
             ((data['categoryOverrides'] as Map?) ?? const {}).map((k, v) => MapEntry(k.toString(), v.toString())),
+        isMerge: true,
       );
     } finally {
       _applying = false;
     }
   }
 
-  Map<String, dynamic> _strip(Map<String, dynamic> remote) => Map.of(remote)..remove('updatedAt');
+  Map<String, dynamic> _strip(Map<String, dynamic> remote) => {
+    ...Map.of(remote)..remove('updatedAt'),
+    if (remote['budgets'] case final List budgets)
+      'budgets': [
+        for (final budget in budgets.whereType<Map>())
+          Map<String, dynamic>.from(budget)..remove('currentSpent'),
+      ],
+  };
 
   bool _sameData(Map<String, dynamic> a, Map<String, dynamic> b) => SyncMerge.sameJson(_strip(a), _strip(b));
 
@@ -285,13 +301,14 @@ class CloudSyncService {
 
   Future<void> _loadBase() async {
     if (_baseLoaded) return;
-    _baseLoaded = true;
     final raw = await _store.read(_baseKey);
-    if (raw != null) _base = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+    if (raw != null) _base = _strip(Map<String, dynamic>.from(jsonDecode(raw) as Map));
+    _baseLoaded = true;
   }
 
   Future<void> _saveBase(Map<String, dynamic> merged) async {
-    _base = _strip(merged);
-    await _store.write(_baseKey, jsonEncode(_base));
+    final next = _strip(merged);
+    await _store.write(_baseKey, jsonEncode(next));
+    _base = next;
   }
 }

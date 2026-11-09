@@ -39,8 +39,10 @@ void showLedgerUndo(
         label: 'Desfazer',
         onPressed: () {
           final result = history.undo(repository, only: action);
-          if (result != null && !result.undone) {
-            messenger.showSnackBar(SnackBar(content: Text(result.message)));
+          if (result?.undone != true) {
+            messenger.showSnackBar(SnackBar(
+              content: Text(result?.message ?? 'Esta ação já foi desfeita ou expirou.'),
+            ));
           }
         },
       ),

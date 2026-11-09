@@ -9,11 +9,6 @@ enum TransactionType {
 }
 
 class FinancialTransaction {
-  FinancialTransaction withCanonicalTransferCategory() =>
-      type == TransactionType.transfer && category == 'supermarket'
-          ? copyWith(category: 'transfer')
-          : this;
-
   final String id;
   final String title;
   final double amount;

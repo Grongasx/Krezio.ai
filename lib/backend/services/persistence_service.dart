@@ -51,10 +51,17 @@ class PersistenceService {
 
   Future<List<FinancialTransaction>> loadTransactions() async {
     final prefs = await _prefs;
-    final raw = prefs.getString(_key(_kTransactions));
+    final key = _key(_kTransactions);
+    final raw = prefs.getString(key);
     if (raw == null) return [];
-    final list = jsonDecode(raw) as List;
-    return list.map((e) => FinancialTransaction.fromJson(e as Map<String, dynamic>)).toList();
+    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    final transactions = list.map(FinancialTransaction.fromJson).toList();
+    for (var i = 0; i < list.length; i++) {
+      if (transactions[i].category == list[i]['category']) continue;
+      await prefs.setString(key, jsonEncode(transactions.map((t) => t.toJson()).toList()));
+      break;
+    }
+    return transactions;
   }
 
   Future<void> saveReminders(List<FinancialReminder> items) async {

@@ -1,6 +1,6 @@
 import '../services/money.dart';
 import 'dart:async';
-import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import '../models/financial_transaction.dart';
 import '../models/budget_category.dart';
@@ -95,6 +95,8 @@ class FinancialRepository extends ChangeNotifier {
   /// (R2-CHAOS-011/012).
   int _dataGeneration = 0;
   int get dataGeneration => _dataGeneration;
+  int _resetGeneration = 0;
+  int get resetGeneration => _resetGeneration;
 
   int _lastIssuedId = 0;
 
@@ -176,7 +178,7 @@ class FinancialRepository extends ChangeNotifier {
 
       _transactions
         ..clear()
-        ..addAll((results[0] as List<FinancialTransaction>).map((t) => t.withCanonicalTransferCategory()));
+        ..addAll(results[0] as List<FinancialTransaction>);
       for (final t in addedMeanwhile) {
         if (!_transactions.any((x) => x.id == t.id)) _transactions.insert(0, t);
       }
@@ -202,10 +204,6 @@ class FinancialRepository extends ChangeNotifier {
 
       _recalculateBudgets();
       loaded.complete();
-      if ((results[0] as List<FinancialTransaction>).any((t) =>
-          !identical(t, t.withCanonicalTransferCategory()))) {
-        await _persistAll();
-      }
       if (addedMeanwhile.isNotEmpty) _persistAll();
       notifyListeners();
     } finally {
@@ -876,10 +874,10 @@ class FinancialRepository extends ChangeNotifier {
         : 'expense_other';
     final transactions = _transactions.where((t) => t.category == category).map((t) => t.id).toSet();
     final overrides = _categoryOverrides.entries.where((e) => e.value == category).map((e) => e.key).toSet();
-    final generation = dataGeneration;
+    final generation = resetGeneration;
     removeBudgetCategory(category, moveTo: destination);
     return () {
-      if (dataGeneration != generation ||
+      if (resetGeneration != generation ||
           _budgets.any((b) => b.category == category) ||
           existingCategoryNamed(budget.name) != null) {
         return false;
@@ -949,6 +947,7 @@ class FinancialRepository extends ChangeNotifier {
   /// category memory) for the active repository.
   Future<void> clearAllData() async {
     _dataGeneration++;
+    _resetGeneration++;
     _transactions.clear();
     _reminders.clear();
     _goals.clear();
@@ -985,12 +984,14 @@ class FinancialRepository extends ChangeNotifier {
     required List<FinancialGoal> goals,
     required Map<String, String> categoryOverrides,
     List<FinancialAccount>? accounts,
+    bool isMerge = false,
   }) {
     _dataGeneration++;
+    if (!isMerge) _resetGeneration++;
     if (accounts != null) _setAccounts(accounts);
     _transactions
       ..clear()
-      ..addAll(transactions.map((t) => t.withCanonicalTransferCategory()));
+      ..addAll(transactions);
     _reminders
       ..clear()
       ..addAll(reminders);
@@ -1068,10 +1069,10 @@ class FinancialRepository extends ChangeNotifier {
     final index = _goals.indexWhere((g) => g.id == id);
     if (index < 0) return null;
     final goal = _goals[index];
-    final generation = dataGeneration;
+    final generation = resetGeneration;
     deleteGoal(id);
     return () {
-      if (dataGeneration != generation || _goals.any((g) => g.id == id)) return false;
+      if (resetGeneration != generation || _goals.any((g) => g.id == id)) return false;
       _goals.insert(index < _goals.length ? index : _goals.length, goal);
       _persistAll();
       notifyListeners();

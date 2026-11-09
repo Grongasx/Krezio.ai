@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/chat_action_history.dart';
 import 'package:krezio_ai/backend/config/app_environment.dart';
@@ -89,18 +91,22 @@ void main() {
     expect(history.undo(repo, only: deletion), isNull);
   });
 
-  test('a migração só corrige transferências antigas e é idempotente', () {
+  test('a migração grava apenas as transferências antigas e é idempotente', () async {
     final repo = FinancialRepository.demo();
     final expense = repo.transactions.firstWhere(
       (t) => t.type == TransactionType.expense,
     );
-    final legacy = expense.copyWith(
-      type: TransactionType.transfer,
-      category: 'supermarket',
-    );
-    final migrated = legacy.withCanonicalTransferCategory();
-    expect(migrated.category, 'transfer');
-    expect(migrated.withCanonicalTransferCategory(), same(migrated));
-    expect(expense.withCanonicalTransferCategory(), same(expense));
+    final legacy = {...expense.toJson(), 'id': 'legacy-transfer', 'type': 'transfer', 'category': 'supermarket'};
+    const key = 'krezio_transactions_v1';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, jsonEncode([legacy, expense.toJson()]));
+    const persistence = PersistenceService();
+
+    final migrated = await persistence.loadTransactions();
+    expect(migrated.map((t) => t.category), ['transfer', expense.category]);
+    final stored = prefs.getString(key)!;
+    expect((jsonDecode(stored) as List).first['category'], 'transfer');
+    await persistence.loadTransactions();
+    expect(prefs.getString(key), stored);
   });
 }

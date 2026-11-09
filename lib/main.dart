@@ -164,17 +164,15 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
 
     FinancialRepository? repository;
     CloudSyncService? sync;
-    var firstLoad = false;
     if (!_firebaseReady || user != null) {
       final store = user == null ? const PersistenceService.local() : PersistenceService.account(user.uid);
-      firstLoad = !await store.hasPersistedData();
       repository = FinancialRepository(persistence: store, seedDemo: false);
       await repository.initialize();
     }
     if (user != null && repository != null) {
       sync = CloudSyncService(repository: repository, uid: user.uid);
       try {
-        await sync.pullFromCloud(firstLoad: firstLoad).timeout(const Duration(seconds: 8));
+        await sync.pullFromCloud().timeout(const Duration(seconds: 8));
       } catch (e) {
         debugPrint('[CloudSync] Conta aberta com a cópia local: $e');
       }
@@ -203,7 +201,10 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
     final repository = _repository!;
     final sync = _cloudSync;
     if (_sessionBusy) return;
-    _sessionBusy = true;
+    setState(() => _sessionBusy = true);
+    final cleanup = Completer<void>();
+    // Firebase can emit the next auth state before signOut() returns.
+    _authQueue = _authQueue.then((_) => cleanup.future);
     try {
       await repository.flushPendingWrites();
       if (!skipSync && sync != null) {
@@ -214,15 +215,16 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
         }
       }
       if (_authService?.currentUser?.uid != uid) return;
+      await _authService!.signOut();
       if (!keepData) {
         sync?.dispose();
         await sync?.drain();
         await repository.clearAllData();
         await CloudSyncService.discardLocalBase(uid);
       }
-      await _authService!.signOut();
     } finally {
-      _sessionBusy = false;
+      cleanup.complete();
+      if (mounted) setState(() => _sessionBusy = false);
     }
   }
 

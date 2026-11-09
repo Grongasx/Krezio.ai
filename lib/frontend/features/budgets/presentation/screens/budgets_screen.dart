@@ -319,13 +319,13 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   void _removeCategory(BuildContext context, BudgetCategory budget, {String? moveTo}) {
     final undo = repository.deleteBudgetCategoryWithUndo(budget.category, moveTo: moveTo);
     if (undo == null) return;
-    showLedgerUndo(context, repository, ChatAction.custom((_) => undo(), 'Categoria restaurada.'), 'Categoria apagada.');
+    showLedgerUndo(context, repository, ChatAction.restoration((_) => undo(), 'Categoria restaurada.'), 'Categoria apagada.');
   }
 
   void _removeGoal(BuildContext context, FinancialGoal goal) {
     final undo = repository.deleteGoalWithUndo(goal.id);
     if (undo == null) return;
-    showLedgerUndo(context, repository, ChatAction.custom((_) => undo(), 'Meta restaurada.'), 'Meta apagada.');
+    showLedgerUndo(context, repository, ChatAction.restoration((_) => undo(), 'Meta restaurada.'), 'Meta apagada.');
   }
 
   void _showEditBudgetDialog(BuildContext context, BudgetCategory b) {
