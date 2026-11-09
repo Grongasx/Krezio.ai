@@ -17,7 +17,7 @@ class DashboardScreen extends StatelessWidget {
   final bool isDark;
   final VoidCallback onNavigateToChat;
   final VoidCallback onNavigateToTransactions;
-  final VoidCallback? onNavigateToBudgets;
+  final ValueChanged<String>? onNavigateToBudgets;
   static const _hideAmounts = 'dashboard_hide_amounts';
 
   const DashboardScreen({
@@ -445,8 +445,8 @@ class DashboardScreen extends StatelessWidget {
         break;
     }
 
-    final budget = alert.id.startsWith('budget-');
-    final bill = alert.id.startsWith('bill-');
+    final budget = alert.target == ProactiveAlertTarget.budget;
+    final bill = alert.target == ProactiveAlertTarget.bill || alert.target == ProactiveAlertTarget.recurringTransaction;
     final label = budget ? 'Ver orçamento' : (bill ? 'Ver conta' : 'Ver pendência');
     final summary = budget ? 'Alerta de orçamento' : (bill ? 'Conta perto do vencimento' : 'Pendência em atraso');
 
@@ -468,9 +468,7 @@ class DashboardScreen extends StatelessWidget {
               children: [
                 Text(hideAmounts ? summary : alert.message),
                 TextButton(
-                  onPressed: budget ? onNavigateToBudgets : () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(builder: (_) => OpenItemsScreen(repository: repository, isDark: isDark)),
-                  ),
+                  onPressed: () => _openAlert(context, alert),
                   child: Text(label),
                 ),
               ],
@@ -479,6 +477,28 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _openAlert(BuildContext context, ProactiveAlert alert) {
+    if (alert.target == ProactiveAlertTarget.budget) {
+      onNavigateToBudgets?.call(alert.recordId);
+      return;
+    }
+    if (alert.target == ProactiveAlertTarget.recurringTransaction) {
+      for (final transaction in repository.transactions) {
+        if (transaction.id != alert.recordId) continue;
+        _openEditModal(context, transaction);
+        return;
+      }
+    }
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => OpenItemsScreen(
+        repository: repository,
+        isDark: isDark,
+        focusId: alert.recordId,
+        showDebtsFirst: alert.target == ProactiveAlertTarget.debt,
+      ),
+    ));
   }
 
   void _openAddModal(BuildContext context) {

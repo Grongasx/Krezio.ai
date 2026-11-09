@@ -1527,7 +1527,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.sender == MessageSender.user;
-    final isGreeting = !isUser && identical(msg, _messages.firstOrNull);
+    final isGreeting = !isUser && _messages.isNotEmpty && identical(msg, _messages.first);
     final assistantSurface = isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
 
     return Padding(
@@ -1887,7 +1887,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _buildTransactionInspectorCard(FinancialTransactionDraft draft, bool isDark, bool isMerged, {List<String> ids = const []}) {
     final currentIds = widget.repository?.transactions.map((tx) => tx.id).toSet() ?? <String>{};
     final saved = ids.isNotEmpty && ids.every(currentIds.contains);
-    final status = switch ((saved, ids.isNotEmpty, draft.missingSlots.firstOrNull)) {
+    final missing = draft.missingSlots.isEmpty ? null : draft.missingSlots.first;
+    final status = switch ((saved, ids.isNotEmpty, missing)) {
       (true, _, _) => 'Registrado',
       (_, true, _) => 'Registro alterado ou removido',
       (_, _, 'confirm') => 'Aguardando confirmação',

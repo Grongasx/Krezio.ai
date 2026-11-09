@@ -11,11 +11,13 @@ import '../../../../../backend/models/financial_goal.dart';
 class BudgetsScreen extends StatefulWidget {
   final FinancialRepository repository;
   final bool isDark;
+  final String? focusedCategory;
 
   const BudgetsScreen({
     super.key,
     required this.repository,
     required this.isDark,
+    this.focusedCategory,
   });
 
   @override
@@ -110,7 +112,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   // ── ORÇAMENTOS ──
 
   Widget _buildBudgetsTab() {
-    final budgets = repository.budgets;
+    final budgets = [
+      ...repository.budgets.where((b) => b.category == widget.focusedCategory),
+      ...repository.budgets.where((b) => b.category != widget.focusedCategory),
+    ];
     final totalBudget = budgets.fold(0.0, (acc, b) => acc + b.monthlyLimit);
     final totalSpent = budgets.fold(0.0, (acc, b) => acc + b.currentSpent);
     final overallProgress = totalBudget > 0 ? (totalSpent / totalBudget).clamp(0.0, 1.0) : 0.0;

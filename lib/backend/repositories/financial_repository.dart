@@ -13,6 +13,7 @@ import '../../ai/category_name_matcher.dart';
 import '../services/calendar_service.dart';
 
 enum ProactiveAlertSeverity { info, warning, critical }
+enum ProactiveAlertTarget { budget, bill, recurringTransaction, debt }
 
 /// A proactive, unsolicited insight César surfaces on its own — a budget close to
 /// or over its limit, a bill due soon, or an overdue debt — instead of only
@@ -21,8 +22,16 @@ class ProactiveAlert {
   final String id;
   final String message;
   final ProactiveAlertSeverity severity;
+  final ProactiveAlertTarget target;
+  final String recordId;
 
-  const ProactiveAlert({required this.id, required this.message, required this.severity});
+  const ProactiveAlert({
+    required this.id,
+    required this.message,
+    required this.severity,
+    required this.target,
+    required this.recordId,
+  });
 }
 
 /// Outcome of [FinancialRepository.applyDebtPayment]: the updated reminder, the income
@@ -1263,6 +1272,8 @@ class FinancialRepository extends ChangeNotifier {
       if (b.isOverBudget) {
         alerts.add(ProactiveAlert(
           id: 'budget-over-${b.category}',
+          target: ProactiveAlertTarget.budget,
+          recordId: b.category,
           message: 'Você já estourou o orçamento de ${b.name}: gastou ${Money.brl(b.currentSpent)} de um limite de ${Money.brl(b.monthlyLimit)}.',
           severity: ProactiveAlertSeverity.critical,
         ));
@@ -1270,6 +1281,8 @@ class FinancialRepository extends ChangeNotifier {
         final percent = (b.percentage * 100).toStringAsFixed(0);
         alerts.add(ProactiveAlert(
           id: 'budget-near-${b.category}',
+          target: ProactiveAlertTarget.budget,
+          recordId: b.category,
           message: 'Atenção: você já usou $percent% do orçamento de ${b.name} este mês.',
           severity: ProactiveAlertSeverity.warning,
         ));
@@ -1283,6 +1296,8 @@ class FinancialRepository extends ChangeNotifier {
       final whenLabel = daysLeft <= 0 ? 'hoje' : (daysLeft == 1 ? 'amanhã' : 'em $daysLeft dias');
       alerts.add(ProactiveAlert(
         id: 'bill-${bill['id']}-${due.millisecondsSinceEpoch}',
+        target: bill['source'] == 'transaction' ? ProactiveAlertTarget.recurringTransaction : ProactiveAlertTarget.bill,
+        recordId: bill['id'] as String,
         message: '${bill['title']} vence $whenLabel (${Money.brl((bill['amount'] as double))}).',
         severity: daysLeft <= 0 ? ProactiveAlertSeverity.critical : ProactiveAlertSeverity.warning,
       ));
@@ -1294,6 +1309,8 @@ class FinancialRepository extends ChangeNotifier {
         final amountStr = debtor.amount != null ? '${Money.brl(debtor.amount!)}' : 'um valor';
         alerts.add(ProactiveAlert(
           id: 'debt-overdue-${debtor.id}',
+          target: ProactiveAlertTarget.debt,
+          recordId: debtor.id,
           message: '$name ainda não te pagou os $amountStr combinados — já passou da data prevista.',
           severity: ProactiveAlertSeverity.info,
         ));

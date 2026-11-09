@@ -49,6 +49,8 @@ class MainNavigationWrapper extends StatefulWidget {
 
 class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   late int _currentIndex = widget.initialIndex;
+  String? _focusedBudget;
+  int _budgetJump = 0;
 
   @override
   void initState() {
@@ -87,7 +89,11 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         isDark: widget.isDark,
         onNavigateToChat: () => _goTo(2),
         onNavigateToTransactions: () => _goTo(1),
-        onNavigateToBudgets: () => _goTo(3),
+        onNavigateToBudgets: (category) {
+          _focusedBudget = category;
+          _budgetJump++;
+          _goTo(3);
+        },
       ),
       TransactionsScreen(
         repository: widget.repository,
@@ -100,8 +106,10 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         isDarkMode: widget.isDark,
       ),
       BudgetsScreen(
+        key: ValueKey(_budgetJump),
         repository: widget.repository,
         isDark: widget.isDark,
+        focusedCategory: _focusedBudget,
       ),
       SettingsScreen(
         repository: widget.repository,
