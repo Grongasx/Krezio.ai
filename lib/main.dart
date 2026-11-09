@@ -113,7 +113,8 @@ class _KrezioAppState extends State<KrezioApp> with WidgetsBindingObserver {
     try {
       _hasLegacyData = await const PersistenceService().hasPersistedData();
       if (!mounted) return;
-      if (DefaultFirebaseOptions.isConfigured) {
+      const localOnly = bool.fromEnvironment('KREZIO_LOCAL_ONLY');
+      if (!localOnly && DefaultFirebaseOptions.isConfigured) {
         try {
           await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
           FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);

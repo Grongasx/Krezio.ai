@@ -31,9 +31,15 @@ flutter build apk --debug      # gera build/app/outputs/flutter-apk/app-debug.ap
 > No Windows, mantenha o projeto num caminho **sem acento** (ex.: `C:\Projects\Krezio.ai`).
 > O build do Android falha em pastas como "Área de Trabalho".
 
-**Firebase (opcional):** sem configurar, o app roda em modo local, sem login. Para ativar login e sincronização,
-rode `flutterfire configure` na raiz. Isso gera `lib/firebase_options.dart` (hoje com `REPLACE_ME`).
-Depois, ative "E-mail/senha" no Authentication e crie o Firestore.
+Para testar no Chrome sem login e sem sincronizar dados com o Firebase, rode:
+
+```bash
+flutter run -d chrome --dart-define=KREZIO_LOCAL_ONLY=true
+```
+
+**Firebase (opcional):** sem uma configuração válida, o app abre em modo local. Para conectar outro projeto,
+rode `flutterfire configure` na raiz, ative "E-mail/senha" no Authentication e configure o Firestore. Publique
+as regras de `firestore.rules` antes de distribuir a versão conectada.
 
 **Voz do César (opcional):** a voz neural vem de um servidor Python local na porta 8088, com o modelo Piper
 `pt_BR-faber-medium`. O modelo (~139 MB) não fica no git; baixe-o com `python scripts/download_voice_model.py`
