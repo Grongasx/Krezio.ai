@@ -38,6 +38,22 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  test('um reset impede que edições anteriores de outro aparelho reapareçam', () async {
+    final db = FakeFirebaseFirestore();
+    final (a, sa) = await device(db, start: [tx('1', 'Mercado', 50)]);
+    await sa.sync();
+    final (b, sb) = await device(db);
+    await sb.sync();
+    b.addTransaction(tx('2', 'Edição offline', 20));
+    await sa.resetCloudData();
+    await sb.sync();
+    expect(a.transactions, isEmpty);
+    expect(b.transactions, isEmpty);
+    final remote = await db.collection('users').doc('u1').get();
+    expect(remote.data()?['resetEpoch'], 1);
+    expect(remote.data()?['transactions'], isEmpty);
+  });
+
   test('primeira sincronização envia o que está no aparelho', () async {
     final db = FakeFirebaseFirestore();
     final (a, sa) = await device(db, start: [tx('1', 'Mercado', 50)]);

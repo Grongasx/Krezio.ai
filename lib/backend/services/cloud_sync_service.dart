@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/financial_transaction.dart';
 import '../models/financial_reminder.dart';
@@ -47,6 +48,8 @@ class CloudSyncService {
   Map<String, dynamic>? _base;
   bool _baseLoaded = false;
   bool _applying = false;
+  bool _disposed = false;
+  bool _needsInitialRead = false;
   Future<void>? _running;
 
   CloudSyncService({
@@ -58,19 +61,47 @@ class CloudSyncService {
         _store = baseStore ?? _PrefsBaseStore();
 
   DocumentReference<Map<String, dynamic>> get _userDoc => _firestore.collection('users').doc(uid);
-  String get _baseKey => 'krezio_cloud_sync_base_$uid';
+  String get _baseKey => _accountBaseKey(uid);
 
-  /// Kept for callers written before the merge existed: both now run [sync].
-  Future<void> pullFromCloud() => sync();
+  static String _accountBaseKey(String uid) => 'krezio_cloud_sync_base_v2_$uid';
+
+  static Future<void> discardLocalBase(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final results = await Future.wait([
+      prefs.remove(_accountBaseKey(uid)),
+      prefs.remove('krezio_cloud_sync_base_$uid'),
+    ]);
+    if (results.contains(false)) throw StateError('Não foi possível remover a cópia da sincronização.');
+  }
+
+  /// The initial session load reads this account before any uploads start.
+  Future<void> pullFromCloud({bool firstLoad = false}) {
+    _needsInitialRead = _needsInitialRead || firstLoad;
+    return _serialize(_readBeforeUpload);
+  }
+
+  Future<void> _readBeforeUpload() async {
+    await _syncOnce(readOnly: true, firstLoad: _needsInitialRead);
+    _needsInitialRead = false;
+  }
   Future<void> pushToCloud() => sync();
 
   /// Merges this device with the cloud and applies the result to both sides.
   /// Calls made while one is running wait for it and then run once more.
-  Future<void> sync() async {
+  Future<void> sync() => _serialize(() async {
+    if (_needsInitialRead) await _readBeforeUpload();
+    await _syncOnce();
+  });
+
+  Future<void> _serialize(Future<void> Function() operation) async {
     while (_running != null) {
-      await _running;
+      // A failed earlier attempt should not prevent this attempt.
+      try {
+        await _running;
+      } catch (_) {}
     }
-    final run = _syncOnce();
+    if (_disposed) return;
+    final run = operation();
     _running = run;
     try {
       await run;
@@ -79,31 +110,85 @@ class CloudSyncService {
     }
   }
 
-  Future<void> _syncOnce() async {
+  static int _epoch(Map<String, dynamic>? data) => data?['resetEpoch'] as int? ?? 0;
+
+  Future<void> _syncOnce({bool readOnly = false, bool firstLoad = false}) async {
     await _loadBase();
+    if (_disposed) return;
     final local = _localSnapshot();
     late Map<String, dynamic> merged;
+    Map<String, dynamic>? remoteBase;
+    var remoteReset = false;
 
     await _firestore.runTransaction((tx) async {
       final snap = await tx.get(_userDoc);
       final remote = snap.data();
-      merged = remote == null ? local : _merge(_base, local, remote);
-      if (remote == null || !_sameData(merged, remote)) {
+      remoteBase = remote;
+      remoteReset = _epoch(remote) > _epoch(_base);
+      merged = remote == null
+          ? local
+          : remoteReset || firstLoad
+              ? _strip(remote)
+              : _merge(_base, local, remote);
+      if (!_disposed && !readOnly && (remote == null || !_sameData(merged, remote))) {
         tx.set(_userDoc, {...merged, 'updatedAt': FieldValue.serverTimestamp()});
       }
     });
 
-    if (!_sameData(merged, local)) _apply(merged);
-    await _saveBase(merged);
+    if (_disposed) return;
+    if (remoteReset) {
+      await _adoptReset(merged);
+    } else {
+      // Edits can land locally while the transaction is waiting for Firestore.
+      final current = _localSnapshot();
+      final latest = _sameData(current, local) ? merged : _merge(local, current, merged);
+      if (!_sameData(latest, current)) _apply(latest);
+    }
+    final base = readOnly ? remoteBase : merged;
+    if (base != null) await _saveBase(base);
+  }
+
+  Future<void> resetCloudData() => _serialize(() async {
+        late Map<String, dynamic> reset;
+        await _firestore.runTransaction((tx) async {
+          final snap = await tx.get(_userDoc);
+          if (_disposed) return;
+          reset = {
+            'resetEpoch': _epoch(snap.data()) + 1,
+            'transactions': [],
+            'reminders': [],
+            'budgets': [],
+            'goals': [],
+            'accounts': [],
+            'categoryOverrides': <String, String>{},
+          };
+          tx.set(_userDoc, {...reset, 'updatedAt': FieldValue.serverTimestamp()});
+        });
+        if (_disposed) return;
+        await _adoptReset(reset);
+        await _saveBase(reset);
+      });
+
+  Future<void> _adoptReset(Map<String, dynamic> data) async {
+    _applying = true;
+    try {
+      await repository.clearAllData();
+      if (_disposed) return;
+      _apply(data);
+      await repository.flushPendingWrites();
+    } finally {
+      _applying = false;
+    }
   }
 
   /// Starts syncing automatically: local changes (debounced, so a burst of
   /// edits triggers one upload) and changes pushed by another device.
   void startAutoSync() {
+    if (_disposed || _listener != null) return;
     _listener = () {
       if (_applying) return;
       _debounce?.cancel();
-      _debounce = Timer(const Duration(seconds: 2), () => sync());
+      _debounce = Timer(const Duration(seconds: 2), _syncInBackground);
     };
     repository.addListener(_listener!);
 
@@ -111,11 +196,26 @@ class CloudSyncService {
       final data = snap.data();
       if (snap.metadata.hasPendingWrites || data == null) return; // our own write
       if (_base != null && _sameData(_strip(data), _base!)) return; // nothing new
-      sync();
-    });
+      _syncInBackground();
+    }, onError: (Object error) => debugPrint('[CloudSync] Falha ao acompanhar a conta: $error'));
+    _syncInBackground();
+  }
+
+  void _syncInBackground() {
+    if (_disposed || _applying) return;
+    unawaited(sync().catchError((Object error) {
+      debugPrint('[CloudSync] Nova tentativa quando houver conexão: $error');
+    }));
+  }
+
+  Future<void> drain() async {
+    try {
+      await _running;
+    } catch (_) {}
   }
 
   void dispose() {
+    _disposed = true;
     _debounce?.cancel();
     _remoteSub?.cancel();
     if (_listener != null) repository.removeListener(_listener!);
@@ -124,6 +224,7 @@ class CloudSyncService {
   // ── snapshot helpers ──────────────────────────────────────────────────────
 
   Map<String, dynamic> _localSnapshot() => {
+        if (_epoch(_base) > 0) 'resetEpoch': _epoch(_base),
         'transactions': repository.transactions.map((t) => t.toJson()).toList(),
         'reminders': repository.reminders.map((r) => r.toJson()).toList(),
         'budgets': repository.budgets.map((b) => b.toJson()).toList(),
@@ -147,6 +248,7 @@ class CloudSyncService {
         );
 
     return {
+      if (_epoch(remote) > 0) 'resetEpoch': _epoch(remote),
       'transactions': byId('transactions', 'id'),
       'reminders': byId('reminders', 'id'),
       'budgets': byId('budgets', 'category'),

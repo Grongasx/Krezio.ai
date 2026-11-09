@@ -51,6 +51,18 @@ class UndoResult {
 /// deletion. Pure Dart; the repository is passed in to apply the undo.
 class ChatActionHistory {
   static const int maxActions = 20;
+  static final _sessions = Expando<ChatActionHistory>();
+
+  static ChatActionHistory forRepository(FinancialRepository repository) {
+    final history = _sessions[repository] ??= ChatActionHistory();
+    if (history._generation != repository.dataGeneration) {
+      history.clear();
+      history._generation = repository.dataGeneration;
+    }
+    return history;
+  }
+
+  int? _generation;
   final List<ChatAction> _stack = [];
 
   /// Older actions dropped off the bottom of the stack (R2-CHAOS-024): when
@@ -82,10 +94,13 @@ class ChatActionHistory {
   /// (its records/goal/category were deleted or changed on another screen),
   /// it says so and stops — it used to skip silently to the action before it
   /// and undo *that* instead (R2-CHAOS-014: "desfaz" removed the Mercado).
-  UndoResult? undo(FinancialRepository repository, {DateTime? now}) {
+  UndoResult? undo(FinancialRepository repository, {DateTime? now, ChatAction? only}) {
+    if (_generation != null && _generation != repository.dataGeneration) return null;
     final today = now ?? DateTime.now();
     if (_stack.isEmpty) return null;
-    final action = _stack.removeLast();
+    final index = only == null ? _stack.length - 1 : _stack.indexOf(only);
+    if (index < 0) return null;
+    final action = _stack.removeAt(index);
     final existing = {for (final t in repository.transactions) t.id: t};
     final names = _names(action.records, today);
     switch (action.kind) {
