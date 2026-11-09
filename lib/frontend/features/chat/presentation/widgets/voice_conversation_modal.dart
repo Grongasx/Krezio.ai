@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../../../ai/voice/voice_conversation_controller.dart';
+import '../../../../../ai/voice/voice_synthesis_service.dart';
 import '../../../../theme/krezio_theme.dart';
 
 
@@ -130,108 +131,58 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
     );
   }
 
+  String _voiceLabel(VoiceAvailability availability) => switch (availability) {
+        VoiceAvailability.checking => 'Verificando a voz',
+        VoiceAvailability.systemVoice => 'Voz do sistema',
+        VoiceAvailability.piper => 'Piper disponível',
+        VoiceAvailability.unavailable => 'Voz indisponível',
+      };
+
   Widget _buildHeader(BuildContext context) {
+    final availability = widget.controller.voiceSynthesis.availabilityNotifier;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xl, vertical: KrezioSpace.lg),
+      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(KrezioSpace.sm),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [KrezioColors.aiPurple, Color(0xFF6366F1)],
+          const Icon(Icons.record_voice_over_outlined, color: Color(0xFFA78BFA)),
+          const SizedBox(width: KrezioSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Conversa com o César',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: KrezioFont.bodyLarge,
+                    fontWeight: FontWeight.bold,
                   ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: KrezioColors.aiPurple.withOpacity(0.4),
-                      blurRadius: 10,
-                    ),
-                  ],
                 ),
-                child: const Icon(Icons.record_voice_over, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: KrezioSpace.md),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'César • Modo Conversa',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: KrezioFont.bodyLarge,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  Row(
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: const BoxDecoration(
-                          color: KrezioColors.emeraldGreen,
-                          shape: BoxShape.circle,
-                        ),
+                ValueListenableBuilder<VoiceAvailability>(
+                  valueListenable: availability,
+                  builder: (context, state, _) {
+                    final label = _voiceLabel(state);
+                    return Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        state == VoiceAvailability.unavailable ? '$label. Continue pelo chat.' : label,
+                        style: const TextStyle(color: Colors.white70, fontSize: KrezioFont.caption),
                       ),
-                      const SizedBox(width: KrezioSpace.sm),
-                      Text(
-                        '100% ON-DEVICE • PRIVACIDADE TOTAL',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: KrezioFont.micro,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ],
+                    );
+                  },
+                ),
+              ],
+            ),
           ),
-          Row(
-            children: [
-              Tooltip(
-                message: 'Modelo de Voz: Piper ONNX (pt_BR-faber-medium)\n100% On-Device Neural',
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => _showVoiceTuningSheet(context),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.sm),
-                    decoration: BoxDecoration(
-                      color: KrezioColors.aiPurple.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: KrezioColors.aiPurple.withOpacity(0.5)),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.memory, color: Color(0xFFA78BFA), size: 14),
-                        SizedBox(width: KrezioSpace.sm),
-                        Text(
-                          'ONNX Piper',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: KrezioFont.caption,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: KrezioSpace.sm),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 26),
-                tooltip: 'Encerrar conversa',
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ],
+          IconButton(
+            icon: const Icon(Icons.tune, color: Colors.white70),
+            tooltip: 'Configurar voz',
+            onPressed: () => _showVoiceTuningSheet(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, color: Colors.white70),
+            tooltip: 'Voltar ao chat',
+            onPressed: () => Navigator.of(context).pop(),
           ),
         ],
       ),
@@ -239,162 +190,65 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
   }
 
   void _showVoiceTuningSheet(BuildContext context) {
+    final tts = widget.controller.voiceSynthesis;
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF161A23),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final tts = widget.controller.voiceSynthesis;
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xl, vertical: KrezioSpace.xl),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(KrezioSpace.sm),
-                            decoration: BoxDecoration(
-                              color: KrezioColors.aiPurple.withOpacity(0.2),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.memory, color: Color(0xFFA78BFA), size: 20),
-                          ),
-                          const SizedBox(width: KrezioSpace.md),
-                          const Text(
-                            'Modelo Neural On-Device (ONNX)',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: KrezioFont.title,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, color: Colors.white54),
-                        onPressed: () => Navigator.pop(sheetContext),
-                      ),
-                    ],
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(KrezioSpace.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Configurar voz',
+                  style: TextStyle(color: Colors.white, fontSize: KrezioFont.title, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: KrezioSpace.sm),
+                ValueListenableBuilder<VoiceAvailability>(
+                  valueListenable: tts.availabilityNotifier,
+                  builder: (context, state, _) => Text(
+                    _voiceLabel(state),
+                    style: const TextStyle(color: Colors.white70, fontSize: KrezioFont.bodySmall),
                   ),
-                  const SizedBox(height: KrezioSpace.lg),
-                  // On-Device Neural ONNX Model Status Card
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(KrezioSpace.lg),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          KrezioColors.aiPurple.withOpacity(0.25),
-                          const Color(0xFF10B981).withOpacity(0.15),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: KrezioColors.aiPurple.withOpacity(0.4)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(KrezioSpace.sm),
-                              decoration: BoxDecoration(
-                                color: KrezioColors.aiPurple.withOpacity(0.3),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.psychology, color: Color(0xFFA78BFA), size: 18),
-                            ),
-                            const SizedBox(width: KrezioSpace.md),
-                            const Expanded(
-                              child: Text(
-                                'Piper VITS • pt_BR-faber-medium',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: KrezioFont.bodySmall),
-                              ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
-                              decoration: BoxDecoration(
-                                color: KrezioColors.emeraldGreen.withOpacity(0.25),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: KrezioColors.emeraldGreen.withOpacity(0.5)),
-                              ),
-                              child: const Text(
-                                'ONNX ATIVO',
-                                style: TextStyle(color: KrezioColors.emeraldGreen, fontSize: KrezioFont.micro, fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: KrezioSpace.sm),
-                        Text(
-                          'Tamanho: 60.3 MB local • Taxa: 22.050 Hz\nPersona: Consultor financeiro maduro, acolhedor e seguro',
-                          style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: KrezioFont.caption, height: 1.4),
-                        ),
-                      ],
-                    ),
+                ),
+                const SizedBox(height: KrezioSpace.lg),
+                Text(
+                  'Velocidade da fala: ${tts.speechRate.toStringAsFixed(2)}×',
+                  style: const TextStyle(color: Colors.white70, fontSize: KrezioFont.bodySmall),
+                ),
+                Slider(
+                  value: tts.speechRate.clamp(0.70, 1.30),
+                  min: 0.70,
+                  max: 1.30,
+                  divisions: 12,
+                  activeColor: KrezioColors.emeraldGreen,
+                  inactiveColor: Colors.white12,
+                  onChanged: (value) {
+                    tts.setSpeechRate(value);
+                    setSheetState(() {});
+                  },
+                ),
+                ValueListenableBuilder<bool>(
+                  valueListenable: widget.controller.isSpeakerMutedNotifier,
+                  builder: (context, muted, _) => ElevatedButton.icon(
+                    icon: const Icon(Icons.play_arrow_rounded),
+                    label: const Text('Ouvir exemplo'),
+                    onPressed: muted ? null : widget.controller.previewVoice,
                   ),
-                  const SizedBox(height: KrezioSpace.lg),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Cadência Neural / Velocidade', style: TextStyle(color: Colors.white70, fontSize: KrezioFont.bodySmall)),
-                      Text(
-                        '${(tts.speechRate).toStringAsFixed(2)}x',
-                        style: const TextStyle(color: KrezioColors.emeraldGreen, fontWeight: FontWeight.bold, fontSize: KrezioFont.small),
-                      ),
-                    ],
-                  ),
-                  Slider(
-                    value: tts.speechRate,
-                    min: 0.70,
-                    max: 1.30,
-                    divisions: 12,
-                    activeColor: KrezioColors.emeraldGreen,
-                    inactiveColor: Colors.white12,
-                    onChanged: (val) {
-                      tts.setSpeechRate(val);
-                      setSheetState(() {});
-                    },
-                  ),
-                  const SizedBox(height: KrezioSpace.md),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: KrezioColors.aiPurple,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: KrezioSpace.lg),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text(
-                        'Ouvir Demonstração Neural do César (ONNX)',
-                        style: TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () {
-                        tts.speak('Olá! Sou o César, seu consultor financeiro no Krézio ai. Notou como minha voz neural soa natural agora?');
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
-
-
 
   Widget _buildNeuralVoiceOrb() {
     return AnimatedBuilder(
@@ -426,7 +280,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   primaryGlow = KrezioColors.emeraldGreen; // Emerald Glow
                   secondaryGlow = const Color(0xFF059669);
                   accentCore = const Color(0xFF34D399);
-                  statusLabel = 'César falando (ONNX Neural)...';
+                  statusLabel = 'César respondendo...';
                 } else if (state == VoiceState.paused) {
                   primaryGlow = KrezioColors.friendlyOrange;
                   secondaryGlow = Colors.amber;
@@ -436,7 +290,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                   primaryGlow = KrezioColors.aiPurple;
                   secondaryGlow = const Color(0xFF6366F1);
                   accentCore = const Color(0xFFA78BFA);
-                  statusLabel = 'César conectado • Modo ONNX';
+                  statusLabel = 'Pronto para conversar';
                 }
 
                 final audioFactor = (audioLevel * 0.45);

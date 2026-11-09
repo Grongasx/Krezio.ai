@@ -24,6 +24,7 @@ void main() {
         ..onCompletion = () => completed++;
       await s.speak('Gastei R\$ 50,00 no mercado');
       expect(native.spoken.single, 'Gastei 50 reais no mercado');
+      expect(s.availabilityNotifier.value, VoiceAvailability.systemVoice);
       expect(completed, 1);
       expect(s.isSpeakingNotifier.value, isFalse);
     });
@@ -49,6 +50,7 @@ void main() {
         };
       await s.speak('Oi');
       expect(native.spoken, isEmpty);
+      expect(s.availabilityNotifier.value, VoiceAvailability.piper);
     });
 
     test('no celular a voz do sistema é o padrão', () async {

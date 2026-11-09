@@ -6,22 +6,21 @@ class AudioStreamPlayer {
 
   static Future<bool> playUrl(String url, {void Function()? onCompletion, void Function(dynamic)? onError}) async {
     try {
-      _currentAudio?.pause();
-      _currentAudio = null;
+      stop();
 
       final audio = html.AudioElement(url);
       _currentAudio = audio;
 
       audio.onEnded.listen((_) {
-        onCompletion?.call();
+        if (identical(_currentAudio, audio)) onCompletion?.call();
       });
 
       audio.onError.listen((e) {
-        onError?.call(e);
+        if (identical(_currentAudio, audio)) onError?.call(e);
       });
 
       await audio.play();
-      return true;
+      return identical(_currentAudio, audio);
     } catch (e) {
       onError?.call(e);
       return false;
@@ -29,9 +28,13 @@ class AudioStreamPlayer {
   }
 
   static void stop() {
+    final audio = _currentAudio;
+    _currentAudio = null;
     try {
-      _currentAudio?.pause();
-      _currentAudio = null;
+      audio?.pause();
+      // Cancel an in-flight playback request as well as audio already playing.
+      audio?.removeAttribute('src');
+      audio?.load();
     } catch (_) {}
   }
 }
