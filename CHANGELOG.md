@@ -16,6 +16,9 @@ O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
 - Desfazer exclusões de lançamentos, metas e categorias. Transferências com categoria própria e CSV dedicado.
 - Estado real da síntese de voz com fallback do sistema, atalhos editáveis no chat, filtros e ações no Extrato.
 - Refinamento do Início, gráfico e navegação, com controle para ocultar valores no Início.
+- A primeira sincronização preserva lançamentos feitos offline e os limites já configurados na conta.
+- Desfazer exclusões continua disponível após uma sincronização comum. Um reset da conta invalida o histórico da sessão.
+- A migração de transferências legadas também corrige os registros gravados no armazenamento local.
 
 ### Added
 - Plataforma iOS (`ios/`, bundle `com.krezio.ai`), com as permissões de microfone e de reconhecimento de fala.

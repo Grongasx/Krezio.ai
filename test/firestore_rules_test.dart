@@ -1,29 +1,72 @@
-import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
-import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// As regras publicadas (firestore.rules): cada usuário só acessa users/{uid}.
+String _emulatorToken(String uid, String project) {
+  String segment(Map<String, Object> claims) =>
+      base64Url.encode(utf8.encode(jsonEncode(claims))).replaceAll('=', '');
+
+  final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  return '${segment({'alg': 'none', 'typ': 'JWT'})}.${segment({
+        'aud': project,
+        'iss': 'https://securetoken.google.com/$project',
+        'iat': now,
+        'exp': now + 3600,
+        'auth_time': now,
+        'sub': uid,
+        'user_id': uid,
+        'firebase': {'sign_in_provider': 'password'},
+      })}.';
+}
+
 void main() {
-  final rules = File('firestore.rules').readAsStringSync().replaceFirst(RegExp(r"rules_version = '2';\s*"), '');
+  final host = Platform.environment['FIRESTORE_EMULATOR_HOST'];
+  final project =
+      Platform.environment['GCLOUD_PROJECT'] ?? 'demo-krezio-sprint';
 
-  test('o dono lê e grava o próprio documento; outro usuário recebe permissão negada', () async {
-    final auth = StreamController<Map<String, dynamic>?>.broadcast();
-    final db = FakeFirebaseFirestore(securityRules: rules, authObject: auth.stream);
-    auth.add({'uid': 'ana'});
-    await Future<void>.delayed(Duration.zero);
+  test('regras reais isolam usuários e rejeitam snapshots anteriores ao reset',
+      () async {
+    final client = HttpClient();
+    addTearDown(() => client.close(force: true));
+    final owner = 'owner-${DateTime.now().microsecondsSinceEpoch}';
+    final url = Uri.parse(
+        'http://$host/v1/projects/$project/databases/(default)/documents/users/$owner');
 
-    await db.doc('users/ana').set({'transactions': []});
-    expect((await db.doc('users/ana').get()).exists, isTrue);
-    await expectLater(db.doc('users/bruno').set({'x': 1}), throwsA(anything));
-    await expectLater(db.doc('users/bruno').get(), throwsA(anything));
-    await expectLater(db.doc('outra_colecao/qualquer').set({'x': 1}), throwsA(anything));
-    await auth.close();
-  });
+    Future<int> request(String? uid, {int? epoch, bool write = false}) async {
+      final request = await client.openUrl(write ? 'PATCH' : 'GET', url);
+      if (uid != null) {
+        request.headers.set(HttpHeaders.authorizationHeader,
+            'Bearer ${_emulatorToken(uid, project)}');
+      }
+      if (write) {
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode({
+          'fields': {
+            if (epoch != null) 'resetEpoch': {'integerValue': '$epoch'},
+            'transactions': {
+              'arrayValue': {'values': <Object>[]}
+            },
+          },
+        }));
+      }
+      final response = await request.close();
+      await response.drain<void>();
+      return response.statusCode;
+    }
 
-  test('sem login, nada é acessível', () async {
-    final db = FakeFirebaseFirestore(securityRules: rules);
-    await expectLater(db.doc('users/ana').get(), throwsA(anything));
-  });
+    expect(await request(owner, write: true), HttpStatus.ok);
+    expect(await request(owner), HttpStatus.ok);
+    expect(await request('other'), HttpStatus.forbidden);
+    expect(await request('other', write: true), HttpStatus.forbidden);
+    expect(await request(null), HttpStatus.forbidden);
+    expect(await request(owner, epoch: 1, write: true), HttpStatus.ok);
+    expect(await request(owner, write: true), HttpStatus.forbidden);
+    expect(await request(owner, epoch: 0, write: true), HttpStatus.forbidden);
+    expect(await request(owner, epoch: 3, write: true), HttpStatus.forbidden);
+    expect(await request(owner, epoch: 1, write: true), HttpStatus.ok);
+  },
+      skip: host == null
+          ? 'Defina FIRESTORE_EMULATOR_HOST para validar firestore.rules no emulador.'
+          : false);
 }

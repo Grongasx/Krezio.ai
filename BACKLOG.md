@@ -4,7 +4,9 @@
 
 - S1-01 a S1-09: implementação da Sprint em revisão, com regressões para idioma, sessão, transferências e desfazer.
 - [ ] Validar Android no Redmi Note 11, Chrome, build iOS em Mac e abrir o CSV no Excel e no Google Planilhas.
-- [ ] Validar o reset com dois aparelhos e as regras de acesso por UID no Firebase Emulator.
+- [x] Verificar no Firestore Emulator o acesso por UID e o bloqueio de gravações de clientes com uma geração de reset antiga.
+- [ ] Reproduzir no app a troca de sessão, a saída offline e o reset entre dois aparelhos usando o Firebase Emulator.
+- [ ] Publicar as regras de sincronização do Firestore antes de distribuir a versão conectada.
 - [ ] E-01: validar a voz do sistema no Redmi com o PC desligado.
 - [ ] E-02: medir os modelos no aparelho e colher as avaliações cegas. [Roteiro do comparativo](docs/architecture/comparativo-voz-sprint-1.md)
 
