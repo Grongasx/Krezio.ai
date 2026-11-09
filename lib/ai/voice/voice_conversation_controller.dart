@@ -1,3 +1,4 @@
+import '../../backend/services/money.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
@@ -452,7 +453,7 @@ class VoiceConversationController {
       activeDraft = null;
     } else if (LocalFinancialNlpEngine.isRecordable(draft)) {
       onTransactionCompleted?.call(draft);
-      final amountStr = draft.amount != null ? 'de R\$ ${draft.amount!.toStringAsFixed(2).replaceAll('.', ',')}' : '';
+      final amountStr = draft.amount != null ? 'de ${Money.brl(draft.amount!)}' : '';
       if (draft.billingDay != null && draft.paymentMarginDays != null) {
         responseText = 'Anotado! Boleto de ${draft.description} registrado: cai dia ${draft.billingDay} com vencimento no dia ${draft.dueDay}, margem de ${draft.paymentMarginDays} dias para pagar.';
       } else if (draft.isReminder && draft.reminderType == 'loan_receivable') {
@@ -483,7 +484,21 @@ class VoiceConversationController {
       onTransactionCompleted?.call(d);
     }
     final total = drafts.fold(0.0, (acc, d) => acc + (d.amount ?? 0));
-    _speakAsCesar('${notice}Anotado!${drafts.length} lançamentos registrados, somando R\$ ${total.toStringAsFixed(2).replaceAll('.', ',')}.');
+    _speakAsCesar('${notice}Anotado!${drafts.length} lançamentos registrados, somando ${Money.brl(total)}.');
+  }
+
+  Future<void> previewVoice() async {
+    if (_isDisposed ||
+        isSpeakerMutedNotifier.value ||
+        stateNotifier.value == VoiceState.thinking ||
+        _endAfterSpeaking) {
+      return;
+    }
+    if (stateNotifier.value == VoiceState.listening) {
+      await stopListening();
+      if (_isDisposed || isSpeakerMutedNotifier.value) return;
+    }
+    await _speakAsCesar('Olá! Sou o César. Esta é uma amostra da minha voz.');
   }
 
   Future<void> _speakAsCesar(String text) async {

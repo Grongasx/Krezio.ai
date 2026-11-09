@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../../backend/services/money.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/models/financial_transaction.dart';
@@ -57,7 +58,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
     _date = tx?.date ?? DateTime.now();
     if (tx == null) return;
     _titleController.text = tx.title;
-    _amountController.text = tx.amount.toStringAsFixed(2).replaceAll('.', ',');
+    _amountController.text = Money.decimal(tx.amount);
     _selectedType = tx.type;
     _selectedCategory = tx.category;
     _selectedPaymentMethod = _paymentMethods.any((p) => p['id'] == tx.paymentMethod) ? tx.paymentMethod : 'pix';
@@ -67,7 +68,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
     _accountId = tx.account;
     if (tx.originalCurrency != null && tx.originalAmount != null) {
       _currency = tx.originalCurrency!;
-      _amountController.text = tx.originalAmount!.toStringAsFixed(2).replaceAll('.', ',');
+      _amountController.text = Money.decimal(tx.originalAmount!);
       _rateController.text = (tx.exchangeRate ?? 1).toStringAsFixed(4).replaceAll('.', ',');
     }
   }
@@ -105,6 +106,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
   /// transaction already had (e.g. "income_other" from the chat) when editing,
   /// instead of forcing everything to "salary".
   String get _resolvedCategory {
+    if (_selectedType == TransactionType.transfer) return 'transfer';
     if (_selectedType != TransactionType.income) return _selectedCategory;
     final original = widget.initialTransaction;
     if (original != null && original.type == TransactionType.income) return original.category;

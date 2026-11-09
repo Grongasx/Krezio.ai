@@ -4,19 +4,29 @@ import '../../../../widgets/krezio_components.dart';
 import '../../../../../ai/cesar_text.dart';
 import '../../../../../backend/models/financial_reminder.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
+import '../../../../../backend/services/money.dart';
 
 /// Open bills and people who owe the user, ordered by due date; overdue ones
 /// in red. Tapping one registers the payment.
 class OpenItemsScreen extends StatelessWidget {
   final FinancialRepository repository;
   final bool isDark;
+  final String? focusId;
+  final bool showDebtsFirst;
 
-  const OpenItemsScreen({super.key, required this.repository, required this.isDark});
+  const OpenItemsScreen({
+    super.key,
+    required this.repository,
+    required this.isDark,
+    this.focusId,
+    this.showDebtsFirst = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 2,
+      initialIndex: showDebtsFirst ? 1 : 0,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Contas e devedores'),
@@ -67,7 +77,10 @@ class OpenItemsScreen extends StatelessWidget {
       children: [
         Text('${items.length} em aberto • ${CesarText.money(total)}', style: TextStyle(fontSize: KrezioFont.small, color: secondary)),
         const SizedBox(height: KrezioSpace.sm),
-        for (final r in items)
+        for (final r in [
+          ...items.where((r) => r.id == focusId),
+          ...items.where((r) => r.id != focusId),
+        ])
           Padding(
             padding: const EdgeInsets.only(bottom: KrezioSpace.sm),
             child: KrezioCard(
@@ -133,7 +146,7 @@ class OpenItemsScreen extends StatelessWidget {
   }
 
   Future<void> _receiveDebt(BuildContext context, FinancialReminder r) async {
-    final controller = TextEditingController(text: r.amount?.toStringAsFixed(2).replaceAll('.', ','));
+    final controller = TextEditingController(text: r.amount == null ? '' : Money.decimal(r.amount!));
     final value = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(

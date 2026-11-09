@@ -4,10 +4,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/local_nlp_engine.dart';
+import 'package:krezio_ai/backend/config/app_environment.dart';
 import 'package:krezio_ai/backend/models/financial_transaction.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:krezio_ai/backend/services/auth_service.dart';
 import 'package:krezio_ai/backend/services/pin_lock.dart';
+import 'package:krezio_ai/frontend/features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'package:krezio_ai/frontend/features/dashboard/presentation/widgets/category_donut_chart.dart';
 import 'package:krezio_ai/frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:krezio_ai/frontend/features/chat/presentation/screens/chat_screen.dart';
 import 'package:krezio_ai/frontend/features/onboarding/onboarding_screen.dart';
@@ -37,6 +40,91 @@ Future<void> phone(WidgetTester tester) async {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('o botão de privacidade atualiza o saldo imediatamente', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final repository = FinancialRepository(seedDemo: false, persistChanges: false);
+    repository.addTransaction(FinancialTransaction(
+      id: 'salario',
+      title: 'Salário',
+      amount: 128450.90,
+      type: TransactionType.income,
+      category: 'salary',
+      paymentMethod: 'pix',
+      date: DateTime.now(),
+    ));
+    await phone(tester);
+    await tester.pumpWidget(app(DashboardScreen(
+      repository: repository,
+      isDark: true,
+      onNavigateToChat: () {},
+      onNavigateToTransactions: () {},
+    )));
+
+    expect(find.text(r'R$ 128.450,90'), findsWidgets);
+    await tester.tap(find.byTooltip('Ocultar valores'));
+    await tester.pump();
+    expect(find.text(r'R$ 128.450,90'), findsNothing);
+    expect(find.text('••••'), findsWidgets);
+    expect(find.bySemanticsLabel(RegExp('Valor oculto')), findsWidgets);
+    expect(find.bySemanticsLabel(RegExp(r'128\.450,90')), findsNothing);
+
+    await tester.tap(find.byTooltip('Mostrar valores'));
+    await tester.pump();
+    expect(find.text(r'R$ 128.450,90'), findsWidgets);
+  });
+
+  testWidgets('a legenda fica abaixo da rosca no celular e ao lado na web', (tester) async {
+    for (final width in [360.0, 720.0]) {
+      await tester.pumpWidget(MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: width,
+            child: const CategoryDonutChart(
+              categoryData: {'supermarket': 128450.90},
+              isDark: true,
+              totalLabel: 'Gastos do mês',
+            ),
+          ),
+        ),
+      ));
+      final title = tester.getCenter(find.text('Gastos do mês'));
+      final category = tester.getCenter(find.text('Supermercado'));
+      expect(find.text('R\$ 128.450,90'), findsOneWidget);
+      if (width == 360) {
+        expect(category.dy, greaterThan(title.dy));
+      } else {
+        expect(category.dx, greaterThan(title.dx));
+        expect((category.dy - title.dy).abs(), lessThan(35));
+      }
+      expect(tester.takeException(), isNull);
+    }
+  });
+
+  testWidgets('sugestão de gasto preenche o campo sem registrar em produção', (tester) async {
+    await phone(tester);
+    final initial = EnvironmentConfig.current;
+    addTearDown(() => EnvironmentConfig.setEnvironment(initial));
+    EnvironmentConfig.setEnvironment(AppEnvironment.production);
+    final engine = LocalFinancialNlpEngine.fromJsonString(
+      File('models/on_device/krezio_nlp_model.json').readAsStringSync(),
+    );
+    final repo = repoWith([]);
+    await tester.pumpWidget(app(ChatScreen(
+      engine: engine,
+      repository: repo,
+      onToggleTheme: () {},
+      isDarkMode: true,
+    )));
+    await tester.tap(find.text('Registrar gasto'));
+    await tester.pump();
+    expect(find.text('Gastei 45,90 no mercado no Pix'), findsOneWidget);
+    expect(repo.transactions, isEmpty);
+    expect(find.text('NEURAL'), findsNothing);
+    expect(find.text('Latência Local'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('login: cadastro só envia com senhas iguais e termos aceitos', (tester) async {
     await phone(tester);

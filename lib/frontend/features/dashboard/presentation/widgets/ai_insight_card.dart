@@ -50,12 +50,14 @@ class AiInsightCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: KrezioSpace.sm),
-              Text(
-                'Insight do Krezio.ai',
-                style: TextStyle(
-                  fontSize: KrezioFont.bodySmall,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : const Color(0xFF5B21B6),
+              Expanded(
+                child: Text(
+                  'Insight do Krezio.ai',
+                  style: TextStyle(
+                    fontSize: KrezioFont.bodySmall,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : const Color(0xFF5B21B6),
+                  ),
                 ),
               ),
             ],

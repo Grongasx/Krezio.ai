@@ -1,5 +1,6 @@
+import '../services/money.dart';
 import 'dart:async';
-import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import '../models/financial_transaction.dart';
 import '../models/budget_category.dart';
@@ -12,6 +13,7 @@ import '../../ai/category_name_matcher.dart';
 import '../services/calendar_service.dart';
 
 enum ProactiveAlertSeverity { info, warning, critical }
+enum ProactiveAlertTarget { budget, bill, recurringTransaction, debt }
 
 /// A proactive, unsolicited insight César surfaces on its own — a budget close to
 /// or over its limit, a bill due soon, or an overdue debt — instead of only
@@ -20,8 +22,16 @@ class ProactiveAlert {
   final String id;
   final String message;
   final ProactiveAlertSeverity severity;
+  final ProactiveAlertTarget target;
+  final String recordId;
 
-  const ProactiveAlert({required this.id, required this.message, required this.severity});
+  const ProactiveAlert({
+    required this.id,
+    required this.message,
+    required this.severity,
+    required this.target,
+    required this.recordId,
+  });
 }
 
 /// Outcome of [FinancialRepository.applyDebtPayment]: the updated reminder, the income
@@ -62,6 +72,7 @@ class FinancialRepository extends ChangeNotifier {
   final List<FinancialAccount> _accounts = [FinancialAccount.main];
   final Map<String, String> _preferences = {};
   final PersistenceService _persistence;
+  final bool _persistChanges;
   bool _isInitialized = false;
 
   /// False only while [initialize] is reading the saved data.
@@ -84,6 +95,8 @@ class FinancialRepository extends ChangeNotifier {
   /// (R2-CHAOS-011/012).
   int _dataGeneration = 0;
   int get dataGeneration => _dataGeneration;
+  int _resetGeneration = 0;
+  int get resetGeneration => _resetGeneration;
 
   int _lastIssuedId = 0;
 
@@ -101,21 +114,26 @@ class FinancialRepository extends ChangeNotifier {
     return '$prefix$id';
   }
 
-  /// The constructor stays synchronous and always seeds the demo dataset — this
-  /// keeps every existing test and any code that doesn't call [initialize]
-  /// working exactly as before. [initialize] is what makes state durable: if
-  /// persisted data exists it *replaces* this seed with the user's real data;
-  /// if this is the first run, the seed itself becomes the persisted baseline.
-  FinancialRepository({PersistenceService? persistence}) : _persistence = persistence ?? PersistenceService() {
+  /// Seeded by default for existing callers. Real app sessions explicitly
+  /// start without examples and use scoped persistence.
+  FinancialRepository({
+    PersistenceService? persistence,
+    bool seedDemo = true,
+    bool persistChanges = true,
+  })  : _persistence = persistence ?? const PersistenceService(),
+        _persistChanges = persistChanges {
     _initializeDefaultBudgets();
-    _seedInitialData();
+    if (seedDemo) _seedInitialData();
   }
+
+  FinancialRepository.demo() : this(persistChanges: false);
 
   /// Loads persisted data from disk (overwriting the constructor's seed), or —
   /// on a genuine first run — persists the seed so it survives a restart. Must
   /// be awaited once at app startup before the UI reads from this repository;
   /// see `main.dart`. Safe to skip in tests that don't care about durability.
   Future<void> initialize() async {
+    if (!_persistChanges) return;
     if (_isInitialized) return;
     _isInitialized = true;
     _loaded = false;
@@ -200,6 +218,7 @@ class FinancialRepository extends ChangeNotifier {
   /// Chained onto [_pendingPersist] so writes always land in call order — see
   /// its doc comment for why that matters.
   Future<void> _persistAll() {
+    if (!_persistChanges) return Future.value();
     // A write already queued but not started will save the latest state
     // anyway (it reads the lists when it runs), so a burst of mutations
     // collapses into one write instead of re-serializing the whole history
@@ -238,7 +257,6 @@ class FinancialRepository extends ChangeNotifier {
   /// their save so the UI never blocks on disk I/O; tests that simulate an app
   /// restart right after a mutation should await this first so the "restart"
   /// reads what was actually meant to be saved, not whatever had landed yet.
-  @visibleForTesting
   Future<void> flushPendingWrites() => _pendingPersist;
 
   List<FinancialTransaction> get transactions => List.unmodifiable(_transactions);
@@ -829,12 +847,10 @@ class FinancialRepository extends ChangeNotifier {
     return _budgets.last;
   }
 
-  /// Removes a custom category. Built-in categories are protected — dropping
-  /// one would silently orphan the dashboard's category breakdown for any
-  /// existing transaction still tagged with it.
   /// Removes a custom category. With [moveTo], its transactions and remembered
   /// words go to that category first, so no record is left without one.
   void removeBudgetCategory(String category, {String? moveTo}) {
+    if (!_budgets.any((b) => b.category == category && b.isCustom)) return;
     if (moveTo != null && moveTo != category) {
       for (var i = 0; i < _transactions.length; i++) {
         if (_transactions[i].category == category) _transactions[i] = _transactions[i].copyWith(category: moveTo);
@@ -842,8 +858,45 @@ class FinancialRepository extends ChangeNotifier {
       _categoryOverrides.updateAll((_, v) => v == category ? moveTo : v);
     }
     _budgets.removeWhere((b) => b.category == category && b.isCustom);
+    _recalculateBudgets();
     _persistAll();
     notifyListeners();
+  }
+
+  /// Removes a category while saving the references this operation moved.
+  /// Undo only changes a reference if it still points at the chosen destination.
+  bool Function()? deleteBudgetCategoryWithUndo(String category, {String? moveTo}) {
+    final index = _budgets.indexWhere((b) => b.category == category && b.isCustom);
+    if (index < 0) return null;
+    final budget = _budgets[index];
+    final destination = _budgets.any((b) => b.category == moveTo && b.category != category)
+        ? moveTo!
+        : 'expense_other';
+    final transactions = _transactions.where((t) => t.category == category).map((t) => t.id).toSet();
+    final overrides = _categoryOverrides.entries.where((e) => e.value == category).map((e) => e.key).toSet();
+    final generation = resetGeneration;
+    removeBudgetCategory(category, moveTo: destination);
+    return () {
+      if (resetGeneration != generation ||
+          _budgets.any((b) => b.category == category) ||
+          existingCategoryNamed(budget.name) != null) {
+        return false;
+      }
+      _budgets.insert(index < _budgets.length ? index : _budgets.length, budget);
+      for (var i = 0; i < _transactions.length; i++) {
+        final transaction = _transactions[i];
+        if (transactions.contains(transaction.id) && transaction.category == destination) {
+          _transactions[i] = transaction.copyWith(category: category);
+        }
+      }
+      for (final key in overrides) {
+        if (_categoryOverrides[key] == destination) _categoryOverrides[key] = category;
+      }
+      _recalculateBudgets();
+      _persistAll();
+      notifyListeners();
+      return true;
+    };
   }
 
   /// Renames a custom category's display name. The internal code is kept as-is
@@ -891,9 +944,10 @@ class FinancialRepository extends ChangeNotifier {
       };
 
   /// Wipes all data (transactions, reminders, goals, budgets reset to defaults,
-  /// category memory) — used by "Limpar Histórico de Testes" in Ajustes.
+  /// category memory) for the active repository.
   Future<void> clearAllData() async {
     _dataGeneration++;
+    _resetGeneration++;
     _transactions.clear();
     _reminders.clear();
     _goals.clear();
@@ -905,8 +959,11 @@ class FinancialRepository extends ChangeNotifier {
     // Chained onto _pendingPersist (not called standalone) so an in-flight
     // save from a mutation that happened right before this can't complete
     // *after* the clear and resurrect the data it just wiped.
-    final next = _pendingPersist.then((_) => _persistence.clearAll());
-    _pendingPersist = next;
+    final next = _pendingPersist.then((_) async {
+      if (_persistChanges) await _persistence.clearAll();
+    });
+    // Report this reset failure to its caller without poisoning later writes.
+    _pendingPersist = next.then<void>((_) {}, onError: (Object _) {});
     // A write queued before the clear runs *before* it, so a mutation made
     // after this point must schedule its own write after the clear — or the
     // clear would wipe it.
@@ -927,8 +984,10 @@ class FinancialRepository extends ChangeNotifier {
     required List<FinancialGoal> goals,
     required Map<String, String> categoryOverrides,
     List<FinancialAccount>? accounts,
+    bool isMerge = false,
   }) {
     _dataGeneration++;
+    if (!isMerge) _resetGeneration++;
     if (accounts != null) _setAccounts(accounts);
     _transactions
       ..clear()
@@ -1006,6 +1065,21 @@ class FinancialRepository extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool Function()? deleteGoalWithUndo(String id) {
+    final index = _goals.indexWhere((g) => g.id == id);
+    if (index < 0) return null;
+    final goal = _goals[index];
+    final generation = resetGeneration;
+    deleteGoal(id);
+    return () {
+      if (resetGeneration != generation || _goals.any((g) => g.id == id)) return false;
+      _goals.insert(index < _goals.length ? index : _goals.length, goal);
+      _persistAll();
+      notifyListeners();
+      return true;
+    };
+  }
+
   /// Replaces the goal with the same id ("adia a meta da viagem pra julho").
   /// A target or value that isn't a real amount is refused.
   void updateGoal(FinancialGoal goal) {
@@ -1058,15 +1132,15 @@ class FinancialRepository extends ChangeNotifier {
   /// ([prefUserName]), muted warnings, the last weekly summary shown.
   String? preference(String key) => _preferences[key];
 
-  void setPreference(String key, String? value) {
+  void setPreference(String key, String? value, {bool notify = false}) {
     if (value == null) {
       _preferences.remove(key);
     } else {
       _preferences[key] = value;
     }
-    // No notifyListeners: no screen shows these, and the chat sets one while
-    // it is being built.
     _persistAll();
+    // Some preferences are saved while building the chat.
+    if (notify) notifyListeners();
   }
 
   Map<String, String> get preferences => Map.unmodifiable(_preferences);
@@ -1199,13 +1273,17 @@ class FinancialRepository extends ChangeNotifier {
       if (b.isOverBudget) {
         alerts.add(ProactiveAlert(
           id: 'budget-over-${b.category}',
-          message: 'Você já estourou o orçamento de ${b.name}: gastou R\$ ${b.currentSpent.toStringAsFixed(2).replaceAll('.', ',')} de um limite de R\$ ${b.monthlyLimit.toStringAsFixed(2).replaceAll('.', ',')}.',
+          target: ProactiveAlertTarget.budget,
+          recordId: b.category,
+          message: 'Você já estourou o orçamento de ${b.name}: gastou ${Money.brl(b.currentSpent)} de um limite de ${Money.brl(b.monthlyLimit)}.',
           severity: ProactiveAlertSeverity.critical,
         ));
       } else if (b.isNearLimit) {
         final percent = (b.percentage * 100).toStringAsFixed(0);
         alerts.add(ProactiveAlert(
           id: 'budget-near-${b.category}',
+          target: ProactiveAlertTarget.budget,
+          recordId: b.category,
           message: 'Atenção: você já usou $percent% do orçamento de ${b.name} este mês.',
           severity: ProactiveAlertSeverity.warning,
         ));
@@ -1219,7 +1297,9 @@ class FinancialRepository extends ChangeNotifier {
       final whenLabel = daysLeft <= 0 ? 'hoje' : (daysLeft == 1 ? 'amanhã' : 'em $daysLeft dias');
       alerts.add(ProactiveAlert(
         id: 'bill-${bill['id']}-${due.millisecondsSinceEpoch}',
-        message: '${bill['title']} vence $whenLabel (R\$ ${(bill['amount'] as double).toStringAsFixed(2).replaceAll('.', ',')}).',
+        target: bill['source'] == 'transaction' ? ProactiveAlertTarget.recurringTransaction : ProactiveAlertTarget.bill,
+        recordId: bill['id'] as String,
+        message: '${bill['title']} vence $whenLabel (${Money.brl((bill['amount'] as double))}).',
         severity: daysLeft <= 0 ? ProactiveAlertSeverity.critical : ProactiveAlertSeverity.warning,
       ));
     }
@@ -1227,9 +1307,11 @@ class FinancialRepository extends ChangeNotifier {
     for (final debtor in getActiveDebtors()) {
       if (debtor.targetDate.isBefore(now)) {
         final name = debtor.personName ?? debtor.title;
-        final amountStr = debtor.amount != null ? 'R\$ ${debtor.amount!.toStringAsFixed(2).replaceAll('.', ',')}' : 'um valor';
+        final amountStr = debtor.amount != null ? '${Money.brl(debtor.amount!)}' : 'um valor';
         alerts.add(ProactiveAlert(
           id: 'debt-overdue-${debtor.id}',
+          target: ProactiveAlertTarget.debt,
+          recordId: debtor.id,
           message: '$name ainda não te pagou os $amountStr combinados — já passou da data prevista.',
           severity: ProactiveAlertSeverity.info,
         ));

@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'statement_file.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../theme/theme_controller.dart';
 import '../../../../widgets/krezio_components.dart';
@@ -16,7 +17,6 @@ import '../../../../../ai/voice/voice_synthesis_service.dart';
 import 'package:flutter/foundation.dart';
 import '../../../../../backend/services/pin_lock.dart';
 import '../../../legal/legal_documents.dart';
-import '../../../onboarding/onboarding_screen.dart';
 import '../../../security/biometric_auth.dart';
 
 /// A titled group of settings rows.
@@ -257,8 +257,17 @@ class PrivacySection extends StatelessWidget {
   final FinancialRepository repository;
   final String? userEmail;
   final Future<void> Function()? onDeleteAccount;
+  final Future<void> Function()? onClearData;
+  final Future<void> Function()? onExportLegacy;
 
-  const PrivacySection({super.key, required this.repository, this.userEmail, this.onDeleteAccount});
+  const PrivacySection({
+    super.key,
+    required this.repository,
+    this.userEmail,
+    this.onDeleteAccount,
+    this.onClearData,
+    this.onExportLegacy,
+  });
 
   Future<void> _export(BuildContext context) async {
     final now = DateTime.now();
@@ -281,28 +290,30 @@ class PrivacySection extends StatelessWidget {
     }
   }
 
-  Future<void> _delete(BuildContext context) async {
-    final account = onDeleteAccount != null;
-    final c = TextEditingController();
+  Future<void> _delete(BuildContext context, {required bool account}) async {
+    final keyword = account ? 'EXCLUIR' : 'APAGAR';
+    var confirmation = '';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
           title: Text(account ? 'Excluir minha conta' : 'Apagar todos os dados'),
+          scrollable: true,
           content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(account
                 ? 'Isso apaga a sua conta ($userEmail) e todos os seus dados na nuvem e neste aparelho. Não dá para desfazer.'
-                : 'Isso apaga todos os lançamentos, contas, metas e preferências deste aparelho. Não dá para desfazer.'),
+                : 'Isso apaga lançamentos, contas, metas, lembretes, categorias personalizadas e preferências '
+                  '${userEmail != null ? 'da conta na nuvem e deste aparelho. Seu login será mantido.' : 'deste aparelho.'}'),
             const SizedBox(height: KrezioSpace.md),
-            const Text('Para confirmar, digite EXCLUIR:'),
-            TextField(controller: c, autofocus: true, onChanged: (_) => setLocal(() {})),
+            Text('Para confirmar, digite $keyword'),
+            TextField(autofocus: true, onChanged: (value) => setLocal(() => confirmation = value)),
           ]),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: KrezioColors.budgetOver),
-              onPressed: c.text.trim() == 'EXCLUIR' ? () => Navigator.pop(ctx, true) : null,
-              child: const Text('Excluir'),
+              onPressed: confirmation.trim() == keyword ? () => Navigator.pop(ctx, true) : null,
+              child: Text(account ? 'Excluir' : 'Apagar'),
             ),
           ],
         ),
@@ -310,9 +321,11 @@ class PrivacySection extends StatelessWidget {
     );
     if (ok != true) return;
     try {
-      if (account) await onDeleteAccount!();
-      await repository.clearAllData();
-      repository.setPreference(OnboardingScreen.donePref, null);
+      if (account) {
+        await onDeleteAccount!();
+      } else {
+        await (onClearData ?? repository.clearAllData)();
+      }
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pronto, tudo foi apagado.')));
       }
@@ -347,12 +360,31 @@ class PrivacySection extends StatelessWidget {
         subtitle: const Text('JSON completo e CSV dos lançamentos (abre no Excel)'),
         onTap: () => _export(context),
       ),
+      if (onExportLegacy != null)
+        ListTile(
+          leading: const Icon(Icons.restore_outlined),
+          title: const Text('Exportar dados antigos deste aparelho'),
+          onTap: () async {
+            try {
+              await onExportLegacy!();
+            } catch (_) {
+              if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Não foi possível exportar os dados antigos.')),
+              );
+            }
+          },
+        ),
       ListTile(
         leading: const Icon(Icons.delete_forever_outlined, color: KrezioColors.budgetOver),
-        title: Text(onDeleteAccount != null ? 'Excluir minha conta' : 'Apagar todos os dados',
-            style: const TextStyle(color: KrezioColors.budgetOver)),
-        onTap: () => _delete(context),
+        title: const Text('Apagar todos os dados', style: TextStyle(color: KrezioColors.budgetOver)),
+        onTap: () => _delete(context, account: false),
       ),
+      if (onDeleteAccount != null)
+        ListTile(
+          leading: const Icon(Icons.person_remove_outlined, color: KrezioColors.budgetOver),
+          title: const Text('Excluir minha conta', style: TextStyle(color: KrezioColors.budgetOver)),
+          onTap: () => _delete(context, account: true),
+        ),
     ]);
   }
 }
@@ -412,6 +444,23 @@ class ToolsSection extends StatelessWidget {
   final FinancialRepository repository;
   const ToolsSection({super.key, required this.repository});
 
+  Future<void> _statement(BuildContext context) async {
+    try {
+      final bytes = utf8.encode(DataExport.transactionsCsv(repository));
+      final file = '${DataExport.fileBase(DateTime.now())}-extrato.csv';
+      final result = await exportStatementFile(file, bytes);
+      if (context.mounted && result != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result)));
+      }
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Não foi possível exportar o extrato.'),
+        action: SnackBarAction(label: 'Tentar de novo', onPressed: () => _statement(context)),
+      ));
+    }
+  }
+
   Future<void> _taxReport(BuildContext context) async {
     final years = {for (final t in repository.transactions) t.date.year}.toList()..sort((a, b) => b.compareTo(a));
     if (years.isEmpty) {
@@ -441,6 +490,11 @@ class ToolsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SettingsGroup(title: 'Ferramentas', children: [
+      ListTile(
+        leading: const Icon(Icons.file_download_outlined, color: KrezioColors.aiPurple),
+        title: const Text('Exportar extrato (CSV)'),
+        onTap: () => _statement(context),
+      ),
       ListTile(
         leading: const Icon(Icons.upload_file, color: KrezioColors.aiPurple),
         title: const Text('Importar extrato do banco'),

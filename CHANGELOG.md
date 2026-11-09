@@ -8,6 +8,18 @@ O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.
 
 ## [Unreleased]
 
+### Sprint 1 · Confiança
+
+- Homologação por sessão em produção, Material em português do Brasil e valores em BRL padronizados.
+- Dados locais separados por conta, recuperação de dados legados por exportação e demonstração isolada.
+- Confirmação digitada para limpar dados e proteção contra restauração de registros anteriores após reset na nuvem.
+- Desfazer exclusões de lançamentos, metas e categorias. Transferências com categoria própria e CSV dedicado.
+- Estado real da síntese de voz com fallback do sistema, atalhos editáveis no chat, filtros e ações no Extrato.
+- Refinamento do Início, gráfico e navegação, com controle para ocultar valores no Início.
+- A primeira sincronização preserva lançamentos feitos offline e os limites já configurados na conta.
+- Desfazer exclusões continua disponível após uma sincronização comum. Um reset da conta invalida o histórico da sessão.
+- A migração de transferências legadas também corrige os registros gravados no armazenamento local.
+
 ### Added
 - Plataforma iOS (`ios/`, bundle `com.krezio.ai`), com as permissões de microfone e de reconhecimento de fala.
 - CI no GitHub Actions (`.github/workflows/ci.yml`): análise estática e testes de regressão em todo PR e push no `main`.

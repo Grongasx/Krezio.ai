@@ -1,5 +1,15 @@
 # Krezio.ai — Backlog de desenvolvimento (do zero)
 
+## Sprint 1 · Validação
+
+- S1-01 a S1-09: implementação da Sprint em revisão, com regressões para idioma, sessão, transferências e desfazer.
+- [ ] Validar Android no Redmi Note 11, Chrome, build iOS em Mac e abrir o CSV no Excel e no Google Planilhas.
+- [x] Verificar no Firestore Emulator o acesso por UID e o bloqueio de gravações de clientes com uma geração de reset antiga.
+- [ ] Reproduzir no app a troca de sessão, a saída offline e o reset entre dois aparelhos usando o Firebase Emulator.
+- [ ] Publicar as regras de sincronização do Firestore antes de distribuir a versão conectada.
+- [ ] E-01: validar a voz do sistema no Redmi com o PC desligado.
+- [ ] E-02: medir os modelos no aparelho e colher as avaliações cegas. [Roteiro do comparativo](docs/architecture/comparativo-voz-sprint-1.md)
+
 > Plano completo do produto como se nada tivesse sido construído. Cada **macro** é um card; dentro dele, os **micros** (tarefas).
 > Marque `[x]` ao concluir. A ordem das fases é a ordem sugerida de execução; dentro de uma fase, os cards podem andar em paralelo.
 >

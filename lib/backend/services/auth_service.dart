@@ -1,6 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+typedef SignOutAction = Future<void> Function({
+  required bool keepData,
+  required bool skipSync,
+});
+
+class SignOutSyncFailure implements Exception {
+  const SignOutSyncFailure();
+}
+
 /// Thin wrapper around FirebaseAuth — translates Firebase's error codes into
 /// the friendly, Portuguese messages the rest of the app shows the user.
 class AuthService {

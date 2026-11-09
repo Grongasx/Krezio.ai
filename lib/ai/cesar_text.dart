@@ -2,6 +2,7 @@ import '../backend/models/budget_category.dart';
 import '../backend/models/financial_transaction.dart';
 import 'category_name_matcher.dart';
 import 'local_nlp_engine.dart';
+import '../backend/services/money.dart';
 
 /// Small, pure helpers shared by César's conversational features (Q&A,
 /// edit/delete by chat, undo): text folding, money/date formatting and
@@ -23,14 +24,7 @@ class CesarText {
   }
 
   /// "R$ 1.400,00".
-  static String money(double value) {
-    // Whole cents, half up: 2611,60 ÷ 16 is R$ 163,23 whatever the float
-    // noise of the sum (163,2249999… printed 163,22).
-    final cents = (value.abs() * 100 + 1e-6).round();
-    final negative = value < 0 && cents > 0;
-    final intPart = (cents ~/ 100).toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
-    return '${negative ? '-' : ''}R\$ $intPart,${(cents % 100).toString().padLeft(2, '0')}';
-  }
+  static String money(double value) => Money.brl(value);
 
   static String ddmm(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
 
@@ -80,6 +74,7 @@ class CesarText {
 
   static const Map<String, String> _extraCategoryNames = {
     'salary': 'Salário',
+    'transfer': 'Transferência',
     'investment': 'Investimentos',
     'income_other': 'Outras receitas',
     'expense_other': 'Outras despesas',

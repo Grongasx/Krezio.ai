@@ -5,6 +5,7 @@ import 'local_nlp_engine.dart';
 import 'money_direction.dart';
 import 'pt_number_words.dart';
 import 'temporal_date_parser.dart';
+import '../backend/services/money.dart';
 
 /// Which of the gate's checks stopped an entry.
 enum GateCheck {
@@ -156,8 +157,7 @@ class EntrySafetyGate {
   static String _fold(String s) => CategoryNameMatcher.foldAccents(s.toLowerCase());
 
   static String _brl(double v) {
-    final fixed = v.toStringAsFixed(2).replaceAll('.', ',');
-    return 'R\$ $fixed';
+    return Money.brl(v);
   }
 
   // ───────────────────────────── 1. intent ─────────────────────────────

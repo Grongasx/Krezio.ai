@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../../ai/local_nlp_engine.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../backend/services/calendar_service.dart';
+import '../../../../../backend/services/money.dart';
 
 /// Interactive Visual Neural Thought Inspector for Homologation / Staging environments.
 class NeuralInspectorScreen extends StatefulWidget {
@@ -695,7 +696,7 @@ class _NeuralInspectorScreenState extends State<NeuralInspectorScreen>
               _buildSlotAuditItem(
                 label: 'Valor Monetário (Amount)',
                 value: trace.parsedAmount != null
-                    ? 'R\$ ${trace.parsedAmount!.toStringAsFixed(2).replaceAll('.', ',')}'
+                    ? Money.brl(trace.parsedAmount!)
                     : 'Não identificado',
                 isSatisfied: trace.parsedAmount != null && trace.parsedAmount! > 0,
                 primaryText: primaryText,
@@ -1269,7 +1270,7 @@ class NeuralNetworkPainter extends CustomPainter {
     final isExempt = trace.installmentDecision.isExempt;
     final isAnnual = trace.installmentDecision.isAnnual;
     final decLabels = [
-      trace.parsedAmount != null ? 'R\$ ${trace.parsedAmount!.toStringAsFixed(2)}' : 'Valor N/D',
+      trace.parsedAmount != null ? Money.brl(trace.parsedAmount!) : 'Valor N/D',
       isExempt
           ? '🛡️ Assinatura: NÃO Parcelada (1x)'
           : (isAnnual ? '📅 Assinatura: Anual (${trace.installmentDecision.installments ?? 'a esclarecer'}x)' : '💳 Crédito Padrão'),

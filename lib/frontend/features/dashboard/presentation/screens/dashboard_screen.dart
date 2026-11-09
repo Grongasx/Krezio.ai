@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../widgets/krezio_components.dart';
+import '../../../../widgets/ledger_undo.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 import '../widgets/metric_summary_card.dart';
@@ -9,12 +10,15 @@ import '../widgets/category_donut_chart.dart';
 import '../../../transactions/presentation/widgets/transaction_list_tile.dart';
 import '../../../transactions/presentation/widgets/add_transaction_modal.dart';
 import '../../../reminders/presentation/screens/open_items_screen.dart';
+import '../../../../../backend/services/money.dart';
 
 class DashboardScreen extends StatelessWidget {
   final FinancialRepository repository;
   final bool isDark;
   final VoidCallback onNavigateToChat;
   final VoidCallback onNavigateToTransactions;
+  final ValueChanged<String>? onNavigateToBudgets;
+  static const _hideAmounts = 'dashboard_hide_amounts';
 
   const DashboardScreen({
     super.key,
@@ -22,6 +26,7 @@ class DashboardScreen extends StatelessWidget {
     required this.isDark,
     required this.onNavigateToChat,
     required this.onNavigateToTransactions,
+    this.onNavigateToBudgets,
   });
 
   @override
@@ -37,6 +42,7 @@ class DashboardScreen extends StatelessWidget {
         final aiInsight = repository.generateAiInsight();
         final upcomingBills = repository.upcomingRecurrences;
         final proactiveAlerts = repository.getProactiveAlerts();
+        final hideAmounts = repository.preference(_hideAmounts) == 'true';
 
         final bgSurface = isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
         final borderColor = isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder;
@@ -63,25 +69,29 @@ class DashboardScreen extends StatelessWidget {
                       child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 20),
                     ),
                     const SizedBox(width: KrezioSpace.md),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Krezio.ai',
-                          style: TextStyle(
-                            fontSize: KrezioFont.bodyLarge,
-                            fontWeight: FontWeight.bold,
-                            color: primaryTextColor,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Krezio.ai',
+                            style: TextStyle(
+                              fontSize: KrezioFont.bodyLarge,
+                              fontWeight: FontWeight.bold,
+                              color: primaryTextColor,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'Gestão Inteligente On-Device',
-                          style: TextStyle(
-                            fontSize: KrezioFont.micro,
-                            color: secondaryTextColor,
+                          Text(
+                            'Gestão Inteligente On-Device',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: KrezioFont.micro,
+                              color: secondaryTextColor,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -100,6 +110,18 @@ class DashboardScreen extends StatelessWidget {
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
                     // 1. Total Balance Hero Card
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: IconButton(
+                        tooltip: hideAmounts ? 'Mostrar valores' : 'Ocultar valores',
+                        onPressed: () => repository.setPreference(
+                          _hideAmounts,
+                          (!hideAmounts).toString(),
+                          notify: true,
+                        ),
+                        icon: Icon(hideAmounts ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+                      ),
+                    ),
                     MetricSummaryCard(
                       title: 'Saldo Líquido Geral',
                       amount: totalBalance,
@@ -107,6 +129,7 @@ class DashboardScreen extends StatelessWidget {
                       iconColor: totalBalance >= 0 ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange,
                       isDark: isDark,
                       isLarge: true,
+                      hideAmount: hideAmounts,
                     ),
                     const SizedBox(height: KrezioSpace.md),
 
@@ -117,6 +140,7 @@ class DashboardScreen extends StatelessWidget {
                           child: MetricSummaryCard(
                             title: 'Entradas (Mês)',
                             amount: monthIncome,
+                            hideAmount: hideAmounts,
                             icon: Icons.arrow_downward,
                             iconColor: KrezioColors.emeraldGreen,
                             isDark: isDark,
@@ -127,6 +151,7 @@ class DashboardScreen extends StatelessWidget {
                           child: MetricSummaryCard(
                             title: 'Saídas (Mês)',
                             amount: monthExpense,
+                            hideAmount: hideAmounts,
                             icon: Icons.arrow_upward,
                             iconColor: KrezioColors.friendlyOrange,
                             isDark: isDark,
@@ -142,14 +167,14 @@ class DashboardScreen extends StatelessWidget {
                     if (proactiveAlerts.isNotEmpty) ...[
                       ...proactiveAlerts.map((alert) => Padding(
                             padding: const EdgeInsets.only(bottom: KrezioSpace.md),
-                            child: _buildProactiveAlertCard(alert, bgSurface, borderColor),
+                            child: _buildProactiveAlertCard(context, alert, bgSurface, hideAmounts),
                           )),
                       const SizedBox(height: KrezioSpace.sm),
                     ],
 
                     // 3.5 AI Proactive Insight Card
                     AiInsightCard(
-                      insightText: aiInsight,
+                      insightText: hideAmounts ? 'Valores ocultos no Início.' : aiInsight,
                       isDark: isDark,
                       onAskAi: onNavigateToChat,
                     ),
@@ -164,14 +189,17 @@ class DashboardScreen extends StatelessWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Text(
-                                'Gastos por Categoria',
-                                style: TextStyle(
-                                  fontSize: KrezioFont.body,
-                                  fontWeight: FontWeight.bold,
-                                  color: primaryTextColor,
+                              Expanded(
+                                child: Text(
+                                  'Gastos por Categoria',
+                                  style: TextStyle(
+                                    fontSize: KrezioFont.body,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryTextColor,
+                                  ),
                                 ),
                               ),
+                              const SizedBox(width: KrezioSpace.sm),
                               Text(
                                 'Este Mês',
                                 style: TextStyle(
@@ -182,7 +210,10 @@ class DashboardScreen extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: KrezioSpace.lg),
-                          CategoryDonutChart(
+                          if (hideAmounts)
+                            const Center(child: Text('Valores do gráfico ocultos'))
+                          else CategoryDonutChart(
+                            totalLabel: 'Gastos do mês',
                             categoryData: categoryExpenses,
                             isDark: isDark,
                             categoryNames: {for (final b in repository.budgets) b.category: b.name},
@@ -225,7 +256,7 @@ class DashboardScreen extends StatelessWidget {
                                       style: TextStyle(fontSize: KrezioFont.small, color: primaryTextColor),
                                     ),
                                     Text(
-                                      'R\$ ${b.amount.toStringAsFixed(2).replaceAll('.', ',')}',
+                                      hideAmounts ? 'Valor oculto' : Money.brl(b.amount),
                                       style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: primaryTextColor),
                                     ),
                                   ],
@@ -288,7 +319,7 @@ class DashboardScreen extends StatelessWidget {
                               final dayStr = r.targetDate.day.toString().padLeft(2, '0');
                               final monthStr = r.targetDate.month.toString().padLeft(2, '0');
                               final amountStr = r.amount != null
-                                  ? 'R\$ ${r.amount!.toStringAsFixed(2).replaceAll(".", ",")}'
+                                  ? (hideAmounts ? 'Valor oculto' : Money.brl(r.amount!))
                                   : '';
 
                               return Padding(
@@ -388,9 +419,11 @@ class DashboardScreen extends StatelessWidget {
                     else
                       ...recentTxs.map((tx) {
                         return TransactionListTile(
+                          key: ValueKey(tx.id),
                           transaction: tx,
                           isDark: isDark,
-                          onDelete: () => repository.deleteTransaction(tx.id),
+                          hideAmount: hideAmounts,
+                          onDelete: () => deleteLedgerTransaction(context, repository, tx.id),
                           onTap: () => _openEditModal(context, tx),
                         );
                       }),
@@ -405,7 +438,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProactiveAlertCard(ProactiveAlert alert, Color bgSurface, Color borderColor) {
+  Widget _buildProactiveAlertCard(BuildContext context, ProactiveAlert alert, Color bgSurface, bool hideAmounts) {
     final Color accent;
     final IconData icon;
     switch (alert.severity) {
@@ -423,6 +456,11 @@ class DashboardScreen extends StatelessWidget {
         break;
     }
 
+    final budget = alert.target == ProactiveAlertTarget.budget;
+    final bill = alert.target == ProactiveAlertTarget.bill || alert.target == ProactiveAlertTarget.recurringTransaction;
+    final label = budget ? 'Ver orçamento' : (bill ? 'Ver conta' : 'Ver pendência');
+    final summary = budget ? 'Alerta de orçamento' : (bill ? 'Conta perto do vencimento' : 'Pendência em atraso');
+
     return Container(
       padding: const EdgeInsets.all(KrezioSpace.md),
       decoration: BoxDecoration(
@@ -436,14 +474,42 @@ class DashboardScreen extends StatelessWidget {
           Icon(icon, size: 18, color: accent),
           const SizedBox(width: KrezioSpace.md),
           Expanded(
-            child: Text(
-              alert.message,
-              style: TextStyle(fontSize: KrezioFont.small, color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(hideAmounts ? summary : alert.message),
+                TextButton(
+                  onPressed: () => _openAlert(context, alert),
+                  child: Text(label),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  void _openAlert(BuildContext context, ProactiveAlert alert) {
+    if (alert.target == ProactiveAlertTarget.budget) {
+      onNavigateToBudgets?.call(alert.recordId);
+      return;
+    }
+    if (alert.target == ProactiveAlertTarget.recurringTransaction) {
+      for (final transaction in repository.transactions) {
+        if (transaction.id != alert.recordId) continue;
+        _openEditModal(context, transaction);
+        return;
+      }
+    }
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      builder: (_) => OpenItemsScreen(
+        repository: repository,
+        isDark: isDark,
+        focusId: alert.recordId,
+        showDebtsFirst: alert.target == ProactiveAlertTarget.debt,
+      ),
+    ));
   }
 
   void _openAddModal(BuildContext context) {

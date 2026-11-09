@@ -21,7 +21,7 @@ void main() {
     );
 
     expect(find.text('Saldo Geral'), findsOneWidget);
-    expect(find.text('R\$ 2500,50'), findsOneWidget);
+    expect(find.text('R\$ 2.500,50'), findsOneWidget);
   });
 
   testWidgets('AiInsightCard renders insight and button', (WidgetTester tester) async {

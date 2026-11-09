@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../../../ai/chat_action_history.dart';
+import '../../../../../backend/services/money.dart';
+import '../../../../widgets/ledger_undo.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
@@ -8,11 +11,13 @@ import '../../../../../backend/models/financial_goal.dart';
 class BudgetsScreen extends StatefulWidget {
   final FinancialRepository repository;
   final bool isDark;
+  final String? focusedCategory;
 
   const BudgetsScreen({
     super.key,
     required this.repository,
     required this.isDark,
+    this.focusedCategory,
   });
 
   @override
@@ -107,7 +112,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   // ── ORÇAMENTOS ──
 
   Widget _buildBudgetsTab() {
-    final budgets = repository.budgets;
+    final budgets = [
+      ...repository.budgets.where((b) => b.category == widget.focusedCategory),
+      ...repository.budgets.where((b) => b.category != widget.focusedCategory),
+    ];
     final totalBudget = budgets.fold(0.0, (acc, b) => acc + b.monthlyLimit);
     final totalSpent = budgets.fold(0.0, (acc, b) => acc + b.currentSpent);
     final overallProgress = totalBudget > 0 ? (totalSpent / totalBudget).clamp(0.0, 1.0) : 0.0;
@@ -143,11 +151,11 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               Row(
                 children: [
                   Text(
-                    'R\$ ${totalSpent.toStringAsFixed(2).replaceAll('.', ',')}',
+                    '${Money.brl(totalSpent)}',
                     style: TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold, color: primaryTextColor),
                   ),
                   Text(
-                    ' / R\$ ${totalBudget.toStringAsFixed(2).replaceAll('.', ',')}',
+                    ' / ${Money.brl(totalBudget)}',
                     style: TextStyle(fontSize: KrezioFont.body, color: secondaryTextColor),
                   ),
                 ],
@@ -217,7 +225,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                       style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                     ),
                     Text(
-                      'R\$ ${b.currentSpent.toStringAsFixed(2).replaceAll('.', ',')} de R\$ ${b.monthlyLimit.toStringAsFixed(2).replaceAll('.', ',')}',
+                      '${Money.brl(b.currentSpent)} de ${Money.brl(b.monthlyLimit)}',
                       style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
                     ),
                   ],
@@ -278,7 +286,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   Future<void> _confirmRemoveCategory(BuildContext context, BudgetCategory b) async {
     final count = repository.transactions.where((t) => t.category == b.category).length;
     if (count == 0) {
-      repository.removeBudgetCategory(b.category);
+      _removeCategory(context, b);
       return;
     }
     final targets = repository.budgets.where((x) => x.category != b.category).toList();
@@ -304,8 +312,20 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         ],
       ),
     );
-    if (moveTo == null) return;
-    repository.removeBudgetCategory(b.category, moveTo: moveTo);
+    if (moveTo == null || !context.mounted) return;
+    _removeCategory(context, b, moveTo: moveTo);
+  }
+
+  void _removeCategory(BuildContext context, BudgetCategory budget, {String? moveTo}) {
+    final undo = repository.deleteBudgetCategoryWithUndo(budget.category, moveTo: moveTo);
+    if (undo == null) return;
+    showLedgerUndo(context, repository, ChatAction.restoration((_) => undo(), 'Categoria restaurada.'), 'Categoria apagada.');
+  }
+
+  void _removeGoal(BuildContext context, FinancialGoal goal) {
+    final undo = repository.deleteGoalWithUndo(goal.id);
+    if (undo == null) return;
+    showLedgerUndo(context, repository, ChatAction.restoration((_) => undo(), 'Meta restaurada.'), 'Meta apagada.');
   }
 
   void _showEditBudgetDialog(BuildContext context, BudgetCategory b) {
@@ -416,13 +436,13 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               IconButton(
                 icon: const Icon(Icons.delete_outline, size: 18),
                 color: secondaryTextColor,
-                onPressed: () => repository.deleteGoal(goal.id),
+                onPressed: () => _removeGoal(context, goal),
               ),
             ],
           ),
           const SizedBox(height: KrezioSpace.md),
           Text(
-            'R\$ ${goal.savedAmount.toStringAsFixed(2).replaceAll('.', ',')} de R\$ ${goal.targetAmount.toStringAsFixed(2).replaceAll('.', ',')}',
+            '${Money.brl(goal.savedAmount)} de ${Money.brl(goal.targetAmount)}',
             style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor),
           ),
           const SizedBox(height: KrezioSpace.sm),
@@ -441,7 +461,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           ] else if (goal.suggestedMonthlyContribution != null) ...[
             const SizedBox(height: KrezioSpace.sm),
             Text(
-              '💡 Guarde R\$ ${goal.suggestedMonthlyContribution!.toStringAsFixed(2).replaceAll('.', ',')}/mês para chegar a tempo.',
+              '💡 Guarde ${Money.brl(goal.suggestedMonthlyContribution!)}/mês para chegar a tempo.',
               style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
             ),
           ],

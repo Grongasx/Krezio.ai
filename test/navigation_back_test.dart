@@ -47,7 +47,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  int currentTab(WidgetTester tester) => tester.widget<BottomNavigationBar>(find.byType(BottomNavigationBar)).currentIndex;
+  int currentTab(WidgetTester tester) => tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
 
   testWidgets('link direto abre na aba pedida', (tester) async {
     await pump(tester, await repo(), 2);

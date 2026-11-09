@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../frontend/theme/krezio_theme.dart';
+import '../services/money.dart';
 
 /// Progress band of a budget.
 enum BudgetLevel { ok, warning, over }
@@ -45,11 +46,7 @@ class BudgetCategory {
     return diff > 0 ? 'Faltam ${_money(diff)}' : 'Passou ${_money(-diff)}';
   }
 
-  static String _money(double v) {
-    final parts = v.toStringAsFixed(2).split('.');
-    final intPart = parts[0].replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]}.');
-    return 'R\$ $intPart,${parts[1]}';
-  }
+  static String _money(double v) => Money.brl(v);
 
   BudgetCategory copyWith({
     String? category,

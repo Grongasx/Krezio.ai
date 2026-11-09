@@ -1,4 +1,5 @@
 import 'local_nlp_engine.dart';
+import '../backend/services/money.dart';
 
 /// A detected "someone paid me back" phrase, e.g. "o João me pagou a dívida dele,
 /// porém apenas 70 reais" -> personName: "João", amountPaid: 70.0.
@@ -71,7 +72,7 @@ class DebtPaymentParser {
 
   /// What César says when the phrase sounded like a debt payment but nobody
   /// by that name owes anything — it is then recorded as ordinary income.
-  static String _brl(double v) => 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
+  static String _brl(double v) => '${Money.brl(v)}';
 
   /// What César says after applying a payment to a debt. A payment larger
   /// than the debt settles it and says what the extra was (CONV-036) — the

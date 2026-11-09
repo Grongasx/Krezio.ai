@@ -6,6 +6,7 @@ import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/models/financial_transaction.dart';
 import '../../../../../backend/services/statement_query.dart';
 import '../widgets/transaction_list_tile.dart';
+import '../../../../widgets/ledger_undo.dart';
 import '../widgets/add_transaction_modal.dart';
 
 class TransactionsScreen extends StatefulWidget {
@@ -161,14 +162,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
               Expanded(
                 child: !widget.repository.isLoaded
                     ? const KrezioSkeletonList()
-                    : filtered.isEmpty
-                    ? KrezioEmptyState(
+                        : filtered.isEmpty
+                        ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          KrezioEmptyState(
                         icon: _filter.isEmpty ? Icons.receipt_long_outlined : Icons.search_off,
                         title: _filter.isEmpty ? 'Nenhum lançamento ainda' : 'Nenhum lançamento encontrado',
                         message: _filter.isEmpty
                             ? 'Fale com o César: "gastei 50 no mercado no pix"'
                             : 'Tente outra palavra ou limpe os filtros.',
-                      )
+                          ),
+                          if (!_filter.isEmpty)
+                            TextButton(
+                              onPressed: _clearFilters,
+                              child: const Text('Limpar filtros'),
+                            ),
+                        ]))
                     : _buildGroupedList(days, now, secondaryTextColor),
               ),
             ],
@@ -208,7 +216,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           key: ValueKey(tx.id),
           transaction: tx,
           isDark: widget.isDark,
-          onDelete: () => widget.repository.deleteTransaction(tx.id),
+          onDelete: () => deleteLedgerTransaction(context, widget.repository, tx.id),
           onTap: () => _openEditModal(context, tx),
         );
       },
@@ -232,6 +240,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         selectedColor: KrezioColors.aiPurple,
         onSelected: (_) => onTap(),
       );
+
+  void _clearFilters() {
+    _searchController.clear();
+    setState(() => _filter = const StatementFilter());
+  }
 
   void _setPeriod(StatementPeriod p) => setState(() => _filter = _filter.copyWith(period: p));
 

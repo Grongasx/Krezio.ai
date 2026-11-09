@@ -9,7 +9,13 @@ enum AppEnvironment {
 /// Singleton configuration controller for environment flags and homologation features.
 class EnvironmentConfig {
   static final ValueNotifier<AppEnvironment> environmentNotifier =
-      ValueNotifier<AppEnvironment>(AppEnvironment.homologation);
+      ValueNotifier<AppEnvironment>(
+        kDebugMode ? AppEnvironment.homologation : AppEnvironment.production,
+      );
+
+  static DateTime? _lastVersionTap;
+  static int _versionTaps = 0;
+  static bool get canToggle => kDebugMode || isHomologation;
 
   static AppEnvironment get current => environmentNotifier.value;
 
@@ -24,5 +30,19 @@ class EnvironmentConfig {
     environmentNotifier.value = isHomologation
         ? AppEnvironment.production
         : AppEnvironment.homologation;
+  }
+
+  /// Seven consecutive taps unlock the inspector only for this app session.
+  static bool tapVersion({DateTime? now}) {
+    final currentTime = now ?? DateTime.now();
+    final lastTap = _lastVersionTap;
+    if (lastTap == null || currentTime.difference(lastTap) > const Duration(seconds: 1)) {
+      _versionTaps = 0;
+    }
+    _lastVersionTap = currentTime;
+    if (++_versionTaps < 7) return false;
+    _versionTaps = 0;
+    setEnvironment(AppEnvironment.homologation);
+    return true;
   }
 }

@@ -1,8 +1,10 @@
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:krezio_ai/ai/chat_action_history.dart';
 import 'package:krezio_ai/backend/models/financial_transaction.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:krezio_ai/backend/services/cloud_sync_service.dart';
+import 'package:krezio_ai/backend/services/persistence_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 FinancialTransaction tx(String id, String title, double amount) => FinancialTransaction(
@@ -37,6 +39,85 @@ Map<String, double> amounts(FinancialRepository r) => {for (final t in r.transac
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test('primeira leitura conserva lançamentos offline e orçamento remoto', () async {
+    final db = FakeFirebaseFirestore();
+    final (online, publisher) = await device(db, start: [tx('cloud', 'Mercado', 50)]);
+    online.setBudgetLimit('supermarket', 550);
+    await publisher.sync();
+
+    final persistence = PersistenceService.account('u1');
+    final local = FinancialRepository(persistence: persistence, seedDemo: false);
+    await local.initialize();
+    local.addTransaction(tx('offline', 'Compra offline', 20));
+    await local.flushPendingWrites();
+    local.dispose();
+
+    final reopened = FinancialRepository(persistence: persistence, seedDemo: false);
+    await reopened.initialize();
+    final sync = CloudSyncService(repository: reopened, uid: 'u1', firestore: db, baseStore: MemoryStore());
+    await sync.pullFromCloud();
+
+    expect(amounts(reopened), {'cloud': 50, 'offline': 20});
+    expect(reopened.budgets.firstWhere((b) => b.category == 'supermarket').monthlyLimit, 550);
+    final remote = db.collection('users').doc('u1');
+    expect((await remote.get()).data()?['transactions'], hasLength(1));
+    await sync.sync();
+    expect((await remote.get()).data()?['transactions'], hasLength(2));
+  });
+
+  test('uma alteração remota em outro lançamento mantém o desfazer', () async {
+    final db = FakeFirebaseFirestore();
+    final (a, sa) = await device(db, start: [tx('1', 'Mercado', 50), tx('2', 'Padaria', 10)]);
+    await sa.sync();
+    final (b, sb) = await device(db);
+    await sb.sync();
+
+    final deleted = a.transactions.firstWhere((t) => t.id == '1');
+    a.deleteTransaction(deleted.id);
+    final action = ChatAction(ChatActionKind.deleted, [deleted]);
+    final history = ChatActionHistory.forRepository(a)..push(action);
+    b.updateTransaction(tx('2', 'Padaria', 15));
+    await sb.sync();
+    await sa.sync();
+
+    expect(history.undo(a, only: action)?.undone, isTrue);
+    expect(amounts(a), {'1': 50, '2': 15});
+    expect(history.undo(a, only: action), isNull);
+  });
+
+  test('desfazer edição preserva uma edição mais recente na nuvem', () async {
+    final db = FakeFirebaseFirestore();
+    final (a, sa) = await device(db, start: [tx('1', 'Mercado', 50)]);
+    await sa.sync();
+    final (b, sb) = await device(db);
+    await sb.sync();
+    final history = ChatActionHistory.forRepository(a);
+    final action = ChatAction(ChatActionKind.edited, [a.transactions.single]);
+    history.push(action);
+    b.updateTransaction(tx('1', 'Mercado', 55));
+    await sb.sync();
+    await sa.sync();
+
+    expect(history.undo(a, only: action)?.undone, isFalse);
+    expect(amounts(a), {'1': 55});
+  });
+
+  test('um reset impede que edições anteriores de outro aparelho reapareçam', () async {
+    final db = FakeFirebaseFirestore();
+    final (a, sa) = await device(db, start: [tx('1', 'Mercado', 50)]);
+    await sa.sync();
+    final (b, sb) = await device(db);
+    await sb.sync();
+    b.addTransaction(tx('2', 'Edição offline', 20));
+    await sa.resetCloudData();
+    await sb.sync();
+    expect(a.transactions, isEmpty);
+    expect(b.transactions, isEmpty);
+    final remote = await db.collection('users').doc('u1').get();
+    expect(remote.data()?['resetEpoch'], 1);
+    expect(remote.data()?['transactions'], isEmpty);
+  });
 
   test('primeira sincronização envia o que está no aparelho', () async {
     final db = FakeFirebaseFirestore();

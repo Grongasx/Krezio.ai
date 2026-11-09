@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../../backend/services/money.dart';
 
 /// A lightweight horizontal bar chart for report data that isn't shaped like a
 /// category breakdown (debtors by person, bills by title, income vs. expense, etc.),
@@ -53,7 +54,7 @@ class ReportBarChart extends StatelessWidget {
                     ),
                     const SizedBox(width: KrezioSpace.sm),
                     Text(
-                      'R\$ ${_formatMoney(data[i].value)}',
+                      '${Money.brl(data[i].value)}',
                       style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.w700, color: _palette[i % _palette.length]),
                     ),
                   ],
@@ -84,12 +85,4 @@ class ReportBarChart extends StatelessWidget {
     );
   }
 
-  String _formatMoney(double value) {
-    final parts = value.abs().toStringAsFixed(2).split('.');
-    final intPart = parts[0].replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]}.',
-    );
-    return '${value < 0 ? '-' : ''}$intPart,${parts[1]}';
-  }
 }

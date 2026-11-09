@@ -24,6 +24,7 @@ import '../../../homologation/presentation/screens/neural_inspector_screen.dart'
 import '../../../dashboard/presentation/widgets/category_donut_chart.dart';
 import '../widgets/report_bar_chart.dart';
 import '../widgets/voice_conversation_modal.dart';
+import '../../../../../backend/services/money.dart';
 
 enum MessageSender { user, assistant }
 
@@ -78,6 +79,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _textController = TextEditingController();
+  final FocusNode _messageFocus = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   
@@ -119,13 +121,10 @@ class _ChatScreenState extends State<ChatScreen> {
     assistant: _assistant,
   );
 
-  final List<String> _quickSuggestions = [
-    'Quem está me devendo?',
-    'Quais boletos vencem essa semana?',
-    'Quanto eu gastei com mercado este mês?',
-    'O boleto de luz cai todo dia 1, porém vence no dia 5',
-    'Gastei 45,90 no mercado no pix',
-    'Posso comprar um notebook de 3000 reais?',
+  static const _quickSuggestions = [
+    ('Registrar gasto', 'Gastei 45,90 no mercado no Pix'),
+    ('Ver contas da semana', 'Quais boletos vencem essa semana?'),
+    ('Consultar gastos', 'Quanto eu gastei com mercado este mês?'),
   ];
 
   @override
@@ -197,6 +196,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     KrezioRoutes.pendingLink.removeListener(_onLink);
     _textController.dispose();
+    _messageFocus.dispose();
     _scrollController.dispose();
     _voiceController.dispose();
     // VoiceSynthesisService is an app-wide singleton: disposing it here killed
@@ -355,7 +355,7 @@ class _ChatScreenState extends State<ChatScreen> {
       ChatMessage(
         id: 'welcome',
         sender: MessageSender.assistant,
-        text: 'Olá${_assistant?.userName != null ? ', ${_assistant!.userName}' : ''}! Eu sou o César, seu copiloto financeiro no Krezio.ai, guiado por dados e 100% on-device. Como posso te ajudar com suas finanças hoje?\n\nDigite um gasto, receita, agende um lembrete, cole notificações de banco ou me pergunte o que quiser!',
+        text: 'Olá${_assistant?.userName != null ? ', ${_assistant!.userName}' : ''}! Eu sou o César, seu copiloto financeiro no Krezio.ai, e interpreto comandos no seu aparelho. Como posso te ajudar com suas finanças hoje?\n\nDigite um gasto, receita, agende um lembrete, cole notificações de banco ou me pergunte o que quiser!',
         timestamp: DateTime.now(),
       ),
     );
@@ -605,11 +605,11 @@ class _ChatScreenState extends State<ChatScreen> {
         );
         widget.repository!.addGoal(goal);
 
-        final targetStr = 'R\$ ${goalCreation.targetAmount.toStringAsFixed(2).replaceAll('.', ',')}';
+        final targetStr = '${Money.brl(goalCreation.targetAmount)}';
         var responseText = 'Meta criada! Vou te ajudar a juntar $targetStr para "${goalCreation.title}".';
         final monthly = goal.suggestedMonthlyContribution;
         if (monthly != null) {
-          responseText += ' Guardando R\$ ${monthly.toStringAsFixed(2).replaceAll('.', ',')} por mês você chega lá a tempo. 🎯';
+          responseText += ' Guardando ${Money.brl(monthly)} por mês você chega lá a tempo. 🎯';
         } else {
           responseText += ' Quando quiser, é só me dizer quanto guardou. 🎯';
         }
@@ -640,8 +640,8 @@ class _ChatScreenState extends State<ChatScreen> {
           responseText = 'Encontrei mais de uma meta parecida com "${goalContribution.goalTitle}". Pode ser mais específico?';
         } else {
           final updated = widget.repository!.contributeToGoal(matches.first.id, goalContribution.amount);
-          final savedStr = 'R\$ ${updated.savedAmount.toStringAsFixed(2).replaceAll('.', ',')}';
-          final targetStr = 'R\$ ${updated.targetAmount.toStringAsFixed(2).replaceAll('.', ',')}';
+          final savedStr = '${Money.brl(updated.savedAmount)}';
+          final targetStr = '${Money.brl(updated.targetAmount)}';
           if (updated.isCompleted) {
             responseText = 'Parabéns! 🎉 Você bateu a meta "${updated.title}": $savedStr guardados!';
           } else {
@@ -809,7 +809,7 @@ class _ChatScreenState extends State<ChatScreen> {
         );
       }
 
-      final amountStr = draft.amount != null ? 'R\$ ${draft.amount!.toStringAsFixed(2).replaceAll('.', ',')}' : '';
+      final amountStr = draft.amount != null ? Money.brl(draft.amount!) : '';
       final itemOrPlace = (draft.description.isNotEmpty && draft.description != 'unknown' && draft.description != 'expense_other')
           ? ' com ${draft.description}'
           : '';
@@ -842,11 +842,11 @@ class _ChatScreenState extends State<ChatScreen> {
       } else if (draft.intent == 'transfer') {
         responseText = 'Pronto! Transferência de $amountStr$itemOrPlace$bankTag registrada com sucesso. 💸';
       } else if (draft.paymentMethod == 'credit_card' && draft.installments != null && draft.installments! > 1 && draft.amount != null) {
-        final perInst = (draft.installmentValue ?? draft.amount! / draft.installments!).toStringAsFixed(2).replaceAll('.', ',');
+        final perInst = Money.brl(draft.installmentValue ?? draft.amount! / draft.installments!);
         // "todo dia 10" with installments is when each installment is due —
         // not a monthly charge of the whole price.
         final dueTag = draft.installmentDueDay != null ? ', com vencimento todo dia ${draft.installmentDueDay}' : '';
-        responseText = 'Pronto! Registrei $amountStr$itemOrPlace no crédito em ${draft.installments}x de R\$ $perInst$dueTag$recurrentTag. 🎉';
+        responseText = 'Pronto! Registrei $amountStr$itemOrPlace no crédito em ${draft.installments}x de $perInst$dueTag$recurrentTag. 🎉';
       } else if (draft.paymentMethod != 'unknown') {
         final payName = _formatPayment(draft.paymentMethod, draft.installments);
         responseText = 'Pronto! Despesa de $amountStr$itemOrPlace no $payName$bankTag$recurrentTag registrada com sucesso. 🎉';
@@ -977,7 +977,7 @@ class _ChatScreenState extends State<ChatScreen> {
     buffer.writeln('Identifiquei ${drafts.length} lançamentos:');
     for (int i = 0; i < drafts.length; i++) {
       final d = drafts[i];
-      final amt = d.amount != null ? 'R\$ ${d.amount!.toStringAsFixed(2).replaceAll('.', ',')}' : '';
+      final amt = d.amount != null ? Money.brl(d.amount!) : '';
       final pay = _formatPayment(d.paymentMethod, d.installments);
       final code = idsPerDraft[i].isEmpty ? '' : ' ${TransactionCode.label(idsPerDraft[i].first)}';
       buffer.writeln('${i + 1}. $amt com ${d.description} ($pay)$code');
@@ -1181,7 +1181,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           // Botão de Chamada de Voz com o César (100% On-Device)
           Tooltip(
-            message: 'Conversar por Voz com o César (On-Device)',
+            message: 'Conversar por voz com o César',
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
               onTap: _openVoiceConversationModal,
@@ -1292,15 +1292,21 @@ class _ChatScreenState extends State<ChatScreen> {
                 itemCount: _quickSuggestions.length,
                 separatorBuilder: (_, __) => const SizedBox(width: KrezioSpace.sm),
                 itemBuilder: (context, index) {
-                  final text = _quickSuggestions[index];
+                  final (label, text) = _quickSuggestions[index];
                   return ActionChip(
-                    label: Text(text, style: const TextStyle(fontSize: KrezioFont.small)),
+                    label: Text(label, style: const TextStyle(fontSize: KrezioFont.small)),
                     avatar: const Icon(Icons.flash_on, size: 14, color: KrezioColors.aiPurple),
                     backgroundColor: bgSurface,
                     side: BorderSide(
                       color: isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder,
                     ),
-                    onPressed: () => _sendMessage(text),
+                    onPressed: () {
+                      _textController.value = TextEditingValue(
+                        text: text,
+                        selection: TextSelection.collapsed(offset: text.length),
+                      );
+                      _messageFocus.requestFocus();
+                    },
                   );
                 },
               ),
@@ -1336,6 +1342,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   Expanded(
                     child: TextField(
                       controller: _textController,
+                      focusNode: _messageFocus,
                       textInputAction: TextInputAction.send,
                       onSubmitted: _sendMessage,
                       decoration: InputDecoration(
@@ -1520,6 +1527,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(ChatMessage msg, bool isDark) {
     final isUser = msg.sender == MessageSender.user;
+    final isGreeting = !isUser && _messages.isNotEmpty && identical(msg, _messages.first);
+    final assistantSurface = isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: KrezioSpace.lg),
@@ -1547,7 +1556,9 @@ class _ChatScreenState extends State<ChatScreen> {
                   decoration: BoxDecoration(
                     color: isUser
                         ? KrezioColors.aiPurple
-                        : (isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface),
+                        : isGreeting
+                            ? Color.alphaBlend(KrezioColors.aiPurple.withValues(alpha: 0.10), assistantSurface)
+                            : assistantSurface,
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(16),
                       topRight: const Radius.circular(16),
@@ -1587,13 +1598,18 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               if (!isUser) ...[
                 const SizedBox(width: KrezioSpace.sm),
-                IconButton(
+                ValueListenableBuilder<VoiceAvailability>(
+                  valueListenable: _voiceSynthesis.availabilityNotifier,
+                  builder: (_, availability, child) => availability == VoiceAvailability.unavailable
+                    ? const SizedBox.shrink()
+                    : IconButton(
                   icon: const Icon(Icons.volume_up_outlined, size: 18),
                   color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                   tooltip: 'Ouvir César falando',
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   onPressed: () => _voiceSynthesis.speak(msg.spokenText ?? msg.text),
+                    ),
                 ),
               ],
             ],
@@ -1640,7 +1656,15 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(height: KrezioSpace.sm),
             Padding(
               padding: const EdgeInsets.only(left: KrezioSpace.xxxl),
-              child: _buildTransactionInspectorCard(msg.draft!, isDark, msg.isMergedUpdate, ids: msg.transactionIds),
+              child: ListenableBuilder(
+                listenable: Listenable.merge([
+                  EnvironmentConfig.environmentNotifier,
+                  widget.repository,
+                ]),
+                builder: (context, _) => _buildTransactionInspectorCard(
+                  msg.draft!, isDark, msg.isMergedUpdate, ids: msg.transactionIds,
+                ),
+              ),
             ),
           ],
         ],
@@ -1861,7 +1885,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildTransactionInspectorCard(FinancialTransactionDraft draft, bool isDark, bool isMerged, {List<String> ids = const []}) {
-    final statusColor = draft.isComplete ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange;
+    final currentIds = widget.repository?.transactions.map((tx) => tx.id).toSet() ?? <String>{};
+    final saved = ids.isNotEmpty && ids.every(currentIds.contains);
+    final missing = draft.missingSlots.isEmpty ? null : draft.missingSlots.first;
+    final status = switch ((saved, ids.isNotEmpty, missing)) {
+      (true, _, _) => 'Registrado',
+      (_, true, _) => 'Registro alterado ou removido',
+      (_, _, 'confirm') => 'Aguardando confirmação',
+      (_, _, 'payment_method') => 'Falta informar o pagamento',
+      (_, _, 'amount') => 'Falta informar o valor',
+      (_, _, 'category') => 'Falta informar a categoria',
+      (_, _, 'date') => 'Falta informar a data',
+      (_, _, null) => 'Não registrado',
+      _ => 'Aguardando detalhes',
+    };
+    final statusColor = saved ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange;
 
     return Container(
       width: double.infinity,
@@ -1932,25 +1970,16 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ],
               ),
-              Row(
-                children: [
-                  Icon(
-                    draft.isComplete ? Icons.check_circle_outline : Icons.warning_amber_rounded,
-                    size: 14,
-                    color: statusColor,
-                  ),
-                  const SizedBox(width: KrezioSpace.xs),
-                  Text(
-                    draft.isComplete ? 'Completo' : 'Incompleto',
-                    style: TextStyle(
-                      color: statusColor,
-                      fontSize: KrezioFont.caption,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
             ],
+          ),
+          const SizedBox(height: KrezioSpace.sm),
+          Text(
+            status,
+            style: TextStyle(
+              color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
+              fontSize: KrezioFont.caption,
+              fontWeight: FontWeight.w600,
+            ),
           ),
           const SizedBox(height: KrezioSpace.sm),
 
@@ -1961,7 +1990,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: _buildDetailTile(
                   'Valor',
                   draft.amount != null
-                      ? 'R\$ ${draft.amount!.toStringAsFixed(2).replaceAll('.', ',')}'
+                      ? Money.brl(draft.amount!)
                       : 'Não informado',
                   Icons.attach_money,
                   isDark,
@@ -1988,7 +2017,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   isDark,
                 ),
               ),
-              Expanded(
+              if (EnvironmentConfig.isHomologation) Expanded(
                 child: _buildDetailTile(
                   'Latência Local',
                   '⚡ ${draft.latencyMs.toStringAsFixed(1)} ms',

@@ -14,8 +14,9 @@ class LoginScreen extends StatefulWidget {
 
   /// Called once an account is created (the terms were accepted).
   final VoidCallback? onTermsAccepted;
+  final Future<void> Function()? onExportLegacy;
 
-  const LoginScreen({super.key, required this.authService, required this.isDark, this.onTermsAccepted});
+  const LoginScreen({super.key, required this.authService, required this.isDark, this.onTermsAccepted, this.onExportLegacy});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -134,6 +135,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.onExportLegacy != null)
+                      TextButton(
+                        onPressed: () async {
+                          try {
+                            await widget.onExportLegacy!();
+                          } catch (_) {
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Não foi possível exportar os dados antigos.')),
+                            );
+                          }
+                        },
+                        child: const Text('Exportar dados antigos deste aparelho'),
+                      ),
                     Container(
                       padding: const EdgeInsets.all(KrezioSpace.lg),
                       decoration: BoxDecoration(

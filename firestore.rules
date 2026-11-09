@@ -4,8 +4,20 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      match /{document=**} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+      function nextEpoch() {
+        return request.resource.data.get('resetEpoch', 0);
+      }
+      function currentEpoch() {
+        return resource.data.get('resetEpoch', 0);
+      }
+      allow read, delete: if isOwner();
+      allow create: if isOwner() && nextEpoch() is int && nextEpoch() in [0, 1];
+      allow update: if isOwner() && nextEpoch() is int
+        && nextEpoch() in [currentEpoch(), currentEpoch() + 1];
+      match /{collection}/{document}/{descendant=**} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }

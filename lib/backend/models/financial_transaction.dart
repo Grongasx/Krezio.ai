@@ -47,7 +47,7 @@ class FinancialTransaction {
     required this.title,
     required this.amount,
     required this.type,
-    required this.category,
+    required String category,
     required this.paymentMethod,
     required this.date,
     this.installments,
@@ -65,7 +65,7 @@ class FinancialTransaction {
     this.originalCurrency,
     this.originalAmount,
     this.exchangeRate,
-  });
+  }) : category = type == TransactionType.transfer && category == 'supermarket' ? 'transfer' : category;
 
   FinancialTransaction copyWith({
     String? id,
@@ -184,6 +184,7 @@ class FinancialTransaction {
   String get dueLabel => dueBusinessDay != null ? '$dueBusinessDayº dia útil' : 'Dia ${dueDay ?? date.day}';
 
   IconData get categoryIcon {
+    if (type == TransactionType.transfer) return Icons.swap_horiz;
     switch (category) {
       case 'supermarket':
         return Icons.shopping_cart_outlined;
@@ -210,6 +211,7 @@ class FinancialTransaction {
   }
 
   String get categoryLabel {
+    if (type == TransactionType.transfer) return 'Transferência';
     switch (category) {
       case 'supermarket':
         return 'Supermercado';
@@ -252,6 +254,7 @@ class FinancialTransaction {
   }
 
   Color get categoryColor {
+    if (type == TransactionType.transfer) return KrezioColors.aiPurple;
     switch (category) {
       case 'supermarket':
         return const Color(0xFF3B82F6); // Blue

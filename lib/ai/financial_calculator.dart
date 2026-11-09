@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'cesar_text.dart';
 import 'pt_number_words.dart';
+import '../backend/services/money.dart';
 
 /// An answer of the calculator: chat text, spoken version, route name.
 class CalcAnswer {
@@ -276,7 +277,7 @@ class FinancialCalculator {
     String fmt(double v) {
       final cents = (v * 100).round();
       final whole = cents % 100 == 0;
-      return whole ? (cents ~/ 100).toString() : v.toStringAsFixed(2).replaceAll('.', ',');
+      return whole ? (cents ~/ 100).toString() : Money.decimal(v);
     }
 
     final t = '${fmt(a)} $sign ${fmt(b)} = **${fmt(r)}**';

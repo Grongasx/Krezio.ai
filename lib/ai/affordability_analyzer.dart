@@ -3,6 +3,7 @@ import 'financial_calculator.dart';
 import 'local_nlp_engine.dart';
 import '../backend/repositories/financial_repository.dart';
 import '../backend/models/budget_category.dart';
+import '../backend/services/money.dart';
 
 enum AffordabilityVerdict { yes, caution, no }
 
@@ -105,22 +106,22 @@ class AffordabilityAnalyzer {
       reasons = [...advice.lines];
     } else if (afterPurchase < 0) {
       verdict = AffordabilityVerdict.no;
-      reasons.add('Seu saldo atual é de R\$ ${_fmt(balance)} — não cobre uma compra de R\$ ${_fmt(amount)}.');
+      reasons.add('Seu saldo atual é de ${Money.brl(balance)} — não cobre uma compra de ${Money.brl(amount)}.');
     } else if (afterPurchase < committedTotal) {
       verdict = AffordabilityVerdict.caution;
       reasons.add(
-        'Depois da compra sobrariam R\$ ${_fmt(afterPurchase)}, mas você já tem R\$ ${_fmt(committedTotal)} '
+        'Depois da compra sobrariam ${Money.brl(afterPurchase)}, mas você já tem ${Money.brl(committedTotal)} '
         'comprometidos em contas e metas nos próximos 30 dias.',
       );
     } else {
-      reasons.add('Depois da compra ainda sobram R\$ ${_fmt(afterPurchase)} no seu saldo.');
+      reasons.add('Depois da compra ainda sobram ${Money.brl(afterPurchase)} no seu saldo.');
     }
 
     // In installments, what weighs on the month is each installment.
     final perMonthCost = amount / _installments(text);
     if (monthIncome > 0 && perMonthCost > monthIncome * 0.5) {
       if (verdict == AffordabilityVerdict.yes) verdict = AffordabilityVerdict.caution;
-      if (advice == null) reasons.add('Essa compra sozinha equivale a mais da metade da sua renda mensal (R\$ ${_fmt(monthIncome)}).');
+      if (advice == null) reasons.add('Essa compra sozinha equivale a mais da metade da sua renda mensal (${Money.brl(monthIncome)}).');
     }
 
     BudgetCategory? budget;
@@ -137,7 +138,7 @@ class AffordabilityAnalyzer {
       if (projectedSpent > budget.monthlyLimit) {
         if (verdict != AffordabilityVerdict.no) verdict = AffordabilityVerdict.caution;
         reasons.add(
-          'Isso estouraria o orçamento de ${budget.name} em R\$ ${_fmt(projectedSpent - budget.monthlyLimit)}.',
+          'Isso estouraria o orçamento de ${budget.name} em ${Money.brl(projectedSpent - budget.monthlyLimit)}.',
         );
       } else {
         final percent = ((projectedSpent / budget.monthlyLimit) * 100).clamp(0, 100).toStringAsFixed(0);
@@ -154,7 +155,7 @@ class AffordabilityAnalyzer {
     final spoken = '$verdictLabel ${reasons.join(' ')}';
 
     final formatted = StringBuffer();
-    formatted.writeln('### 🛍️ Posso comprar $itemLabel de R\$ ${_fmt(amount)}?');
+    formatted.writeln('### 🛍️ Posso comprar $itemLabel de ${Money.brl(amount)}?');
     formatted.writeln('**Veredito:** $verdictLabel\n');
     for (final r in reasons) {
       formatted.writeln('- $r');
@@ -203,12 +204,4 @@ class AffordabilityAnalyzer {
     return null;
   }
 
-  String _fmt(double value) {
-    final parts = value.abs().toStringAsFixed(2).split('.');
-    final intPart = parts[0].replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (m) => '${m[1]}.',
-    );
-    return '${value < 0 ? '-' : ''}$intPart,${parts[1]}';
-  }
 }

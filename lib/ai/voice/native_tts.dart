@@ -4,10 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// The system's own voice (Android/iOS TTS, Web Speech, Windows SAPI), used
-/// when César's neural voice server isn't there — so César always speaks.
+/// The system's own voice (Android/iOS TTS, Web Speech, Windows SAPI).
 abstract class NativeTts {
-  /// Speaks [text]; completes when it finishes, is stopped or fails.
+  /// Completes when speech finishes or stops, and throws on playback failure.
   Future<void> speak(String text, {double rate = 1.0, double volume = 1.0});
   Future<void> stop();
 }
@@ -72,34 +71,50 @@ class FlutterNativeTts implements NativeTts {
 
   final FlutterTts _tts = FlutterTts();
   bool _ready = false;
-  Completer<void>? _current;
+  Future<void>? _initializing;
+  Completer<bool>? _current;
 
   /// Pitch used when no male voice exists: a deeper version of the default.
   static const fallbackPitch = 0.8;
 
   Future<void> _init() async {
     if (_ready) return;
-    _ready = true;
+    final initializing = _initializing ??= _configure();
     try {
+      await initializing;
+    } finally {
+      if (identical(_initializing, initializing)) _initializing = null;
+    }
+  }
+
+  Future<void> _configure() async {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       // Xiaomi and others ship their own engine as the default, often with
       // no male voice: Google's engine, when installed, has one (pt-br-x-ptd).
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      try {
         final engines = ((await _tts.getEngines as List?) ?? const []).map((e) => '$e').toList();
         if (engines.contains('com.google.android.tts')) await _tts.setEngine('com.google.android.tts');
+      } catch (_) {
+        // The default engine can still speak when engine discovery fails.
       }
-      await _tts.setLanguage('pt-BR');
-      await _tts.awaitSpeakCompletion(true);
+    }
+    await _tts.setLanguage('pt-BR');
+    await _tts.awaitSpeakCompletion(true);
+    try {
       await _applyVoice();
     } catch (e) {
-      debugPrint('[NativeTts] init: $e');
-    }
-    void done() {
-      if (_current != null && !_current!.isCompleted) _current!.complete();
+      debugPrint('[NativeTts] voice selection: $e');
     }
 
-    _tts.setCompletionHandler(done);
-    _tts.setCancelHandler(done);
-    _tts.setErrorHandler((_) => done());
+    _tts.setCompletionHandler(() => _complete(true));
+    _tts.setCancelHandler(() => _complete(false));
+    _tts.setErrorHandler((_) => _complete(false));
+    _ready = true;
+  }
+
+  void _complete(bool success) {
+    final current = _current;
+    if (current != null && !current.isCompleted) current.complete(success);
   }
 
   /// Portuguese voices of this device.
@@ -135,25 +150,44 @@ class FlutterNativeTts implements NativeTts {
 
   @override
   Future<void> speak(String text, {double rate = 1.0, double volume = 1.0}) async {
-    await _init();
-    _current = Completer<void>();
+    final outcome = Completer<bool>();
+    _current = outcome;
     try {
+      unawaited(_startSpeech(outcome, text, rate, volume));
+      final played = await outcome.future.timeout(
+        Duration(seconds: 8 + text.length ~/ 8),
+        onTimeout: () async {
+          await stop().timeout(const Duration(seconds: 1), onTimeout: () {});
+          return false;
+        },
+      );
+      if (!played) throw StateError('A voz do sistema não conseguiu falar.');
+    } finally {
+      if (identical(_current, outcome)) _current = null;
+    }
+  }
+
+  Future<void> _startSpeech(Completer<bool> outcome, String text, double rate, double volume) async {
+    try {
+      await _init();
+      if (!identical(_current, outcome)) return;
       // flutter_tts: 0.5 is the normal rate on Android/iOS.
       await _tts.setSpeechRate((rate * 0.5).clamp(0.1, 1.0));
       await _tts.setVolume(volume);
-      await _tts.speak(text);
-    } catch (e) {
-      debugPrint('[NativeTts] speak: $e');
-      if (!_current!.isCompleted) _current!.complete();
+      if (!identical(_current, outcome)) return;
+      final result = await _tts.speak(text);
+      if (!outcome.isCompleted) outcome.complete(result == 1 || result == true);
+    } catch (_) {
+      if (!outcome.isCompleted) outcome.complete(false);
     }
-    return _current!.future.timeout(Duration(seconds: 5 + text.length ~/ 8), onTimeout: () {});
   }
 
   @override
   Future<void> stop() async {
+    _complete(false);
+    _current = null;
     try {
       await _tts.stop();
     } catch (_) {}
-    if (_current != null && !_current!.isCompleted) _current!.complete();
   }
 }

@@ -3,6 +3,7 @@ import '../backend/models/financial_reminder.dart';
 import '../backend/models/financial_transaction.dart';
 import '../backend/repositories/financial_repository.dart';
 import 'temporal_date_parser.dart';
+import '../backend/services/money.dart';
 
 enum ReportIntent {
   debtors,
@@ -189,7 +190,7 @@ class FinancialReportRagEngine {
           intent: ReportIntent.debtors,
           dateRange: dateRange,
           matchedItems: allDebtors,
-          spokenText: 'Você não tem cobranças previstas$timeMsg. No geral, você tem ${allDebtors.length} ${allDebtors.length == 1 ? "cobrança pendente" : "cobranças pendentes"} totalizando R\$ ${_formatMoney(totalAll)}.',
+          spokenText: 'Você não tem cobranças previstas$timeMsg. No geral, você tem ${allDebtors.length} ${allDebtors.length == 1 ? "cobrança pendente" : "cobranças pendentes"} totalizando ${Money.brl(totalAll)}.',
           formattedText: '### 🤝 Cobranças Pendentes\n\n'
               'Nenhum pagamento previsto para **${dateRange.label}**.\n\n'
               '**Geral:** ${_buildDebtorsListMarkdown(allDebtors)}',
@@ -214,10 +215,10 @@ class FinancialReportRagEngine {
     if (filteredDebtors.length == 1) {
       final d = filteredDebtors.first;
       final name = d.personName ?? d.title;
-      spoken = 'O $name está te devendo R\$ ${_formatMoney(d.amount ?? 0.0)}$timeStr.';
+      spoken = 'O $name está te devendo ${Money.brl(d.amount ?? 0.0)}$timeStr.';
     } else {
       final names = filteredDebtors.map((d) => d.personName ?? d.title).take(3).join(', ');
-      spoken = 'Você tem ${filteredDebtors.length} pessoas te devendo$timeStr, totalizando R\$ ${_formatMoney(total)}. Destaque para $names.';
+      spoken = 'Você tem ${filteredDebtors.length} pessoas te devendo$timeStr, totalizando ${Money.brl(total)}. Destaque para $names.';
     }
 
     final formatted = StringBuffer();
@@ -225,7 +226,7 @@ class FinancialReportRagEngine {
     if (dateRange != null) {
       formatted.writeln('**Período:** ${dateRange.label}\n');
     }
-    formatted.writeln('**Total a receber:** `R\$ ${_formatMoney(total)}`\n');
+    formatted.writeln('**Total a receber:** `${Money.brl(total)}`\n');
     formatted.writeln(_buildDebtorsListMarkdown(filteredDebtors));
 
     ReportChartData? chart;
@@ -253,7 +254,7 @@ class FinancialReportRagEngine {
     final sb = StringBuffer();
     for (final d in debtors) {
       final name = d.personName ?? d.title;
-      final amount = d.amount != null ? 'R\$ ${_formatMoney(d.amount!)}' : 'Valor a definir';
+      final amount = d.amount != null ? '${Money.brl(d.amount!)}' : 'Valor a definir';
       final dateStr = '${d.targetDate.day.toString().padLeft(2, '0')}/${d.targetDate.month.toString().padLeft(2, '0')}/${d.targetDate.year}';
       sb.writeln('- **$name**: $amount *(previsão: $dateStr)*${d.notes != null ? " - ${d.notes}" : ""}');
     }
@@ -310,23 +311,23 @@ class FinancialReportRagEngine {
       budgetNote = ' Isso representa $percent% do seu orçamento mensal definido para ${budget.name}.';
     }
 
-    final spoken = 'Você gastou um total de R\$ ${_formatMoney(totalSpent)} com $displayTerm $periodLabel em $count ${count == 1 ? "compra" : "compras"}.$budgetNote';
+    final spoken = 'Você gastou um total de ${Money.brl(totalSpent)} com $displayTerm $periodLabel em $count ${count == 1 ? "compra" : "compras"}.$budgetNote';
 
     final formatted = StringBuffer();
     formatted.writeln('### 💳 Relatório de Gastos: ${displayTerm.toUpperCase()}');
     formatted.writeln('**Período:** $periodLabel');
-    formatted.writeln('**Total gasto:** `R\$ ${_formatMoney(totalSpent)}`');
-    formatted.writeln('**Quantidade de compras:** $count | **Média:** R\$ ${_formatMoney(avg)}');
+    formatted.writeln('**Total gasto:** `${Money.brl(totalSpent)}`');
+    formatted.writeln('**Quantidade de compras:** $count | **Média:** ${Money.brl(avg)}');
 
     if (budget != null) {
       final percent = ((totalSpent / budget.monthlyLimit) * 100).clamp(0, 100).toInt();
-      formatted.writeln('\n**Limite do Orçamento:** R\$ ${_formatMoney(budget.monthlyLimit)} ($percent% consumido)');
+      formatted.writeln('\n**Limite do Orçamento:** ${Money.brl(budget.monthlyLimit)} ($percent% consumido)');
     }
 
     formatted.writeln('\n#### Transações:');
     for (final tx in matches) {
       final dStr = '${tx.date.day.toString().padLeft(2, '0')}/${tx.date.month.toString().padLeft(2, '0')}';
-      formatted.writeln('- **$dStr**: ${tx.title} — `R\$ ${_formatMoney(tx.amount)}` (${tx.paymentMethod})');
+      formatted.writeln('- **$dStr**: ${tx.title} — `${Money.brl(tx.amount)}` (${tx.paymentMethod})');
     }
 
     ReportChartData? chart;
@@ -405,15 +406,15 @@ class FinancialReportRagEngine {
     final firstTitle = firstBill['title'];
     final firstAmount = (firstBill['amount'] as num?)?.toDouble() ?? 0.0;
 
-    String spoken = 'Você tem $count ${count == 1 ? "boleto" : "boletos"} para pagar ${effectiveRange.label}, totalizando R\$ ${_formatMoney(total)}.';
+    String spoken = 'Você tem $count ${count == 1 ? "boleto" : "boletos"} para pagar ${effectiveRange.label}, totalizando ${Money.brl(total)}.';
     if (count > 0 && firstAmount > 0) {
-      spoken += ' O principal é o $firstTitle no valor de R\$ ${_formatMoney(firstAmount)}.';
+      spoken += ' O principal é o $firstTitle no valor de ${Money.brl(firstAmount)}.';
     }
 
     final formatted = StringBuffer();
     formatted.writeln('### 📄 Boletos & Contas a Pagar');
     formatted.writeln('**Período:** ${effectiveRange.label}');
-    formatted.writeln('**Total a pagar:** `R\$ ${_formatMoney(total)}`\n');
+    formatted.writeln('**Total a pagar:** `${Money.brl(total)}`\n');
 
     for (final b in bills) {
       final title = b['title'];
@@ -423,7 +424,7 @@ class FinancialReportRagEngine {
       final margin = b['paymentMarginDays'] as int?;
       final billingDay = b['billingDay'] as int?;
 
-      formatted.write('- **$title**: `R\$ ${_formatMoney(amount)}` — Vence em **$dueStr**');
+      formatted.write('- **$title**: `${Money.brl(amount)}` — Vence em **$dueStr**');
       if (billingDay != null && margin != null) {
         formatted.write(' *(Cai dia $billingDay, margem de $margin ${margin == 1 ? "dia" : "dias"} para pagar)*');
       }
@@ -475,15 +476,15 @@ class FinancialReportRagEngine {
       }
     }
 
-    final spoken = 'Seu saldo geral atual é de R\$ ${_formatMoney(balance)}. Este mês você recebeu R\$ ${_formatMoney(income)} e gastou R\$ ${_formatMoney(expense)}.$trendSpoken Você ainda tem R\$ ${_formatMoney(totalReceivable)} a receber.';
+    final spoken = 'Seu saldo geral atual é de ${Money.brl(balance)}. Este mês você recebeu ${Money.brl(income)} e gastou ${Money.brl(expense)}.$trendSpoken Você ainda tem ${Money.brl(totalReceivable)} a receber.';
 
     final formatted = StringBuffer();
     formatted.writeln('### 📊 Resumo Financeiro Geral');
-    formatted.writeln('- **Saldo Geral em Conta:** `R\$ ${_formatMoney(balance)}`');
-    formatted.writeln('- **Receitas deste Mês:** `+ R\$ ${_formatMoney(income)}`');
-    formatted.writeln('- **Despesas deste Mês:** `- R\$ ${_formatMoney(expense)}`');
+    formatted.writeln('- **Saldo Geral em Conta:** `${Money.brl(balance)}`');
+    formatted.writeln('- **Receitas deste Mês:** `+ ${Money.brl(income)}`');
+    formatted.writeln('- **Despesas deste Mês:** `- ${Money.brl(expense)}`');
     formatted.write(trendFormatted);
-    formatted.writeln('- **A Receber (Empréstimos):** `R\$ ${_formatMoney(totalReceivable)}`');
+    formatted.writeln('- **A Receber (Empréstimos):** `${Money.brl(totalReceivable)}`');
     formatted.writeln('\n${repository.generateAiInsight()}');
 
     final chart = withChart
@@ -546,12 +547,4 @@ class FinancialReportRagEngine {
     );
   }
 
-  String _formatMoney(double value) {
-    final parts = value.toStringAsFixed(2).split('.');
-    final intPart = parts[0].replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]}.',
-    );
-    return '$intPart,${parts[1]}';
-  }
 }

@@ -22,12 +22,23 @@ class ChatAction {
   /// Something else to put back with an edit — the category memory learned
   /// from a correction, so "desfaz" also forgets it.
   final void Function(FinancialRepository repository)? alsoUndo;
+  final bool _restoresRemovedEntity;
 
-  const ChatAction(this.kind, this.records, {this.alsoUndo}) : revert = null, undoMessage = null;
+  const ChatAction(this.kind, this.records, {this.alsoUndo})
+      : revert = null, undoMessage = null, _restoresRemovedEntity = false;
 
   const ChatAction.custom(bool Function(FinancialRepository repository) this.revert, String this.undoMessage, [this.records = const []])
       : kind = ChatActionKind.custom,
-        alsoUndo = null;
+        alsoUndo = null,
+        _restoresRemovedEntity = false;
+
+  const ChatAction.restoration(bool Function(FinancialRepository repository) this.revert, String this.undoMessage)
+      : kind = ChatActionKind.custom,
+        records = const [],
+        alsoUndo = null,
+        _restoresRemovedEntity = true;
+
+  bool get _canRestoreAfterMerge => kind == ChatActionKind.deleted || _restoresRemovedEntity;
 }
 
 class UndoResult {
@@ -51,7 +62,21 @@ class UndoResult {
 /// deletion. Pure Dart; the repository is passed in to apply the undo.
 class ChatActionHistory {
   static const int maxActions = 20;
-  final List<ChatAction> _stack = [];
+  static final _sessions = Expando<ChatActionHistory>();
+
+  static ChatActionHistory forRepository(FinancialRepository repository) {
+    final history = _sessions[repository] ??= ChatActionHistory();
+    if (history._resetGeneration != repository.resetGeneration) {
+      history.clear();
+      history._resetGeneration = repository.resetGeneration;
+    }
+    history._dataGeneration = repository.dataGeneration;
+    return history;
+  }
+
+  int? _resetGeneration;
+  int? _dataGeneration;
+  final List<({ChatAction action, int? generation})> _stack = [];
 
   /// Older actions dropped off the bottom of the stack (R2-CHAOS-024): when
   /// the stack runs out, César says there is a limit instead of "nothing to
@@ -61,11 +86,11 @@ class ChatActionHistory {
 
   bool get isEmpty => _stack.isEmpty;
   int get length => _stack.length;
-  ChatAction? get last => _stack.isEmpty ? null : _stack.last;
+  ChatAction? get last => _stack.isEmpty ? null : _stack.last.action;
 
   void push(ChatAction action) {
     if (action.records.isEmpty && action.kind != ChatActionKind.custom) return;
-    _stack.add(action);
+    _stack.add((action: action, generation: _dataGeneration));
     if (_stack.length > maxActions) {
       _stack.removeAt(0);
       _droppedOlder = true;
@@ -82,10 +107,17 @@ class ChatActionHistory {
   /// (its records/goal/category were deleted or changed on another screen),
   /// it says so and stops — it used to skip silently to the action before it
   /// and undo *that* instead (R2-CHAOS-014: "desfaz" removed the Mercado).
-  UndoResult? undo(FinancialRepository repository, {DateTime? now}) {
+  UndoResult? undo(FinancialRepository repository, {DateTime? now, ChatAction? only}) {
+    if (_resetGeneration != null && _resetGeneration != repository.resetGeneration) return null;
     final today = now ?? DateTime.now();
     if (_stack.isEmpty) return null;
-    final action = _stack.removeLast();
+    final index = only == null ? _stack.length - 1 : _stack.indexWhere((entry) => identical(entry.action, only));
+    if (index < 0) return null;
+    final entry = _stack.removeAt(index);
+    final action = entry.action;
+    if (entry.generation != null && entry.generation != repository.dataGeneration && !action._canRestoreAfterMerge) {
+      return UndoResult(action, 'Os dados foram atualizados em outro aparelho. A alteração foi preservada.', undone: false);
+    }
     final existing = {for (final t in repository.transactions) t.id: t};
     final names = _names(action.records, today);
     switch (action.kind) {

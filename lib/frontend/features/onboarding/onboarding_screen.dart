@@ -10,8 +10,9 @@ import '../legal/legal_documents.dart';
 class OnboardingScreen extends StatefulWidget {
   final FinancialRepository repository;
   final VoidCallback onDone;
+  final VoidCallback? onExploreDemo;
 
-  const OnboardingScreen({super.key, required this.repository, required this.onDone});
+  const OnboardingScreen({super.key, required this.repository, required this.onDone, this.onExploreDemo});
 
   static const String donePref = 'onboarding_done';
 
@@ -51,7 +52,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     (
       Icons.lock_outline,
       'Privacidade no seu aparelho',
-      'O César roda no celular: suas frases não vão para servidores. Sem conta, nada sai do aparelho.',
+      'O César interpreta comandos no aparelho. A fala usa os recursos de voz da plataforma.',
       <String>[],
     ),
   ];
@@ -73,7 +74,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  void _finish() {
+  void _finish({bool demo = false}) {
     final repo = widget.repository;
     final name = _name.text.trim();
     if (name.isNotEmpty) repo.setPreference(FinancialRepository.prefUserName, name);
@@ -86,7 +87,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     }
     repo.setPreference(OnboardingScreen.donePref, DateTime.now().toIso8601String());
     repo.setPreference(LegalDocuments.acceptedPref, LegalDocuments.acceptedValue(DateTime.now()));
-    widget.onDone();
+    if (demo) {
+      widget.onExploreDemo?.call();
+    } else {
+      widget.onDone();
+    }
   }
 
   @override
@@ -127,12 +132,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             ),
             Padding(
               padding: const EdgeInsets.all(KrezioSpace.lg),
-              child: KrezioButton(
-                label: last ? 'Começar' : 'Próximo',
-                expand: true,
-                onPressed: last
-                    ? _finish
-                    : () => _pages.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeOut),
+              child: Column(
+                children: [
+                  KrezioButton(
+                    label: last ? 'Começar do zero' : 'Próximo',
+                    expand: true,
+                    onPressed: last
+                        ? _finish
+                        : () => _pages.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeOut),
+                  ),
+                  if (last && widget.onExploreDemo != null)
+                    TextButton(
+                      onPressed: () => _finish(demo: true),
+                      child: const Text('Explorar com exemplos'),
+                    ),
+                ],
               ),
             ),
           ],

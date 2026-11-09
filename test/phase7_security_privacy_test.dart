@@ -81,8 +81,8 @@ void main() {
       final csv = DataExport.transactionsCsv(repo);
       expect(csv.startsWith('﻿'), isTrue);
       final lines = csv.substring(1).trim().split('\r\n');
-      expect(lines.first, startsWith('Data;Título;Tipo;Valor'));
-      expect(lines[1], startsWith('05/10/2026;Salário;Receita;5000,00;'));
+      expect(lines.first, 'Data;Descrição;Categoria;Tipo;Forma de pagamento;Valor (R\$)');
+      expect(lines[1], '05/10/2026;Salário;Salário;Receita;Pix;5000,00');
       expect(lines[2], contains('"Açougue; ""do Zé"""'));
       expect(lines[2], contains('-1234,50'));
       final json = jsonDecode(DataExport.toJson(repo)) as Map<String, dynamic>;

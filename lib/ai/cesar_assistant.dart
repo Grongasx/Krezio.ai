@@ -88,7 +88,7 @@ class CesarAssistant {
   final FinancialRepository repository;
   final LocalFinancialNlpEngine engine;
   final DateTime Function() _clock;
-  final ChatActionHistory history = ChatActionHistory();
+  ChatActionHistory get history => ChatActionHistory.forRepository(repository);
 
   CesarAssistant({required this.repository, required this.engine, DateTime Function()? now}) : _clock = now ?? DateTime.now;
 
@@ -210,7 +210,6 @@ class CesarAssistant {
     // deleted record back into the empty app (R2-CHAOS-012).
     final generation = repository.dataGeneration;
     if (_seenGeneration != null && _seenGeneration != generation) {
-      history.clear();
       _groups.clear();
       _focus = const [];
       _focusDeleted = false;
@@ -860,12 +859,9 @@ class CesarAssistant {
         _pending = null;
         if (_isYes(s)) {
           final g = pending.goal!;
-          repository.deleteGoal(g.id);
-          history.push(ChatAction.custom((r) {
-            if (r.goals.any((x) => x.id == g.id)) return false;
-            r.addGoal(g);
-            return true;
-          }, 'A meta "${g.title}" está de volta.'));
+          final undo = repository.deleteGoalWithUndo(g.id);
+          if (undo == null) return const AssistantReply('Essa meta já foi apagada.', route: 'goal_not_found');
+          history.push(ChatAction.restoration((_) => undo(), 'A meta "${g.title}" está de volta.'));
           _lastMutationTurn = _turn;
           return AssistantReply('Pronto, apaguei a meta "${g.title}". Se foi engano, diga "desfaz". 🗑️', route: 'goal_deleted');
         }
@@ -1313,7 +1309,7 @@ class CesarAssistant {
         }
         final count = repository.transactions.where((t) => t.category == b.category).length;
         _pending = _Pending(_PendingKind.confirmCategoryDelete, const [], null, b);
-        final note = count == 0 ? '' : ' Os $count lançamentos dela continuam salvos.';
+        final note = count == 0 ? '' : ' Os lançamentos dela vão para Outras despesas.';
         return AssistantReply('Vou apagar a categoria **${b.name}**.$note Confirma? (sim/não)', route: 'confirm_delete');
 
       case CategoryCommandKind.setLimit:
@@ -1414,16 +1410,9 @@ class CesarAssistant {
   }
 
   AssistantReply _deleteCategory(BudgetCategory b) {
-    repository.removeBudgetCategory(b.category);
-    history.push(ChatAction.custom((r) {
-      final restored = r.addBudgetCategory(b.name, b.monthlyLimit);
-      if (restored.category != b.category) {
-        for (final t in r.transactions.where((t) => t.category == b.category).toList()) {
-          r.updateTransaction(t.copyWith(category: restored.category));
-        }
-      }
-      return true;
-    }, 'A categoria ${b.name} está de volta.'));
+    final undo = repository.deleteBudgetCategoryWithUndo(b.category);
+    if (undo == null) return const AssistantReply('Essa categoria já foi apagada.', route: 'category_not_found');
+    history.push(ChatAction.restoration((_) => undo(), 'A categoria ${b.name} está de volta.'));
     _lastMutationTurn = _turn;
     return AssistantReply('Pronto, apaguei a categoria **${b.name}**. Se foi engano, diga "desfaz". 🗑️', route: 'category_deleted');
   }
