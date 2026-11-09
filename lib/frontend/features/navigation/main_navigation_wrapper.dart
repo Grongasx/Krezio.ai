@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../navigation/krezio_routes.dart';
 import '../../theme/krezio_theme.dart';
 import '../../../backend/repositories/financial_repository.dart';
+import '../../../backend/services/auth_service.dart';
 import '../../../ai/local_nlp_engine.dart';
 import '../dashboard/presentation/screens/dashboard_screen.dart';
 import '../transactions/presentation/screens/transactions_screen.dart';
@@ -16,8 +17,12 @@ class MainNavigationWrapper extends StatefulWidget {
   final VoidCallback onToggleTheme;
   final bool isDark;
   final String? userEmail;
-  final Future<void> Function()? onSignOut;
+  final SignOutAction? onSignOut;
   final Future<void> Function()? onDeleteAccount;
+  final Future<void> Function()? onClearData;
+  final Future<void> Function()? onExportLegacy;
+  final VoidCallback? onToggleDemo;
+  final bool isDemo;
 
   /// Tab to open first (from the deep link / initial route).
   final int initialIndex;
@@ -31,6 +36,10 @@ class MainNavigationWrapper extends StatefulWidget {
     this.userEmail,
     this.onSignOut,
     this.onDeleteAccount,
+    this.onClearData,
+    this.onExportLegacy,
+    this.onToggleDemo,
+    this.isDemo = false,
     this.initialIndex = 0,
   });
 
@@ -71,7 +80,6 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   @override
   Widget build(BuildContext context) {
     final bgNav = widget.isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
-    final unselectedColor = widget.isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
 
     final pages = [
       DashboardScreen(
@@ -79,6 +87,7 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         isDark: widget.isDark,
         onNavigateToChat: () => _goTo(2),
         onNavigateToTransactions: () => _goTo(1),
+        onNavigateToBudgets: () => _goTo(3),
       ),
       TransactionsScreen(
         repository: widget.repository,
@@ -99,9 +108,13 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         engine: widget.engine,
         isDark: widget.isDark,
         onToggleTheme: widget.onToggleTheme,
-        userEmail: widget.userEmail,
-        onSignOut: widget.onSignOut,
-        onDeleteAccount: widget.onDeleteAccount,
+        userEmail: widget.isDemo ? null : widget.userEmail,
+        onSignOut: widget.isDemo ? null : widget.onSignOut,
+        onDeleteAccount: widget.isDemo ? null : widget.onDeleteAccount,
+        onClearData: widget.isDemo ? null : widget.onClearData,
+        onExportLegacy: widget.isDemo ? null : widget.onExportLegacy,
+        onExploreDemo: widget.isDemo ? null : widget.onToggleDemo,
+        isDemo: widget.isDemo,
       ),
     ];
 
@@ -113,9 +126,22 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         if (!didPop) _goTo(0);
       },
       child: Scaffold(
-        body: IndexedStack(
-          index: _currentIndex,
-          children: pages,
+        body: Column(
+          children: [
+            if (widget.isDemo)
+              SafeArea(
+                bottom: false,
+                child: ListTile(
+                  dense: true,
+                  title: const Text('Exemplo'),
+                  trailing: TextButton(
+                    onPressed: widget.onToggleDemo,
+                    child: const Text('Sair dos exemplos'),
+                  ),
+                ),
+              ),
+            Expanded(child: IndexedStack(index: _currentIndex, children: pages)),
+          ],
         ),
         bottomNavigationBar: Container(
           decoration: BoxDecoration(
@@ -127,40 +153,36 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
               ),
             ),
           ),
-          child: BottomNavigationBar(
-            currentIndex: _currentIndex,
-            onTap: _goTo,
+          child: NavigationBar(
+            selectedIndex: _currentIndex,
+            onDestinationSelected: _goTo,
             backgroundColor: bgNav,
             elevation: 0,
-            type: BottomNavigationBarType.fixed,
-            selectedItemColor: KrezioColors.aiPurple,
-            unselectedItemColor: unselectedColor,
-            selectedLabelStyle: const TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.bold),
-            unselectedLabelStyle: const TextStyle(fontSize: KrezioFont.caption),
-            items: const [
-              BottomNavigationBarItem(
+            indicatorColor: KrezioColors.aiPurple.withValues(alpha: widget.isDark ? 0.24 : 0.13),
+            destinations: const [
+              NavigationDestination(
                 icon: Icon(Icons.dashboard_outlined),
-                activeIcon: Icon(Icons.dashboard),
+                selectedIcon: Icon(Icons.dashboard, color: KrezioColors.aiPurple),
                 label: 'Início',
               ),
-              BottomNavigationBarItem(
+              NavigationDestination(
                 icon: Icon(Icons.receipt_long_outlined),
-                activeIcon: Icon(Icons.receipt_long),
+                selectedIcon: Icon(Icons.receipt_long, color: KrezioColors.aiPurple),
                 label: 'Extrato',
               ),
-              BottomNavigationBarItem(
+              NavigationDestination(
                 icon: Icon(Icons.auto_awesome_outlined),
-                activeIcon: Icon(Icons.auto_awesome),
+                selectedIcon: Icon(Icons.auto_awesome, color: KrezioColors.aiPurple),
                 label: 'IA Chat',
               ),
-              BottomNavigationBarItem(
+              NavigationDestination(
                 icon: Icon(Icons.pie_chart_outline),
-                activeIcon: Icon(Icons.pie_chart),
+                selectedIcon: Icon(Icons.pie_chart, color: KrezioColors.aiPurple),
                 label: 'Metas',
               ),
-              BottomNavigationBarItem(
+              NavigationDestination(
                 icon: Icon(Icons.settings_outlined),
-                activeIcon: Icon(Icons.settings),
+                selectedIcon: Icon(Icons.settings, color: KrezioColors.aiPurple),
                 label: 'Ajustes',
               ),
             ],

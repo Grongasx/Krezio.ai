@@ -1,5 +1,8 @@
+import 'dart:ui' show FontFeature;
+
 import 'package:flutter/material.dart';
 import '../../../../../backend/services/currency_service.dart';
+import '../../../../../backend/services/money.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../../ai/transaction_code.dart';
 import '../../../../../backend/models/financial_transaction.dart';
@@ -7,6 +10,7 @@ import '../../../../../backend/models/financial_transaction.dart';
 class TransactionListTile extends StatelessWidget {
   final FinancialTransaction transaction;
   final bool isDark;
+  final bool hideAmount;
   final VoidCallback? onTap;
   final VoidCallback? onDelete;
 
@@ -14,6 +18,7 @@ class TransactionListTile extends StatelessWidget {
     super.key,
     required this.transaction,
     required this.isDark,
+    this.hideAmount = false,
     this.onTap,
     this.onDelete,
   });
@@ -29,14 +34,19 @@ class TransactionListTile extends StatelessWidget {
         ? KrezioColors.emeraldGreen
         : (isTransfer ? KrezioColors.aiPurple : (isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText));
 
-    final prefix = isIncome ? '+ ' : '- ';
-    final amountFormatted = '$prefix R\$ ${transaction.amount.toStringAsFixed(2).replaceAll('.', ',')}';
+    final amountFormatted = hideAmount
+        ? '••••'
+        : transaction.isInternalTransfer
+            ? Money.brl(transaction.amount)
+            : isIncome
+                ? '+${Money.brl(transaction.amount)}'
+                : Money.brl(-transaction.amount);
 
     final dateStr = '${transaction.date.day.toString().padLeft(2, '0')}/${transaction.date.month.toString().padLeft(2, '0')}';
 
     return Dismissible(
       key: Key(transaction.id),
-      direction: DismissDirection.endToStart,
+      direction: onDelete == null ? DismissDirection.none : DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: KrezioSpace.xl),
@@ -66,7 +76,7 @@ class TransactionListTile extends StatelessWidget {
                 padding: const EdgeInsets.all(KrezioSpace.md),
                 decoration: BoxDecoration(
                   color: transaction.categoryColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  shape: BoxShape.circle,
                 ),
                 child: Icon(
                   transaction.categoryIcon,
@@ -94,8 +104,9 @@ class TransactionListTile extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            '$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}'
-                            '${transaction.originalCurrency != null && transaction.originalAmount != null ? ' • ${Currencies.format(transaction.originalCurrency!, transaction.originalAmount!)}' : ''}',
+                            '${isTransfer ? 'Transferência • ' : ''}$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}'
+                            '${!hideAmount && transaction.originalCurrency != null && transaction.originalAmount != null ? ' • ${Currencies.format(transaction.originalCurrency!, transaction.originalAmount!)}' : ''}'
+                            '${transaction.bankSource == null ? '' : ' • ${transaction.bankSource}'}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -104,17 +115,6 @@ class TransactionListTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (transaction.bankSource != null) ...[
-                          const SizedBox(width: KrezioSpace.xs),
-                          Text(
-                            '(${transaction.bankSource})',
-                            style: const TextStyle(
-                              fontSize: KrezioFont.micro,
-                              color: KrezioColors.aiPurple,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
                         if (transaction.isRecurrent) ...[
                           const SizedBox(width: KrezioSpace.xs),
                           const Icon(Icons.repeat, size: 12, color: KrezioColors.emeraldGreen),
@@ -124,14 +124,29 @@ class TransactionListTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                amountFormatted,
-                style: TextStyle(
-                  fontSize: KrezioFont.body,
-                  fontWeight: FontWeight.bold,
-                  color: amountColor,
+              const SizedBox(width: KrezioSpace.sm),
+              Flexible(
+                child: Text(
+                  amountFormatted,
+                  textAlign: TextAlign.end,
+                  semanticsLabel: hideAmount ? 'Valor oculto' : null,
+                  style: TextStyle(
+                    fontSize: KrezioFont.body,
+                    fontWeight: FontWeight.bold,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: amountColor,
+                  ),
                 ),
               ),
+              if (onTap != null || onDelete != null)
+                PopupMenuButton<VoidCallback>(
+                  tooltip: 'Mais ações',
+                  onSelected: (action) => action(),
+                  itemBuilder: (context) => [
+                    if (onTap != null) PopupMenuItem(value: onTap, child: const Text('Editar')),
+                    if (onDelete != null) PopupMenuItem(value: onDelete, child: const Text('Apagar')),
+                  ],
+                ),
             ],
           ),
         ),

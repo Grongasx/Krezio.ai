@@ -7,8 +7,10 @@ import '../../../backend/repositories/financial_repository.dart';
 /// up to date after every change in the data.
 class HomeWidgetSync {
   static const _provider = 'com.krezio.ai.KrezioWidgetProvider';
+  static Future<void> _writes = Future.value();
 
   final FinancialRepository repository;
+  bool _active = false;
   HomeWidgetSync(this.repository);
 
   static bool get supported => !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
@@ -24,21 +26,37 @@ class HomeWidgetSync {
   }
 
   void start() {
-    if (!supported) return;
+    if (!supported || _active) return;
+    _active = true;
     repository.addListener(_push);
     _push();
   }
 
-  void stop() => repository.removeListener(_push);
+  void stop() {
+    _active = false;
+    repository.removeListener(_push);
+  }
 
-  Future<void> _push() async {
-    final v = values(repository);
-    try {
-      await HomeWidget.saveWidgetData<String>('month_balance', v.balance);
-      await HomeWidget.saveWidgetData<String>('month_detail', v.detail);
-      await HomeWidget.updateWidget(qualifiedAndroidName: _provider);
-    } catch (e) {
-      debugPrint('[HomeWidgetSync] $e');
-    }
+  static Future<void> clear() {
+    if (!supported) return Future.value();
+    return _enqueue(() => _update('—', 'Abra o app para ver seus dados'));
+  }
+
+  void _push() => _enqueue(() async {
+        if (!_active) return;
+        final v = values(repository);
+        await _update(v.balance, v.detail);
+      });
+
+  static Future<void> _enqueue(Future<void> Function() write) {
+    return _writes = _writes.then((_) => write()).catchError((Object error) {
+      debugPrint('[HomeWidgetSync] $error');
+    });
+  }
+
+  static Future<void> _update(String balance, String detail) async {
+    await HomeWidget.saveWidgetData<String>('month_balance', balance);
+    await HomeWidget.saveWidgetData<String>('month_detail', detail);
+    await HomeWidget.updateWidget(qualifiedAndroidName: _provider);
   }
 }

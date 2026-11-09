@@ -4,6 +4,7 @@ import '../../../../widgets/krezio_components.dart';
 import '../../../../../ai/cesar_text.dart';
 import '../../../../../backend/models/financial_reminder.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
+import '../../../../../backend/services/money.dart';
 
 /// Open bills and people who owe the user, ordered by due date; overdue ones
 /// in red. Tapping one registers the payment.
@@ -133,7 +134,7 @@ class OpenItemsScreen extends StatelessWidget {
   }
 
   Future<void> _receiveDebt(BuildContext context, FinancialReminder r) async {
-    final controller = TextEditingController(text: r.amount?.toStringAsFixed(2).replaceAll('.', ','));
+    final controller = TextEditingController(text: r.amount == null ? '' : Money.decimal(r.amount!));
     final value = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(

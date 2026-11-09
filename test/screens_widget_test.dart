@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/local_nlp_engine.dart';
+import 'package:krezio_ai/backend/config/app_environment.dart';
 import 'package:krezio_ai/backend/models/financial_transaction.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:krezio_ai/backend/services/auth_service.dart';
@@ -37,6 +38,30 @@ Future<void> phone(WidgetTester tester) async {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  testWidgets('sugestão de gasto preenche o campo sem registrar em produção', (tester) async {
+    await phone(tester);
+    final initial = EnvironmentConfig.current;
+    addTearDown(() => EnvironmentConfig.setEnvironment(initial));
+    EnvironmentConfig.setEnvironment(AppEnvironment.production);
+    final engine = LocalFinancialNlpEngine.fromJsonString(
+      File('models/on_device/krezio_nlp_model.json').readAsStringSync(),
+    );
+    final repo = repoWith([]);
+    await tester.pumpWidget(app(ChatScreen(
+      engine: engine,
+      repository: repo,
+      onToggleTheme: () {},
+      isDarkMode: true,
+    )));
+    await tester.tap(find.text('Registrar gasto'));
+    await tester.pump();
+    expect(find.text('Gastei 45,90 no mercado no Pix'), findsOneWidget);
+    expect(repo.transactions, isEmpty);
+    expect(find.text('NEURAL'), findsNothing);
+    expect(find.text('Latência Local'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('login: cadastro só envia com senhas iguais e termos aceitos', (tester) async {
     await phone(tester);

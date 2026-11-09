@@ -1,5 +1,7 @@
+import 'dart:ui' show FontFeature;
 import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
+import '../../../../../backend/services/money.dart';
 
 class MetricSummaryCard extends StatelessWidget {
   final String title;
@@ -8,6 +10,7 @@ class MetricSummaryCard extends StatelessWidget {
   final Color iconColor;
   final bool isDark;
   final bool isLarge;
+  final bool hideAmount;
 
   const MetricSummaryCard({
     super.key,
@@ -17,13 +20,14 @@ class MetricSummaryCard extends StatelessWidget {
     required this.iconColor,
     required this.isDark,
     this.isLarge = false,
+    this.hideAmount = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final bgSurface = isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
     final borderColor = isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder;
-    final amountStr = 'R\$ ${amount.toStringAsFixed(2).replaceAll('.', ',')}';
+    final amountStr = hideAmount ? '••••' : Money.brl(amount);
 
     return Container(
       padding: EdgeInsets.all(isLarge ? KrezioSpace.xl : KrezioSpace.lg),
@@ -47,14 +51,15 @@ class MetricSummaryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              Expanded(child: Text(
                 title,
                 style: TextStyle(
                   fontSize: isLarge ? 13 : 11,
                   fontWeight: FontWeight.w500,
                   color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                 ),
-              ),
+              )),
+              const SizedBox(width: KrezioSpace.xs),
               Container(
                 padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(
@@ -66,15 +71,17 @@ class MetricSummaryCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: isLarge ? 12 : 6),
-          Text(
+          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(
             amountStr,
+            semanticsLabel: hideAmount ? 'Valor oculto' : null,
             style: TextStyle(
-              fontSize: isLarge ? 24 : 16,
+              fontSize: isLarge ? 34 : 16,
+              fontFeatures: const [FontFeature.tabularFigures()],
               fontWeight: FontWeight.bold,
               color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
               letterSpacing: -0.5,
             ),
-          ),
+          )),
         ],
       ),
     );

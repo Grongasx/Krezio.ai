@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../../../../theme/krezio_theme.dart';
 import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/models/financial_transaction.dart';
+import '../../../../../backend/services/money.dart';
 
 class CategoryDonutChart extends StatelessWidget {
   final Map<String, double> categoryData;
   final bool isDark;
+  final String totalLabel;
 
   /// Display names for categories the built-in [FinancialTransaction.categoryLabel]
   /// switch doesn't know about — i.e. the user's custom categories. Keyed by
@@ -18,6 +20,7 @@ class CategoryDonutChart extends StatelessWidget {
     required this.categoryData,
     required this.isDark,
     this.categoryNames = const {},
+    this.totalLabel = 'Total',
   });
 
   @override
@@ -54,7 +57,7 @@ class CategoryDonutChart extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    'Total',
+                    totalLabel,
                     style: TextStyle(
                       fontSize: KrezioFont.caption,
                       fontWeight: FontWeight.w500,
@@ -62,24 +65,21 @@ class CategoryDonutChart extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: KrezioSpace.hair),
-                  Text(
-                    'R\$ ${total >= 1000 ? '${(total / 1000).toStringAsFixed(1)}k' : total.toStringAsFixed(0)}',
+                  SizedBox(width: 104, child: FittedBox(fit: BoxFit.scaleDown, child: Text(
+                    Money.brl(total),
                     style: TextStyle(
                       fontSize: KrezioFont.bodyLarge,
                       fontWeight: FontWeight.bold,
                       color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
                     ),
-                  ),
+                  ))),
                 ],
               ),
             ),
           ),
         ),
         const SizedBox(height: KrezioSpace.lg),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          alignment: WrapAlignment.center,
+        Column(
           children: sortedEntries.take(4).map((e) {
             final percentage = (e.value / total * 100).toStringAsFixed(0);
             final dummyTx = FinancialTransaction(
@@ -91,8 +91,7 @@ class CategoryDonutChart extends StatelessWidget {
               paymentMethod: '',
               date: DateTime.now(),
             );
-            return Row(
-              mainAxisSize: MainAxisSize.min,
+            return Padding(padding: const EdgeInsets.only(bottom: KrezioSpace.xs), child: Row(
               children: [
                 Container(
                   width: 8,
@@ -103,16 +102,17 @@ class CategoryDonutChart extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: KrezioSpace.xs),
-                Text(
-                  '${categoryNames[e.key] ?? dummyTx.categoryLabel} ($percentage%)',
+                Expanded(child: Text(
+                  categoryNames[e.key] ?? dummyTx.categoryLabel,
                   style: TextStyle(
                     fontSize: KrezioFont.caption,
                     color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
                     fontWeight: FontWeight.w500,
                   ),
-                ),
+                )),
+                Text('$percentage%'),
               ],
-            );
+            ));
           }).toList(),
         ),
       ],
