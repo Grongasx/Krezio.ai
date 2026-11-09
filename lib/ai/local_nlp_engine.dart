@@ -12,6 +12,7 @@ import 'temporal_date_parser.dart';
 import 'entry_certainty.dart';
 import 'entry_safety_gate.dart';
 import 'pending_reply_check.dart';
+import '../backend/services/money.dart';
 
 /// Prediction result with class label and confidence score.
 class PredictionResult {
@@ -37,7 +38,7 @@ class QuantityPricing {
     required this.matchedText,
   });
 
-  static String _brl(double v) => 'R\$ ${v.toStringAsFixed(2).replaceAll('.', ',')}';
+  static String _brl(double v) => '${Money.brl(v)}';
 
   /// "🧮 3 × R$ 20,00 = R$ 60,00"
   String get breakdown => '🧮 $quantity × ${_brl(unitPrice)} = ${_brl(total)}';
@@ -3994,7 +3995,7 @@ class LocalFinancialNlpEngine {
     }
 
     final hasAmount = amount != null && amount > 0;
-    final amountStr = hasAmount ? 'R\$ ${amount.toStringAsFixed(2).replaceAll('.', ',')}' : null;
+    final amountStr = hasAmount ? '${Money.brl(amount)}' : null;
     final hasCategory = category != 'unknown' && category != 'expense_other';
     final hasPayment = paymentMethod != 'unknown';
 

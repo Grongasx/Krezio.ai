@@ -1,4 +1,5 @@
 import '../models/financial_transaction.dart';
+import 'money.dart';
 
 /// One deductible expense or income source line of the report.
 class TaxLine {
@@ -47,7 +48,7 @@ class TaxReport {
   double get educationTotal => education.fold(0.0, (a, t) => a + t.amount);
   double get incomeTotal => incomeBySource.fold(0.0, (a, l) => a + l.total);
 
-  static String _money(double v) => v.toStringAsFixed(2).replaceAll('.', ',');
+  static String _money(double v) => Money.decimal(v);
   static String _date(DateTime d) => '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
   static String _cell(String v) => v.contains(';') || v.contains('"') ? '"${v.replaceAll('"', '""')}"' : v;
 

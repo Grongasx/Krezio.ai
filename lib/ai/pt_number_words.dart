@@ -1,4 +1,5 @@
 import 'category_name_matcher.dart';
+import '../backend/services/money.dart';
 
 /// Converts Brazilian-Portuguese spoken numbers into digits, so the amount
 /// extractor only ever has to deal with "52,90" instead of "cinquenta e dois
@@ -89,7 +90,7 @@ class PtNumberWords {
 
   static String _format(double v) {
     if ((v - v.roundToDouble()).abs() < 1e-9) return v.round().toString();
-    return v.toStringAsFixed(2).replaceAll('.', ',');
+    return Money.decimal(v);
   }
 
   static List<_Token> _tokenize(String text) {

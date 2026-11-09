@@ -810,7 +810,7 @@ class CesarAdvisor {
     final balance = repository.totalBalance;
     final after = balance - amount;
     // A negative balance as a bank shows it: "R$ -200,30".
-    final shown = after < 0 ? 'R\$ -${CesarText.money(-after).substring(3)}' : CesarText.money(after);
+    final shown = CesarText.money(after);
     final spoken = 'Se pagar $term (${CesarText.money(amount)}), seu saldo vai de ${CesarText.money(balance)} para $shown.'
         '${after < 0 ? ' Ficaria ${CesarText.money(-after)} no vermelho.' : ''}';
     final monthNet = _monthIncome - _monthExpense - amount;

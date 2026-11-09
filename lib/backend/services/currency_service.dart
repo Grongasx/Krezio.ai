@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'money.dart';
 
 import 'package:http/http.dart' as http;
 
@@ -18,7 +19,7 @@ class Currencies {
 
   /// "US$ 20,00".
   static String format(String currency, double value) =>
-      '${symbols[currency] ?? currency} ${value.toStringAsFixed(2).replaceAll('.', ',')}';
+      currency == base ? Money.brl(value) : '${symbols[currency] ?? currency} ${Money.decimal(value)}';
 
   /// Value in reais of [amount] in a currency at [rate] (reais per unit),
   /// rounded to cents.
