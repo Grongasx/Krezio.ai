@@ -255,4 +255,36 @@ void main() {
     expect(unlocked, isTrue);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('dar Enter no teclado envia o formulário de novo lançamento', (tester) async {
+    await phone(tester);
+    FinancialTransaction? saved;
+    await tester.pumpWidget(app(Scaffold(
+      body: Builder(
+        builder: (ctx) => ElevatedButton(
+          onPressed: () => showModalBottomSheet(
+            context: ctx,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => AddTransactionModal(
+              isDark: true,
+              onAdd: (tx) => saved = tx,
+            ),
+          ),
+          child: const Text('Abrir modal'),
+        ),
+      ),
+    )));
+    await tester.tap(find.text('Abrir modal'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.widgetWithText(TextField, 'Descrição / Estabelecimento'), 'Café expresso');
+    await tester.enterText(find.widgetWithText(TextField, 'Valor (R\$)'), '12');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(saved, isNotNull);
+    expect(saved!.title, 'Café expresso');
+    expect(saved!.amount, 12.0);
+  });
 }

@@ -180,8 +180,20 @@ class FinancialTransaction {
   /// A transfer between own accounts: moves money, the total stays the same.
   bool get isInternalTransfer => type == TransactionType.transfer && toAccountId != null;
 
-  /// "5º dia útil" or "Dia 12".
-  String get dueLabel => dueBusinessDay != null ? '$dueBusinessDayº dia útil' : 'Dia ${dueDay ?? date.day}';
+  /// "5º dia útil", "Dia 12", or rich recurrence schedule ("Toda Segunda-feira", "Quinzenal (dias 1 e 15)", etc.).
+  String get dueLabel {
+    if (dueBusinessDay != null) return '$dueBusinessDayº dia útil';
+    if (recurrenceDuration != null && recurrenceDuration!.isNotEmpty) {
+      final d = recurrenceDuration!;
+      if (d.startsWith('Toda ') ||
+          d.startsWith('Todo ') ||
+          d.startsWith('Semanal') ||
+          d.startsWith('Quinzenal')) {
+        return d;
+      }
+    }
+    return 'Dia ${dueDay ?? date.day}';
+  }
 
   IconData get categoryIcon {
     if (type == TransactionType.transfer) return Icons.swap_horiz;

@@ -29,34 +29,64 @@ class OpenItemsScreen extends StatelessWidget {
       initialIndex: showDebtsFirst ? 1 : 0,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Contas e devedores'),
-          bottom: const TabBar(tabs: [Tab(text: 'Contas em aberto'), Tab(text: 'Quem me deve')]),
+          title: const Text('Lembretes e Contas a Receber'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Contas em aberto'),
+              Tab(text: 'Quem me deve'),
+            ],
+          ),
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _showAddReminderDialog(context),
+          backgroundColor: KrezioColors.aiPurple,
+          icon: const Icon(Icons.add_alert_outlined, color: Colors.white),
+          label: const Text('Novo lembrete', style: TextStyle(color: Colors.white)),
         ),
         body: AnimatedBuilder(
           animation: repository,
           builder: (context, _) {
-            final debtors = repository.getActiveDebtors()..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+            final allPayables = repository.reminders
+                .where((r) =>
+                    r.type == ReminderType.billPayment ||
+                    r.type == ReminderType.general)
+                .toList()
+              ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+
+            final allReceivables = repository.reminders
+                .where((r) =>
+                    r.type == ReminderType.loanReceivable ||
+                    r.type == ReminderType.dividend)
+                .toList()
+              ..sort((a, b) => a.targetDate.compareTo(b.targetDate));
+
             return TabBarView(
               children: [
                 _list(
                   context,
-                  repository.openBills,
+                  allPayables,
+                  isReceivableTab: false,
                   empty: const KrezioEmptyState(
                     icon: Icons.receipt_long_outlined,
                     title: 'Nenhuma conta em aberto',
                     message: 'Diga ao César: "me lembra da luz de 180 dia 10"',
                   ),
-                  onTap: (r) => _payBill(context, r),
+                  onTap: (r) => r.isCompleted
+                      ? repository.toggleReminderCompleted(r.id)
+                      : _payBill(context, r),
                 ),
                 _list(
                   context,
-                  debtors,
+                  allReceivables,
+                  isReceivableTab: true,
                   empty: const KrezioEmptyState(
                     icon: Icons.handshake_outlined,
                     title: 'Ninguém te deve',
                     message: 'Diga ao César: "emprestei 100 pro João, ele paga dia 30"',
                   ),
-                  onTap: (r) => _receiveDebt(context, r),
+                  onTap: (r) => r.isCompleted
+                      ? repository.toggleReminderCompleted(r.id)
+                      : _receiveDebt(context, r),
                 ),
               ],
             );
@@ -66,21 +96,55 @@ class OpenItemsScreen extends StatelessWidget {
     );
   }
 
-  Widget _list(BuildContext context, List<FinancialReminder> items,
-      {required Widget empty, required void Function(FinancialReminder) onTap}) {
+  Widget _list(
+    BuildContext context,
+    List<FinancialReminder> items, {
+    required bool isReceivableTab,
+    required Widget empty,
+    required void Function(FinancialReminder) onTap,
+  }) {
     if (items.isEmpty) return empty;
     final now = DateTime.now();
     final secondary = isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
-    final total = items.fold<double>(0, (s, r) => s + (r.amount ?? 0));
+    final openItems = [
+      ...items.where((r) => !r.isCompleted && r.id == focusId),
+      ...items.where((r) => !r.isCompleted && r.id != focusId),
+    ];
+    final completedItems = items.where((r) => r.isCompleted).toList();
+    final totalOpen = openItems.fold<double>(0, (s, r) => s + (r.amount ?? 0));
+    final prefix = isReceivableTab ? '+ ' : '- ';
+    final totalColor = isReceivableTab ? KrezioColors.emeraldGreen : KrezioColors.budgetOver;
+
     return ListView(
-      padding: const EdgeInsets.all(KrezioSpace.lg),
+      padding: const EdgeInsets.fromLTRB(KrezioSpace.lg, KrezioSpace.lg, KrezioSpace.lg, 96),
       children: [
-        Text('${items.length} em aberto • ${CesarText.money(total)}', style: TextStyle(fontSize: KrezioFont.small, color: secondary)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              '${openItems.length} em aberto',
+              style: TextStyle(fontSize: KrezioFont.small, color: secondary),
+            ),
+            Text(
+              '$prefix${CesarText.money(totalOpen)}',
+              style: TextStyle(
+                fontSize: KrezioFont.bodySmall,
+                fontWeight: FontWeight.bold,
+                color: totalColor,
+              ),
+            ),
+          ],
+        ),
         const SizedBox(height: KrezioSpace.sm),
-        for (final r in [
-          ...items.where((r) => r.id == focusId),
-          ...items.where((r) => r.id != focusId),
-        ])
+        if (openItems.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: KrezioSpace.md),
+            child: Text(
+              'Todos os itens desta aba estão concluídos.',
+              style: TextStyle(fontSize: KrezioFont.small, color: secondary),
+            ),
+          ),
+        for (final r in openItems)
           Padding(
             padding: const EdgeInsets.only(bottom: KrezioSpace.sm),
             child: KrezioCard(
@@ -89,38 +153,200 @@ class OpenItemsScreen extends StatelessWidget {
               child: _row(r, now, secondary),
             ),
           ),
+        if (completedItems.isNotEmpty) ...[
+          const SizedBox(height: KrezioSpace.md),
+          Text(
+            'Concluídos (${completedItems.length})',
+            style: TextStyle(
+              fontSize: KrezioFont.small,
+              fontWeight: FontWeight.bold,
+              color: secondary,
+            ),
+          ),
+          const SizedBox(height: KrezioSpace.sm),
+          for (final r in completedItems)
+            Padding(
+              padding: const EdgeInsets.only(bottom: KrezioSpace.sm),
+              child: KrezioCard(
+                onTap: () => repository.toggleReminderCompleted(r.id),
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
+                child: _row(r, now, secondary),
+              ),
+            ),
+        ],
       ],
     );
   }
 
   Widget _row(FinancialReminder r, DateTime now, Color secondary) {
-    final overdue = FinancialRepository.isOverdue(r, now);
+    final overdue = !r.isCompleted && FinancialRepository.isOverdue(r, now);
     final days = DateTime(r.targetDate.year, r.targetDate.month, r.targetDate.day)
         .difference(DateTime(now.year, now.month, now.day))
         .inDays;
-    final when = overdue
-        ? 'Atrasada há ${-days} ${days == -1 ? 'dia' : 'dias'}'
-        : days == 0
-            ? 'Vence hoje'
-            : days == 1
-                ? 'Vence amanhã'
-                : 'Vence em ${CesarText.ddmm(r.targetDate)}';
-    final color = overdue ? KrezioColors.budgetOver : (days <= 1 ? KrezioColors.budgetWarning : secondary);
+    final when = r.isCompleted
+        ? 'Concluído (${CesarText.ddmm(r.targetDate)})'
+        : overdue
+            ? 'Atrasada há ${-days} ${days == -1 ? 'dia' : 'dias'}'
+            : days == 0
+                ? 'Vence hoje'
+                : days == 1
+                    ? 'Vence amanhã'
+                    : 'Vence em ${CesarText.ddmm(r.targetDate)}';
+    final statusColor = r.isCompleted
+        ? secondary
+        : overdue
+            ? KrezioColors.budgetOver
+            : (days <= 1 ? KrezioColors.budgetWarning : secondary);
     return Row(
       children: [
-        Icon(r.icon, color: overdue ? KrezioColors.budgetOver : r.color, size: 20),
+        InkWell(
+          onTap: () => repository.toggleReminderCompleted(r.id),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(4.0),
+            child: Icon(
+              r.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: r.isCompleted ? KrezioColors.emeraldGreen : r.amountColor,
+              size: 22,
+            ),
+          ),
+        ),
+        const SizedBox(width: KrezioSpace.sm),
+        Icon(r.icon, color: r.isCompleted ? secondary : r.amountColor, size: 20),
         const SizedBox(width: KrezioSpace.md),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(r.personName ?? r.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(when, style: TextStyle(fontSize: KrezioFont.small, color: color, fontWeight: overdue ? FontWeight.bold : null)),
+              Text(
+                r.personName ?? r.title,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  decoration: r.isCompleted ? TextDecoration.lineThrough : null,
+                  color: r.isCompleted ? secondary : null,
+                ),
+              ),
+              Text(
+                when,
+                style: TextStyle(
+                  fontSize: KrezioFont.small,
+                  color: statusColor,
+                  fontWeight: overdue ? FontWeight.bold : null,
+                ),
+              ),
             ],
           ),
         ),
-        if (r.amount != null) Text(CesarText.money(r.amount!), style: const TextStyle(fontWeight: FontWeight.bold)),
+        if (r.amount != null)
+          Text(
+            '${r.amountPrefix}${CesarText.money(r.amount!)}',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: r.isCompleted ? secondary : r.amountColor,
+              decoration: r.isCompleted ? TextDecoration.lineThrough : null,
+            ),
+          ),
       ],
+    );
+  }
+
+  Future<void> _showAddReminderDialog(BuildContext context) async {
+    final titleCtrl = TextEditingController();
+    final amountCtrl = TextEditingController();
+    var isReceivable = showDebtsFirst;
+    var targetDate = DateTime.now().add(const Duration(days: 7));
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        void submit() {
+          final title = titleCtrl.text.trim();
+          if (title.isEmpty) return;
+          final amount = KrezioMoneyField.parse(amountCtrl.text);
+          repository.addReminder(
+            FinancialReminder(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              title: title,
+              personName: isReceivable ? title : null,
+              amount: amount,
+              targetDate: targetDate,
+              type: isReceivable ? ReminderType.loanReceivable : ReminderType.billPayment,
+            ),
+          );
+          Navigator.pop(ctx);
+        }
+
+        return StatefulBuilder(
+          builder: (ctx, setModalState) => AlertDialog(
+            title: const Text('Novo Lembrete'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('A Pagar (-)'),
+                          selected: !isReceivable,
+                          selectedColor: KrezioColors.budgetOver.withOpacity(0.2),
+                          onSelected: (_) => setModalState(() => isReceivable = false),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ChoiceChip(
+                          label: const Text('A Receber (+)'),
+                          selected: isReceivable,
+                          selectedColor: KrezioColors.emeraldGreen.withOpacity(0.2),
+                          onSelected: (_) => setModalState(() => isReceivable = true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: titleCtrl,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => submit(),
+                    decoration: InputDecoration(
+                      labelText: isReceivable ? 'Quem vai te pagar / Descrição' : 'Descrição da conta',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  KrezioMoneyField(
+                    controller: amountCtrl,
+                    label: 'Valor (R\$)',
+                    onSubmitted: (_) => submit(),
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.calendar_today_outlined),
+                    title: Text('Data: ${CesarText.ddmm(targetDate)}/${targetDate.year}'),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: targetDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) setModalState(() => targetDate = picked);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: submit,
+                child: const Text('Salvar'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -151,7 +377,12 @@ class OpenItemsScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Quanto ${r.personName ?? r.title} pagou?'),
-        content: KrezioMoneyField(controller: controller, label: 'Valor recebido', autofocus: true),
+        content: KrezioMoneyField(
+          controller: controller,
+          label: 'Valor recebido',
+          autofocus: true,
+          onSubmitted: (_) => Navigator.pop(ctx, KrezioMoneyField.parse(controller.text)),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
           FilledButton(

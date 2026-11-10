@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../widgets/krezio_components.dart';
 import '../../../legal/legal_documents.dart';
 import '../../../../theme/krezio_theme.dart';
@@ -60,6 +61,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _passwordRule(_passwordController.text) == null &&
       (!_isSignUp ||
           (AuthValidators.confirmPassword(_confirmController.text, _passwordController.text) == null && _acceptedTerms));
+
+  void _handleEnterSubmit() {
+    if (_isLoading) return;
+    if (_canSubmit) {
+      _submit();
+    } else {
+      _formKey.currentState?.validate();
+    }
+  }
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
@@ -130,86 +140,113 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.all(KrezioSpace.xxl),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 400),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (widget.onExportLegacy != null)
-                      TextButton(
-                        onPressed: () async {
-                          try {
-                            await widget.onExportLegacy!();
-                          } catch (_) {
-                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Não foi possível exportar os dados antigos.')),
-                            );
-                          }
-                        },
-                        child: const Text('Exportar dados antigos deste aparelho'),
+              child: CallbackShortcuts(
+                bindings: {
+                  const SingleActivator(LogicalKeyboardKey.enter): _handleEnterSubmit,
+                  const SingleActivator(LogicalKeyboardKey.numpadEnter): _handleEnterSubmit,
+                },
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (widget.onExportLegacy != null)
+                        TextButton(
+                          onPressed: () async {
+                            try {
+                              await widget.onExportLegacy!();
+                            } catch (_) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Não foi possível exportar os dados antigos.')),
+                                );
+                              }
+                            }
+                          },
+                          child: const Text('Exportar dados antigos deste aparelho'),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.all(KrezioSpace.lg),
+                        decoration: BoxDecoration(
+                          color: KrezioColors.aiPurple.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 36),
                       ),
-                    Container(
-                      padding: const EdgeInsets.all(KrezioSpace.lg),
-                      decoration: BoxDecoration(
-                        color: KrezioColors.aiPurple.withOpacity(0.15),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 36),
-                    ),
-                    const SizedBox(height: KrezioSpace.lg),
-                    Center(
-                      child: Text(
-                        'Krezio.ai',
-                        style: TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold, color: primaryText),
-                      ),
-                    ),
-                    const SizedBox(height: KrezioSpace.xs),
-                    Center(
-                      child: Text(
-                        _isSignUp ? 'Crie sua conta para sincronizar seus dados' : 'Entre para continuar',
-                        style: TextStyle(fontSize: KrezioFont.bodySmall, color: secondaryText),
-                      ),
-                    ),
-                    const SizedBox(height: KrezioSpace.xxxl),
-                    if (_isSignUp) ...[
-                      TextFormField(
-                        controller: _nameController,
-                        style: TextStyle(color: primaryText),
-                        decoration: _inputDecoration('Nome', Icons.person_outline, surfaceColor, borderColor, secondaryText),
-                      ),
-                      const SizedBox(height: KrezioSpace.md),
-                    ],
-                    TextFormField(
-                      controller: _emailController,
-                      style: TextStyle(color: primaryText),
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: _inputDecoration('E-mail', Icons.email_outlined, surfaceColor, borderColor, secondaryText),
-                      validator: AuthValidators.email,
-                    ),
-                    const SizedBox(height: KrezioSpace.md),
-                    TextFormField(
-                      controller: _passwordController,
-                      style: TextStyle(color: primaryText),
-                      obscureText: !_showPassword,
-                      decoration: _inputDecoration('Senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText).copyWith(
-                        helperText: _isSignUp ? 'Pelo menos 8 caracteres, com letras e números' : null,
-                        suffixIcon: IconButton(
-                          tooltip: _showPassword ? 'Ocultar senha' : 'Mostrar senha',
-                          icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: secondaryText),
-                          onPressed: () => setState(() => _showPassword = !_showPassword),
+                      const SizedBox(height: KrezioSpace.lg),
+                      Center(
+                        child: Text(
+                          'Krezio.ai',
+                          style: TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold, color: primaryText),
                         ),
                       ),
-                      validator: _passwordRule,
-                    ),
-                    if (_isSignUp) ...[
+                      const SizedBox(height: KrezioSpace.xs),
+                      Center(
+                        child: Text(
+                          _isSignUp ? 'Crie sua conta para sincronizar seus dados' : 'Entre para continuar',
+                          style: TextStyle(fontSize: KrezioFont.bodySmall, color: secondaryText),
+                        ),
+                      ),
+                      const SizedBox(height: KrezioSpace.xxxl),
+                      if (_isSignUp) ...[
+                        TextFormField(
+                          controller: _nameController,
+                          style: TextStyle(color: primaryText),
+                          textInputAction: TextInputAction.next,
+                          onFieldSubmitted: (_) => FocusScope.of(context).nextFocus(),
+                          decoration: _inputDecoration('Nome', Icons.person_outline, surfaceColor, borderColor, secondaryText),
+                        ),
+                        const SizedBox(height: KrezioSpace.md),
+                      ],
+                      TextFormField(
+                        controller: _emailController,
+                        style: TextStyle(color: primaryText),
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        onFieldSubmitted: (_) {
+                          if (!_isSignUp && _canSubmit) {
+                            _handleEnterSubmit();
+                          } else {
+                            FocusScope.of(context).nextFocus();
+                          }
+                        },
+                        decoration: _inputDecoration('E-mail', Icons.email_outlined, surfaceColor, borderColor, secondaryText),
+                        validator: AuthValidators.email,
+                      ),
                       const SizedBox(height: KrezioSpace.md),
                       TextFormField(
-                        controller: _confirmController,
+                        controller: _passwordController,
                         style: TextStyle(color: primaryText),
                         obscureText: !_showPassword,
-                        decoration: _inputDecoration('Repita a senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText),
-                        validator: (v) => AuthValidators.confirmPassword(v, _passwordController.text),
+                        textInputAction: _isSignUp ? TextInputAction.next : TextInputAction.done,
+                        onFieldSubmitted: (_) {
+                          if (_isSignUp && !_canSubmit) {
+                            FocusScope.of(context).nextFocus();
+                          } else {
+                            _handleEnterSubmit();
+                          }
+                        },
+                        decoration: _inputDecoration('Senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText).copyWith(
+                          helperText: _isSignUp ? 'Pelo menos 8 caracteres, com letras e números' : null,
+                          suffixIcon: IconButton(
+                            tooltip: _showPassword ? 'Ocultar senha' : 'Mostrar senha',
+                            icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, color: secondaryText),
+                            onPressed: () => setState(() => _showPassword = !_showPassword),
+                          ),
+                        ),
+                        validator: _passwordRule,
                       ),
+                      if (_isSignUp) ...[
+                        const SizedBox(height: KrezioSpace.md),
+                        TextFormField(
+                          controller: _confirmController,
+                          style: TextStyle(color: primaryText),
+                          obscureText: !_showPassword,
+                          textInputAction: TextInputAction.done,
+                          onFieldSubmitted: (_) => _handleEnterSubmit(),
+                          decoration: _inputDecoration('Repita a senha', Icons.lock_outline, surfaceColor, borderColor, secondaryText),
+                          validator: (v) => AuthValidators.confirmPassword(v, _passwordController.text),
+                        ),
                       const SizedBox(height: KrezioSpace.sm),
                       // Accepting the terms is required to create an account.
                       CheckboxListTile(
@@ -274,8 +311,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   InputDecoration _inputDecoration(String label, IconData icon, Color fill, Color border, Color labelColor) {
     return InputDecoration(

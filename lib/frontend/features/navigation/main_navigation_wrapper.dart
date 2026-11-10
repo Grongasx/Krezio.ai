@@ -4,6 +4,7 @@ import '../../navigation/krezio_routes.dart';
 import '../../theme/krezio_theme.dart';
 import '../../../backend/repositories/financial_repository.dart';
 import '../../../backend/services/auth_service.dart';
+import '../../../backend/services/notification_service.dart';
 import '../../../ai/local_nlp_engine.dart';
 import '../dashboard/presentation/screens/dashboard_screen.dart';
 import '../transactions/presentation/screens/transactions_screen.dart';
@@ -56,6 +57,10 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   void initState() {
     super.initState();
     KrezioRoutes.pendingLink.addListener(_onLink);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      NotificationService(widget.repository).dispatchIfDue(context);
+    });
   }
 
   @override
@@ -167,28 +172,64 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
             backgroundColor: bgNav,
             elevation: 0,
             indicatorColor: KrezioColors.aiPurple.withValues(alpha: widget.isDark ? 0.24 : 0.13),
-            destinations: const [
-              NavigationDestination(
+            destinations: [
+              const NavigationDestination(
                 icon: Icon(Icons.dashboard_outlined),
                 selectedIcon: Icon(Icons.dashboard, color: KrezioColors.aiPurple),
                 label: 'Início',
               ),
-              NavigationDestination(
+              const NavigationDestination(
                 icon: Icon(Icons.receipt_long_outlined),
                 selectedIcon: Icon(Icons.receipt_long, color: KrezioColors.aiPurple),
                 label: 'Extrato',
               ),
               NavigationDestination(
-                icon: Icon(Icons.auto_awesome_outlined),
-                selectedIcon: Icon(Icons.auto_awesome, color: KrezioColors.aiPurple),
-                label: 'IA Chat',
+                icon: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [KrezioColors.aiPurple, Color(0xFF6366F1)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: KrezioColors.aiPurple.withValues(alpha: 0.45),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.auto_awesome, color: Colors.white, size: 22),
+                ),
+                selectedIcon: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [KrezioColors.emeraldGreen, KrezioColors.aiPurple],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: KrezioColors.aiPurple.withValues(alpha: 0.6),
+                        blurRadius: 14,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.auto_awesome, color: Colors.white, size: 24),
+                ),
+                label: 'César IA',
               ),
-              NavigationDestination(
-                icon: Icon(Icons.pie_chart_outline),
-                selectedIcon: Icon(Icons.pie_chart, color: KrezioColors.aiPurple),
-                label: 'Metas',
+              const NavigationDestination(
+                icon: Icon(Icons.savings_outlined),
+                selectedIcon: Icon(Icons.savings, color: KrezioColors.aiPurple),
+                label: 'Cofrinhos',
               ),
-              NavigationDestination(
+              const NavigationDestination(
                 icon: Icon(Icons.settings_outlined),
                 selectedIcon: Icon(Icons.settings, color: KrezioColors.aiPurple),
                 label: 'Ajustes',

@@ -9,13 +9,13 @@ enum AppEnvironment {
 /// Singleton configuration controller for environment flags and homologation features.
 class EnvironmentConfig {
   static final ValueNotifier<AppEnvironment> environmentNotifier =
-      ValueNotifier<AppEnvironment>(
-        kDebugMode ? AppEnvironment.homologation : AppEnvironment.production,
-      );
+      ValueNotifier<AppEnvironment>(AppEnvironment.production);
 
   static DateTime? _lastVersionTap;
   static int _versionTaps = 0;
-  static bool get canToggle => kDebugMode || isHomologation;
+  static DateTime? _lastEasterEggTap;
+  static int _easterEggTaps = 0;
+  static bool get canToggle => isHomologation;
 
   static AppEnvironment get current => environmentNotifier.value;
 
@@ -30,6 +30,20 @@ class EnvironmentConfig {
     environmentNotifier.value = isHomologation
         ? AppEnvironment.production
         : AppEnvironment.homologation;
+  }
+
+  /// Five consecutive taps on "Versão do app" trigger the confirmation popup
+  /// to activate Homologation mode.
+  static bool registerEasterEggTap({DateTime? now, int requiredTaps = 5}) {
+    final currentTime = now ?? DateTime.now();
+    final lastTap = _lastEasterEggTap;
+    if (lastTap == null || currentTime.difference(lastTap) > const Duration(seconds: 2)) {
+      _easterEggTaps = 0;
+    }
+    _lastEasterEggTap = currentTime;
+    if (++_easterEggTaps < requiredTaps) return false;
+    _easterEggTaps = 0;
+    return true;
   }
 
   /// Seven consecutive taps unlock the inspector only for this app session.

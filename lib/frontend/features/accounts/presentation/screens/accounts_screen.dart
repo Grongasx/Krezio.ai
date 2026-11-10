@@ -29,13 +29,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Contas e carteiras'),
-        actions: [
-          IconButton(
-            tooltip: 'Transferir entre contas',
-            icon: const Icon(Icons.swap_horiz),
-            onPressed: () => _transfer(context),
-          ),
-        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _create(context),
@@ -129,55 +122,77 @@ class _AccountsScreenState extends State<AccountsScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Nova conta'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                KrezioTextField(controller: name, label: 'Nome', hint: 'Ex.: Nubank, Carteira', errorText: error, autofocus: true),
-                const SizedBox(height: KrezioSpace.md),
-                Wrap(spacing: KrezioSpace.sm, children: [
-                  for (final k in AccountKind.values)
-                    ChoiceChip(
-                      label: Text(FinancialAccount(id: '', name: '', kind: k).kindLabel),
-                      selected: kind == k,
-                      onSelected: (_) => setLocal(() => kind = k),
-                    ),
-                ]),
-                if (kind == AccountKind.creditCard) ...[
-                  const SizedBox(height: KrezioSpace.md),
-                  KrezioTextField(controller: closing, label: 'Dia do fechamento', keyboardType: TextInputType.number),
-                  const SizedBox(height: KrezioSpace.sm),
-                  KrezioTextField(controller: due, label: 'Dia do vencimento', keyboardType: TextInputType.number),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () {
-                int? day(TextEditingController c) {
-                  final v = int.tryParse(c.text.trim());
-                  return v != null && v >= 1 && v <= 31 ? v : null;
-                }
+        builder: (ctx, setLocal) {
+          void submit() {
+            int? day(TextEditingController c) {
+              final v = int.tryParse(c.text.trim());
+              return v != null && v >= 1 && v <= 31 ? v : null;
+            }
 
-                if (kind == AccountKind.creditCard && (day(closing) == null || day(due) == null)) {
-                  setLocal(() => error = 'Informe os dias de fechamento e vencimento (1 a 31).');
-                  return;
-                }
-                final created = repo.addAccount(name.text, kind: kind, closingDay: day(closing), dueDay: day(due));
-                if (created == null) {
-                  setLocal(() => error = name.text.trim().isEmpty ? 'Dê um nome à conta.' : 'Essa conta já existe.');
-                  return;
-                }
-                Navigator.pop(ctx);
-              },
-              child: const Text('Criar'),
+            if (kind == AccountKind.creditCard && (day(closing) == null || day(due) == null)) {
+              setLocal(() => error = 'Informe os dias de fechamento e vencimento (1 a 31).');
+              return;
+            }
+            final created = repo.addAccount(name.text, kind: kind, closingDay: day(closing), dueDay: day(due));
+            if (created == null) {
+              setLocal(() => error = name.text.trim().isEmpty ? 'Dê um nome à conta.' : 'Essa conta já existe.');
+              return;
+            }
+            Navigator.pop(ctx);
+          }
+
+          return AlertDialog(
+            title: const Text('Nova conta'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  KrezioTextField(
+                    controller: name,
+                    label: 'Nome',
+                    hint: 'Ex.: Nubank, Carteira',
+                    errorText: error,
+                    autofocus: true,
+                    onSubmitted: (_) => submit(),
+                  ),
+                  const SizedBox(height: KrezioSpace.md),
+                  Wrap(spacing: KrezioSpace.sm, children: [
+                    for (final k in AccountKind.values)
+                      ChoiceChip(
+                        label: Text(FinancialAccount(id: '', name: '', kind: k).kindLabel),
+                        selected: kind == k,
+                        onSelected: (_) => setLocal(() => kind = k),
+                      ),
+                  ]),
+                  if (kind == AccountKind.creditCard) ...[
+                    const SizedBox(height: KrezioSpace.md),
+                    KrezioTextField(
+                      controller: closing,
+                      label: 'Dia do fechamento',
+                      keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) => submit(),
+                    ),
+                    const SizedBox(height: KrezioSpace.sm),
+                    KrezioTextField(
+                      controller: due,
+                      label: 'Dia do vencimento',
+                      keyboardType: TextInputType.number,
+                      onSubmitted: (_) => submit(),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: submit,
+                child: const Text('Criar'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -188,77 +203,33 @@ class _AccountsScreenState extends State<AccountsScreen> {
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Renomear conta'),
-          content: KrezioTextField(controller: name, label: 'Nome', errorText: error, autofocus: true),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () {
-                if (!repo.renameAccount(a.id, name.text)) {
-                  setLocal(() => error = 'Nome vazio ou já usado.');
-                  return;
-                }
-                Navigator.pop(ctx);
-              },
-              child: const Text('Salvar'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+        builder: (ctx, setLocal) {
+          void submit() {
+            if (!repo.renameAccount(a.id, name.text)) {
+              setLocal(() => error = 'Nome vazio ou já usado.');
+              return;
+            }
+            Navigator.pop(ctx);
+          }
 
-  Future<void> _transfer(BuildContext context) async {
-    final options = repo.activeAccounts.where((a) => !a.isCreditCard).toList();
-    if (options.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Crie mais uma conta para transferir entre elas.')),
-      );
-      return;
-    }
-    var from = options[0].id;
-    var to = options[1].id;
-    final amount = TextEditingController();
-    String? error;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Transferir entre contas'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: from,
-                decoration: const InputDecoration(labelText: 'De'),
-                items: [for (final a in options) DropdownMenuItem(value: a.id, child: Text(a.name))],
-                onChanged: (v) => setLocal(() => from = v ?? from),
-              ),
-              DropdownButtonFormField<String>(
-                value: to,
-                decoration: const InputDecoration(labelText: 'Para'),
-                items: [for (final a in options) DropdownMenuItem(value: a.id, child: Text(a.name))],
-                onChanged: (v) => setLocal(() => to = v ?? to),
-              ),
-              const SizedBox(height: KrezioSpace.sm),
-              KrezioMoneyField(controller: amount, label: 'Valor', errorText: error),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
-            FilledButton(
-              onPressed: () {
-                final v = KrezioMoneyField.parse(amount.text);
-                if (from == to) return setLocal(() => error = 'Escolha duas contas diferentes.');
-                if (v == null) return setLocal(() => error = 'Informe um valor válido.');
-                repo.transferBetweenAccounts(from: from, to: to, amount: v);
-                Navigator.pop(ctx);
-              },
-              child: const Text('Transferir'),
+          return AlertDialog(
+            title: const Text('Renomear conta'),
+            content: KrezioTextField(
+              controller: name,
+              label: 'Nome',
+              errorText: error,
+              autofocus: true,
+              onSubmitted: (_) => submit(),
             ),
-          ],
-        ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: submit,
+                child: const Text('Salvar'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -132,15 +132,60 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _initSpeech();
     _voiceSynthesis.initialize();
+    _voiceController.onUserSpoken = (userPhrase) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(ChatMessage(
+          id: 'voice-user-${DateTime.now().microsecondsSinceEpoch}',
+          sender: MessageSender.user,
+          text: userPhrase,
+          timestamp: DateTime.now(),
+        ));
+      });
+      _scrollToBottom();
+    };
+    _voiceController.onSystemMessage = (text, {spokenText}) {
+      if (!mounted) return;
+      setState(() {
+        _messages.add(ChatMessage(
+          id: 'voice-sys-${DateTime.now().microsecondsSinceEpoch}',
+          sender: MessageSender.assistant,
+          text: text,
+          timestamp: DateTime.now(),
+          spokenText: spokenText,
+        ));
+      });
+      _scrollToBottom();
+    };
     _voiceController.onTransactionCompleted = (completedDraft) {
       if (!mounted) return;
+      final draftKey = _drafts.startDraft();
+      _saveCompletedDraft(completedDraft);
+      _drafts.saved(_lastSavedTransactionIds);
+      final amountStr = completedDraft.amount != null ? Money.brl(completedDraft.amount!) : '';
+      final itemOrPlace = (completedDraft.description.isNotEmpty &&
+              completedDraft.description != 'unknown' &&
+              completedDraft.description != 'expense_other')
+          ? ' com ${completedDraft.description}'
+          : '';
+      final cardText = completedDraft.intent == 'income'
+          ? 'Pronto! Receita de $amountStr$itemOrPlace adicionada ao seu saldo. ✨'
+          : 'Pronto! Lançamento de $amountStr$itemOrPlace registrado por voz. 🎉';
       setState(() {
         _lastCompletedDraft = completedDraft;
         _activeDraft = null;
-        _drafts.dropped();
         _lastLatencyMs = completedDraft.latencyMs;
+        _messages.add(ChatMessage(
+          id: 'voice-tx-${DateTime.now().microsecondsSinceEpoch}',
+          sender: MessageSender.assistant,
+          text: cardText,
+          timestamp: DateTime.now(),
+          draft: completedDraft,
+          draftKey: draftKey,
+          transactionIds: _lastSavedTransactionIds,
+        ));
       });
-      _saveCompletedDraft(completedDraft);
+      _scrollToBottom();
     };
     _voiceController.onAssistantReply = (reply) {
       if (!mounted) return;
@@ -251,8 +296,11 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       _speechEnabled = await _speech.initialize(
         onStatus: (status) {
+          if (_voiceController.isSessionActive) {
+            _voiceController.handleExternalSttStatus(status);
+          }
           if (status == 'done' || status == 'notListening') {
-            if (mounted) {
+            if (mounted && _isListening) {
               setState(() {
                 _isListening = false;
               });
@@ -260,7 +308,10 @@ class _ChatScreenState extends State<ChatScreen> {
           }
         },
         onError: (errorNotification) {
-          if (mounted) {
+          if (_voiceController.isSessionActive) {
+            _voiceController.handleExternalSttError(errorNotification);
+          }
+          if (mounted && _isListening) {
             setState(() {
               _isListening = false;
             });

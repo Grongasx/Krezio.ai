@@ -42,7 +42,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
             backgroundColor: isDark ? KrezioColors.darkBackground : KrezioColors.lightBackground,
             elevation: 0,
             title: Text(
-              'Metas & Orçamentos',
+              'Cofrinhos & Orçamentos',
               style: TextStyle(fontSize: KrezioFont.title, fontWeight: FontWeight.bold, color: primaryTextColor),
             ),
           ),
@@ -79,7 +79,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         child: Row(
           children: [
             Expanded(child: _tabButton('Orçamentos', 0, secondaryTextColor)),
-            Expanded(child: _tabButton('Metas de Economia', 1, secondaryTextColor)),
+            Expanded(child: _tabButton('Cofrinhos', 1, secondaryTextColor)),
           ],
         ),
       ),
@@ -325,7 +325,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   void _removeGoal(BuildContext context, FinancialGoal goal) {
     final undo = repository.deleteGoalWithUndo(goal.id);
     if (undo == null) return;
-    showLedgerUndo(context, repository, ChatAction.restoration((_) => undo(), 'Meta restaurada.'), 'Meta apagada.');
+    showLedgerUndo(context, repository, ChatAction.restoration((_) => undo(), 'Cofrinho restaurado.'), 'Cofrinho apagado.');
   }
 
   void _showEditBudgetDialog(BuildContext context, BudgetCategory b) {
@@ -333,10 +333,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final nameController = TextEditingController(text: b.name);
     showKrezioFormDialog(
       context,
-      title: b.isCustom ? 'Editar Categoria' : 'Ajustar Meta: ${b.name}',
+      title: b.isCustom ? 'Editar Categoria' : 'Ajustar Limite: ${b.name}',
       fields: [
-        // Only custom categories can be renamed — built-in names are
-        // referenced by fixed labels elsewhere (transaction list, reports).
         if (b.isCustom)
           KrezioTextField(
             controller: nameController,
@@ -365,7 +363,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     );
   }
 
-  // ── METAS DE ECONOMIA ──
+  // ── COFRINHOS (METAS COM DESCONTO DO SALDO LÍQUIDO COMO DESPESA) ──
 
   Widget _buildGoalsTab(BuildContext context) {
     final goals = repository.goals;
@@ -374,22 +372,68 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
 
     if (goals.isEmpty) {
       return const KrezioEmptyState(
-        icon: Icons.flag_outlined,
-        title: 'Nenhuma meta ainda',
-        message: 'Toque no + ou diga ao César algo como\n"quero juntar 5000 para uma viagem até dezembro"',
+        icon: Icons.savings_outlined,
+        title: 'Nenhum cofrinho ainda',
+        message: 'Toque no + para criar um Cofrinho.\nO valor guardado sai do seu saldo líquido como despesa para ficar protegido!',
       );
     }
 
     final bgSurface = isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
     final borderColor = isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder;
+    final totalSaved = goals.fold<double>(0.0, (s, g) => s + g.savedAmount);
+    final totalTarget = goals.fold<double>(0.0, (s, g) => s + g.targetAmount);
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.all(KrezioSpace.lg),
-      itemCount: goals.length,
-      itemBuilder: (context, index) {
-        final goal = goals[index];
-        return _buildGoalCard(context, goal, goal.colorFor(index), bgSurface, borderColor, primaryTextColor, secondaryTextColor);
-      },
+      children: [
+        KrezioCard(
+          padding: const EdgeInsets.all(KrezioSpace.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.savings_outlined, color: KrezioColors.emeraldGreen, size: 20),
+                  const SizedBox(width: KrezioSpace.sm),
+                  Text(
+                    'Total Guardado nos Cofrinhos',
+                    style: TextStyle(fontSize: KrezioFont.bodySmall, fontWeight: FontWeight.w600, color: secondaryTextColor),
+                  ),
+                ],
+              ),
+              const SizedBox(height: KrezioSpace.sm),
+              Row(
+                children: [
+                  Text(
+                    Money.brl(totalSaved),
+                    style: TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold, color: primaryTextColor),
+                  ),
+                  Text(
+                    ' / ${Money.brl(totalTarget)}',
+                    style: TextStyle(fontSize: KrezioFont.body, color: secondaryTextColor),
+                  ),
+                ],
+              ),
+              const SizedBox(height: KrezioSpace.xs),
+              Text(
+                'Valores aplicados saem do saldo líquido total como despesa.',
+                style: TextStyle(fontSize: KrezioFont.caption, color: secondaryTextColor),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: KrezioSpace.lg),
+        for (int index = 0; index < goals.length; index++)
+          _buildGoalCard(
+            context,
+            goals[index],
+            goals[index].colorFor(index),
+            bgSurface,
+            borderColor,
+            primaryTextColor,
+            secondaryTextColor,
+          ),
+      ],
     );
   }
 
@@ -418,7 +462,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
               Container(
                 padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(color: color.withOpacity(0.12), shape: BoxShape.circle),
-                child: Icon(goal.isCompleted ? Icons.check_circle : Icons.flag_outlined, color: color, size: 16),
+                child: Icon(goal.isCompleted ? Icons.check_circle : Icons.savings_outlined, color: color, size: 16),
               ),
               const SizedBox(width: KrezioSpace.md),
               Expanded(
@@ -427,10 +471,17 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                   style: TextStyle(fontSize: KrezioFont.body, fontWeight: FontWeight.bold, color: primaryTextColor),
                 ),
               ),
+              if (goal.savedAmount > 0)
+                IconButton(
+                  icon: const Icon(Icons.remove_circle_outline, size: 20),
+                  color: KrezioColors.friendlyOrange,
+                  tooltip: 'Resgatar do Cofrinho',
+                  onPressed: () => _showWithdrawDialog(context, goal),
+                ),
               IconButton(
                 icon: const Icon(Icons.add_circle_outline, size: 20),
-                color: KrezioColors.aiPurple,
-                tooltip: 'Adicionar valor',
+                color: KrezioColors.emeraldGreen,
+                tooltip: 'Guardar no Cofrinho',
                 onPressed: () => _showContributeDialog(context, goal),
               ),
               IconButton(
@@ -442,7 +493,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           ),
           const SizedBox(height: KrezioSpace.md),
           Text(
-            '${Money.brl(goal.savedAmount)} de ${Money.brl(goal.targetAmount)}',
+            '${Money.brl(goal.savedAmount)} guardados de ${Money.brl(goal.targetAmount)}',
             style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor),
           ),
           const SizedBox(height: KrezioSpace.sm),
@@ -457,7 +508,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           ),
           if (goal.isCompleted) ...[
             const SizedBox(height: KrezioSpace.sm),
-            const Text('🎉 Meta concluída!', style: TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: KrezioColors.emeraldGreen)),
+            const Text('🎉 Cofrinho completo!', style: TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: KrezioColors.emeraldGreen)),
           ] else if (goal.suggestedMonthlyContribution != null) ...[
             const SizedBox(height: KrezioSpace.sm),
             Text(
@@ -474,13 +525,33 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final controller = TextEditingController();
     showKrezioFormDialog(
       context,
-      title: 'Guardar para: ${goal.title}',
-      confirmLabel: 'Guardar',
-      fields: [KrezioMoneyField(controller: controller, label: 'Valor guardado', autofocus: true)],
+      title: 'Guardar no Cofrinho: ${goal.title}',
+      confirmLabel: 'Aplicar',
+      fields: [
+        KrezioMoneyField(controller: controller, label: 'Valor para guardar (sai do saldo como despesa)', autofocus: true),
+      ],
       onConfirm: () {
         final val = KrezioMoneyField.parse(controller.text);
         if (val == null) return false;
-        repository.contributeToGoal(goal.id, val);
+        repository.contributeToGoal(goal.id, val, recordExpense: true);
+        return true;
+      },
+    );
+  }
+
+  void _showWithdrawDialog(BuildContext context, FinancialGoal goal) {
+    final controller = TextEditingController();
+    showKrezioFormDialog(
+      context,
+      title: 'Resgatar do Cofrinho: ${goal.title}',
+      confirmLabel: 'Resgatar',
+      fields: [
+        KrezioMoneyField(controller: controller, label: 'Valor para devolver ao saldo', autofocus: true),
+      ],
+      onConfirm: () {
+        final val = KrezioMoneyField.parse(controller.text);
+        if (val == null) return false;
+        repository.withdrawFromGoal(goal.id, val, recordIncome: true);
         return true;
       },
     );
@@ -517,23 +588,31 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   void _showAddGoalDialog(BuildContext context) {
     final titleController = TextEditingController();
     final amountController = TextEditingController();
+    final initialDepositController = TextEditingController();
     showKrezioFormDialog(
       context,
-      title: 'Nova Meta de Economia',
-      confirmLabel: 'Criar',
+      title: 'Novo Cofrinho',
+      confirmLabel: 'Criar Cofrinho',
       fields: [
-        KrezioTextField(controller: titleController, label: 'Título (ex: Viagem, Notebook)', autofocus: true),
-        KrezioMoneyField(controller: amountController, label: 'Valor alvo'),
+        KrezioTextField(controller: titleController, label: 'Nome do Cofrinho (ex: Viagem, Reserva)', autofocus: true),
+        KrezioMoneyField(controller: amountController, label: 'Meta do Cofrinho (R\$)'),
+        KrezioMoneyField(controller: initialDepositController, label: 'Aplicação inicial opcional (sai do saldo)'),
       ],
       onConfirm: () {
         final title = titleController.text.trim();
         final amount = KrezioMoneyField.parse(amountController.text);
+        final initialDeposit = KrezioMoneyField.parse(initialDepositController.text) ?? 0.0;
         if (title.isEmpty || amount == null) return false;
-        repository.addGoal(FinancialGoal(
-          id: 'goal-${DateTime.now().millisecondsSinceEpoch}',
-          title: title,
-          targetAmount: amount,
-        ));
+        repository.addGoal(
+          FinancialGoal(
+            id: 'goal-${DateTime.now().millisecondsSinceEpoch}',
+            title: title,
+            targetAmount: amount,
+            savedAmount: initialDeposit,
+            isCompleted: initialDeposit >= amount,
+          ),
+          recordExpense: initialDeposit > 0,
+        );
         return true;
       },
     );

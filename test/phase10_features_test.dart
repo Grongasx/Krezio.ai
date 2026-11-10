@@ -1,17 +1,25 @@
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/bill_split_parser.dart';
 import 'package:krezio_ai/ai/cesar_assistant.dart';
 import 'package:krezio_ai/ai/local_nlp_engine.dart';
+import 'package:krezio_ai/backend/config/app_environment.dart';
+import 'package:krezio_ai/backend/models/financial_goal.dart';
 import 'package:krezio_ai/backend/models/financial_reminder.dart';
 import 'package:krezio_ai/backend/models/financial_transaction.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:krezio_ai/backend/services/currency_service.dart';
+import 'package:krezio_ai/backend/services/money.dart';
+import 'package:krezio_ai/backend/services/notification_service.dart';
 import 'package:krezio_ai/backend/services/statement_import.dart';
+import 'package:krezio_ai/backend/services/statement_query.dart';
 import 'package:krezio_ai/backend/services/tax_report.dart';
 import 'package:krezio_ai/frontend/features/home_widget/home_widget_sync.dart';
 import 'package:krezio_ai/frontend/navigation/krezio_routes.dart';
+import 'package:krezio_ai/frontend/theme/krezio_theme.dart';
 
 FinancialRepository emptyRepo() {
   final r = FinancialRepository();
@@ -152,6 +160,141 @@ void main() {
       final v = HomeWidgetSync.values(repo);
       expect(v.balance, 'R\$ 2.500,00');
       expect(v.detail, contains('Saídas R\$ 500,00'));
+    });
+  });
+
+  group('10.3 melhorias solicitadas (PDF Itaú, Cofrinho, Máscara BRL, Filtros, Lembretes e Notificações)', () {
+    test('PDF Itaú: extrai lançamentos com sinal após valor, D/C e ignora linhas de saldo', () {
+      const itauPdfText = '''
+ITAÚ UNIBANCO S.A. - EXTRATO DE CONTA CORRENTE
+Período: 01/10/2026 a 31/10/2026
+01/10 SALDO ANTERIOR 1.500,00
+05/10 REMUNERACAO SALARIO 4.500,00 C
+10/10 PIX TRANSF JOAO SILVA -150,00
+12/10 RSHOP-MERCADO EXTRA 12/10 245,90 -
+18/10 SISPAG CONTA LUZ 180,45 D
+31/10 S A L D O 5.423,65
+''';
+      final entries = StatementImport.parsePdfText(itauPdfText);
+      expect(entries.length, 4);
+      expect(entries[0].description, 'Remuneracao Salario');
+      expect(entries[0].amount, 4500.00);
+      expect(entries[0].date, DateTime(2026, 10, 5));
+
+      expect(entries[1].description, 'Pix Transf Joao Silva');
+      expect(entries[1].amount, -150.00);
+
+      expect(entries[2].description, 'Rshop-mercado Extra');
+      expect(entries[2].amount, -245.90);
+
+      expect(entries[3].description, 'Sispag Conta Luz');
+      expect(entries[3].amount, -180.45);
+
+      // Also test PDF binary stream extraction with Tj/Td operators
+      const rawPdf = '%PDF-1.4\nstream\nBT\n(10/10/2026 PIX MERCADO -89,90) Tj\nET\nendstream\n%%EOF';
+      final fromBytes = StatementImport.parsePdfBytes(latin1.encode(rawPdf));
+      expect(fromBytes.single.amount, -89.90);
+      expect(fromBytes.single.description, 'Pix Mercado');
+    });
+
+    test('Máscara de moeda BRL: 4000 vira 4.000,00 e 50,90 mantém centavos', () {
+      const formatter = BrlCurrencyInputFormatter();
+      final res4000 = formatter.formatEditUpdate(
+        TextEditingValue.empty,
+        const TextEditingValue(text: '4000'),
+      );
+      expect(res4000.text, '4.000,00');
+      expect(Money.parse(res4000.text), 4000.00);
+
+      final res5090 = formatter.formatEditUpdate(
+        TextEditingValue.empty,
+        const TextEditingValue(text: '50,90'),
+      );
+      expect(res5090.text, '50,90');
+      expect(Money.parse(res5090.text), 50.90);
+    });
+
+    test('Cofrinho: aplicar valor retira do saldo líquido total como despesa', () {
+      final repo = emptyRepo();
+      final now = DateTime.now();
+      repo.addTransaction(FinancialTransaction(
+        id: 'sal-1',
+        title: 'Salário',
+        amount: 4000,
+        type: TransactionType.income,
+        category: 'salary',
+        paymentMethod: 'pix',
+        date: now,
+      ));
+      expect(repo.totalBalance, 4000);
+
+      repo.addGoal(FinancialGoal(
+        id: 'cof-1',
+        title: 'Reserva Viagem',
+        targetAmount: 2000,
+      ));
+      repo.contributeToGoal('cof-1', 500, recordExpense: true);
+
+      expect(repo.goals.single.savedAmount, 500);
+      expect(repo.totalBalance, 3500);
+      expect(repo.monthExpense, 500);
+      expect(repo.transactions.any((t) => t.type == TransactionType.expense && t.amount == 500), isTrue);
+    });
+
+    test('StatementQuery: filtra pela margem de valor mínimo e máximo', () {
+      final now = DateTime(2026, 10, 20);
+      final txs = [
+        FinancialTransaction(id: '1', title: 'Café', amount: 15, type: TransactionType.expense, category: 'leisure', paymentMethod: 'pix', date: now),
+        FinancialTransaction(id: '2', title: 'Mercado', amount: 180, type: TransactionType.expense, category: 'supermarket', paymentMethod: 'pix', date: now),
+        FinancialTransaction(id: '3', title: 'Aluguel', amount: 1500, type: TransactionType.expense, category: 'housing', paymentMethod: 'pix', date: now),
+      ];
+      final filtered = StatementQuery.apply(
+        txs,
+        const StatementFilter(minAmount: 50, maxAmount: 500),
+        now: now,
+      );
+      expect(filtered.map((t) => t.id), ['2']);
+    });
+
+    test('Lembretes e Contas a Receber: cores verde (+) e vermelho (-)', () {
+      final receivable = FinancialReminder(
+        id: 'r1',
+        title: 'João me deve',
+        amount: 150,
+        targetDate: DateTime(2026, 10, 25),
+        type: ReminderType.loanReceivable,
+      );
+      final bill = FinancialReminder(
+        id: 'r2',
+        title: 'Conta de Luz',
+        amount: 180,
+        targetDate: DateTime(2026, 10, 25),
+        type: ReminderType.billPayment,
+      );
+      expect(receivable.amountPrefix, '+ ');
+      expect(receivable.amountColor, KrezioColors.emeraldGreen);
+      expect(bill.amountPrefix, '- ');
+      expect(bill.amountColor, KrezioColors.budgetOver);
+    });
+
+    test('Easter egg 5 cliques em versão do app e NotificationService', () {
+      final now = DateTime(2026, 10, 20, 10, 0);
+      for (var i = 0; i < 4; i++) {
+        expect(EnvironmentConfig.registerEasterEggTap(now: now.add(Duration(milliseconds: i * 100))), isFalse);
+      }
+      expect(EnvironmentConfig.registerEasterEggTap(now: now.add(const Duration(milliseconds: 400))), isTrue);
+
+      final repo = emptyRepo();
+      repo.addReminder(FinancialReminder(
+        id: 'rem-1',
+        title: 'Pagar Internet',
+        amount: 120,
+        targetDate: now,
+        type: ReminderType.billPayment,
+      ));
+      final notifService = NotificationService(repo);
+      final pending = notifService.evaluatePendingNotifications(now: now);
+      expect(pending.length, 2); // 1 due bill + 1 daily transaction logging reminder
     });
   });
 }

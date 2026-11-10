@@ -1,59 +1,50 @@
 # Política de Privacidade do Krezio.ai
 
-Versão 1.0 — 16 de outubro de 2026
+Versão 2026.11 — Atualizada em novembro de 2026
 
-## Resumo
+## Resumo de Privacidade
 
-- O César, o assistente do app, **roda no seu aparelho**. As frases que você digita ou fala são entendidas no próprio celular, sem enviar o texto para servidores.
-- Sem conta, **nada sai do aparelho**.
-- Com conta, os seus dados financeiros vão para a nuvem **só para sincronizar** entre os seus aparelhos.
-- **Nenhum dado é vendido** nem usado para publicidade.
+- **Inteligência Artificial 100% Local:** O **César**, assistente financeiro do Krezio.ai, executa o motor neural e o processamento de linguagem natural **diretamente no seu aparelho**.
+- **Importação Local de Extratos (PDF, OFX e CSV):** A leitura de extratos bancários (inclusive PDFs do Itaú e outros bancos) ocorre inteiramente na memória do seu dispositivo.
+- **Modo Local ou Nuvem Opcional:** Sem conta conectada, nenhum dado sai do seu aparelho. Com conta, os dados são sincronizados apenas para permitir o seu próprio acesso em múltiplos dispositivos.
+- **Zero Venda de Dados:** Nenhum dado financeiro ou pessoal é vendido, alugado ou utilizado para publicidade de terceiros.
 
-## 1. Quais dados o app guarda
+## 1. Quais dados o aplicativo armazena
 
-- **Dados financeiros que você registra:** lançamentos (título, valor, data, categoria, forma de pagamento, conta), contas e carteiras, orçamentos, metas, lembretes, dívidas e categorias personalizadas.
-- **Preferências:** como o César chama você, tema, avisos silenciados, memória de categorias ("mercado do zé" é Lazer).
-- **Com conta:** e-mail, nome e um identificador da conta.
-- **Voz:** o reconhecimento de fala usa o serviço do sistema do seu aparelho (Google no Android, Apple no iOS, o navegador na web), que pode processar o áudio conforme a política dele. O Krezio.ai não grava nem guarda o áudio.
+- **Dados financeiros inseridos ou importados por você:** despesas, receitas, recorrências, contas e carteiras, orçamentos mensais, **Cofrinhos**, lembretes de pagamento e contas a receber.
+- **Preferências e personalizações:** como o César chama você, tema visual, configurações de notificações diárias e de vencimentos, e memória de categorização automática.
+- **Dados de conta (quando você opta por entrar):** nome, endereço de e-mail e identificador único de autenticação.
+- **Voz (César Live):** o reconhecimento de fala e a síntese de voz utilizam as APIs nativas do sistema operacional ou navegador do seu dispositivo. O Krezio.ai não armazena gravações de áudio da sua voz.
 
-## 2. Para que usamos
+## 2. Finalidade do tratamento dos dados
 
-- Mostrar saldos, relatórios, alertas e responder às suas perguntas.
-- Com conta, sincronizar os dados entre os seus aparelhos.
+- Calcular saldos líquidos, descontos de Cofrinhos, tetos de gastos, relatórios por categoria e projeções financeiras.
+- Emitir alertas proativos e notificações locais sobre vencimentos de contas, valores a receber e lembretes para registrar lançamentos do dia.
+- Sincronizar seus registros entre dispositivos autenticados na sua conta pessoal.
 
-Não usamos os seus dados para publicidade, perfil de crédito nem os compartilhamos com terceiros, exceto o provedor de nuvem que guarda a sua conta (Google Firebase, servidores no Brasil quando disponível), que só processa os dados em nosso nome.
+## 3. Armazenamento e Segurança
 
-## 3. Onde ficam
+- **No dispositivo:** armazenamento local protegido, com opção de bloqueio por **PIN** (armazenado exclusivamente via hash criptográfico SHA-256) e **biometria**, além de ocultação rápida de valores (`••••`) na tela inicial.
+- **Na nuvem (opcional):** infraestrutura Google Firebase (Authentication e Cloud Firestore) com regras estritas de isolamento por usuário (`uid`), garantindo que apenas você acesse seus registros.
 
-- **No aparelho:** armazenamento local do app.
-- **Na nuvem (só com conta):** Google Firebase (Authentication e Firestore). Cada usuário só consegue ler e gravar os próprios dados.
+## 4. Seus Direitos (LGPD — Lei nº 13.709/2018)
 
-## 4. Seus direitos (LGPD, Lei 13.709/2018)
+Em conformidade com a Lei Geral de Proteção de Dados, você tem controle imediato no próprio aplicativo para:
 
-Você pode, a qualquer momento:
+- **Portabilidade e Acesso:** exportar a íntegra dos seus dados em formato JSON ou CSV em **Configurações → Exportar meus dados**.
+- **Correção:** editar ou desfazer qualquer lançamento, categoria, Cofrinho ou lembrete pela interface ou conversando com o César.
+- **Eliminação e Esquecimento:** apagar todos os dados locais em **Configurações → Limpar dados** ou remover definitivamente sua conta e registros da nuvem em **Configurações → Excluir minha conta**.
+- **Revogação de Consentimento:** desconectar ou excluir sua conta a qualquer momento.
 
-- **Acessar e levar seus dados:** Configurações → Exportar meus dados (JSON completo e CSV dos lançamentos).
-- **Corrigir:** editando os lançamentos no app ou pelo César.
-- **Excluir:** Configurações → Excluir minha conta apaga a conta e os dados da nuvem; Configurações → Limpar dados apaga os dados do aparelho.
-- **Revogar o consentimento:** sair da conta e excluí-la.
-- **Pedir informações** sobre o tratamento dos seus dados: Configurações → Fale com a gente.
+## 5. Retenção dos Dados
 
-## 5. Por quanto tempo
+Seus dados permanecem armazenados apenas enquanto você utilizar o aplicativo. Ao acionar a exclusão da conta ou limpeza de dados, os registros correspondentes são removidos imediatamente.
 
-Enquanto você usar o app. Ao excluir a conta, os dados da nuvem são apagados na hora. Os dados do aparelho somem ao limpar os dados ou desinstalar o app.
+## 6. Proteção de Menores
 
-## 6. Segurança
+O Krezio.ai não é direcionado a menores de 13 anos e não coleta intencionalmente dados de crianças.
 
-Bloqueio opcional por PIN (guardado com hash, nunca em texto) ou biometria, ocultação do conteúdo na tela de apps recentes e regras de acesso na nuvem por usuário.
+## 7. Atualizações desta Política
 
-## 7. Crianças
+Sempre que houver evolução relevante nas práticas de privacidade ou novas funcionalidades, o Krezio.ai exibirá a versão atualizada para sua revisão e confirmação.
 
-O app não é destinado a menores de 13 anos.
-
-## 8. Mudanças
-
-Quando esta política mudar, o app mostra a nova versão e pede o seu aceite.
-
-## 9. Contato do controlador
-
-Dúvidas e pedidos sobre dados: **Configurações → Fale com a gente**.

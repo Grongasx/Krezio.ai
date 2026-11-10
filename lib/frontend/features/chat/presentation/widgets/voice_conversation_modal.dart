@@ -116,13 +116,16 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                 _buildHeader(context),
                 Expanded(
                   child: Center(
-                    child: _buildNeuralVoiceOrb(),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: _buildNeuralVoiceOrb(),
+                    ),
                   ),
                 ),
                 _buildTranscriptionPanel(),
-                const SizedBox(height: KrezioSpace.xl),
+                const SizedBox(height: KrezioSpace.md),
                 _buildControlsBar(context),
-                const SizedBox(height: KrezioSpace.xxl),
+                const SizedBox(height: KrezioSpace.lg),
               ],
             ),
           ],
@@ -323,7 +326,9 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                         if (state == VoiceState.listening) {
                           widget.controller.stopRecordingUserSpeech(processTranscript: true);
                         } else if (state == VoiceState.speaking) {
-                          widget.controller.interruptCesarSpeech();
+                          widget.controller.interruptCesarSpeech(
+                            resumeListening: widget.controller.isHandsFreeNotifier.value,
+                          );
                         } else {
                           widget.controller.startListening();
                         }
@@ -621,19 +626,40 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
     }
 
     if (state == VoiceState.speaking) {
-      return ElevatedButton.icon(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.redAccent,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xl, vertical: KrezioSpace.sm),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        ),
-        icon: const Icon(Icons.stop_circle_rounded, size: 18),
-        label: const Text(
-          'Parar fala do César',
-          style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold),
-        ),
-        onPressed: () => widget.controller.interruptCesarSpeech(),
+      return Wrap(
+        alignment: WrapAlignment.center,
+        spacing: KrezioSpace.sm,
+        runSpacing: KrezioSpace.xs,
+        children: [
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            ),
+            icon: const Icon(Icons.stop_circle_rounded, size: 18),
+            label: const Text(
+              'Parar fala do César',
+              style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => widget.controller.interruptCesarSpeech(),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF06B6D4),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            ),
+            icon: const Icon(Icons.record_voice_over_rounded, size: 16),
+            label: const Text(
+              'Interromper e falar',
+              style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => widget.controller.interruptCesarSpeech(resumeListening: true),
+          ),
+        ],
       );
     }
 
@@ -738,7 +764,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
       padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xxl),
       child: Container(
         width: double.infinity,
-        constraints: const BoxConstraints(minHeight: 110, maxHeight: 160),
+        constraints: const BoxConstraints(minHeight: 110, maxHeight: 185),
         padding: const EdgeInsets.all(KrezioSpace.lg),
         decoration: BoxDecoration(
           color: const Color(0xFF141923).withOpacity(0.85),
@@ -759,6 +785,45 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Pending Slot / Context Banner
+              ValueListenableBuilder<String?>(
+                valueListenable: widget.controller.pendingSlotHintNotifier,
+                builder: (context, slotHint, _) {
+                  if (slotHint == null || slotHint.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: KrezioSpace.sm),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
+                      decoration: BoxDecoration(
+                        color: KrezioColors.friendlyOrange.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: KrezioColors.friendlyOrange.withValues(alpha: 0.55),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.info_outline_rounded, color: Color(0xFFFBBF24), size: 14),
+                          const SizedBox(width: KrezioSpace.xs),
+                          Flexible(
+                            child: Text(
+                              slotHint,
+                              style: const TextStyle(
+                                color: Color(0xFFFDE68A),
+                                fontSize: KrezioFont.caption,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+
               // User Transcript
               ValueListenableBuilder<String>(
                 valueListenable: widget.controller.userTranscriptNotifier,
@@ -871,6 +936,47 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                         ),
                       ),
                     ],
+                  );
+                },
+              ),
+
+              // Quick-reply & Voice Suggestion Chips
+              ValueListenableBuilder<List<String>>(
+                valueListenable: widget.controller.quickRepliesNotifier,
+                builder: (context, chips, _) {
+                  if (chips.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: KrezioSpace.md),
+                    child: Wrap(
+                      spacing: KrezioSpace.xs,
+                      runSpacing: KrezioSpace.xs,
+                      children: [
+                        for (final chip in chips)
+                          InkWell(
+                            onTap: () => widget.controller.submitQuickPhrase(chip),
+                            borderRadius: BorderRadius.circular(14),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.07),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.16),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Text(
+                                chip,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: KrezioFont.caption,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   );
                 },
               ),

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:io' show zlib;
+
 import '../models/financial_transaction.dart';
 
 /// One line read from a bank file, before it becomes a transaction.
@@ -161,6 +164,219 @@ class StatementImport {
     // "PAG*IFOOD" / "UBER *TRIP" → "Pag Ifood"/"Uber Trip": readable titles.
     final words = t.replaceAll(RegExp(r'[*]+'), ' ').split(' ').where((w) => w.isNotEmpty);
     return words.map((w) => w.length <= 2 && w == w.toUpperCase() ? w : w[0].toUpperCase() + w.substring(1).toLowerCase()).join(' ');
+  }
+
+  // ───────────────────────── PDF (Itaú & Bancos Brasileiros) ─────────────────────────
+
+  static final _ignoredPdfDescriptions = RegExp(
+    r'\b(saldo\s+anterior|saldo\s+final|s\s*a\s*l\s*d\s*o|saldo\s+em|saldo\s+disponivel|saldo\s+total|saldo\s+do\s+dia|total\s+de\s+entradas|total\s+de\s+saidas|limite\s+da\s+conta|saldo\s+aplic\s+aut)\b',
+    caseSensitive: false,
+  );
+
+  /// Extracts readable text from a PDF byte buffer (decompressing FlateDecode/zlib
+  /// streams and decoding PDF `Tj` / `TJ` text blocks) and parses Itaú/bank statement lines.
+  static List<ImportedEntry> parsePdfBytes(
+    List<int> bytes, {
+    bool expensesPositive = false,
+    int? defaultYear,
+  }) {
+    final extracted = extractTextFromPdfBytes(bytes);
+    return parsePdfText(
+      extracted,
+      expensesPositive: expensesPositive,
+      defaultYear: defaultYear,
+    );
+  }
+
+  /// Extracts text lines from PDF binary bytes, supporting both compressed
+  /// (`FlateDecode` / zlib) and uncompressed PDF content streams.
+  static String extractTextFromPdfBytes(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+    final rawLatin = latin1.decode(bytes, allowInvalid: true);
+    final buffer = StringBuffer();
+
+    final streamRegex = RegExp(r'stream\r?\n([\s\S]*?)\r?\nendstream');
+    final matches = streamRegex.allMatches(rawLatin).toList();
+    if (matches.isEmpty) {
+      return _decodePdfTextOperators(rawLatin);
+    }
+
+    for (final m in matches) {
+      final content = m.group(1)!;
+      final streamBytes = latin1.encode(content);
+      String decodedStream;
+      try {
+        final decompressed = zlib.decode(streamBytes);
+        decodedStream = latin1.decode(decompressed, allowInvalid: true);
+      } catch (_) {
+        decodedStream = content;
+      }
+      final text = _decodePdfTextOperators(decodedStream);
+      if (text.trim().isNotEmpty) {
+        buffer.writeln(text);
+      }
+    }
+
+    final result = buffer.toString().trim();
+    return result.isNotEmpty ? result : _decodePdfTextOperators(rawLatin);
+  }
+
+  static String _decodePdfTextOperators(String stream) {
+    final lines = <String>[];
+    final currentLine = StringBuffer();
+
+    // If stream has BT..ET blocks or PDF string literals (...), extract them in order.
+    final tokenRegex = RegExp(r'\((?:\\.|[^\\)])*\)|\[(?:\s*\((?:\\.|[^\\)])*\)\s*|-?\d+(?:\.\d+)?\s*)+]\s*TJ|\b(?:Td|TD|T\*|ET)\b|\r?\n');
+    var foundPdfStrings = false;
+
+    for (final match in tokenRegex.allMatches(stream)) {
+      final token = match.group(0)!;
+      if (token.startsWith('(') && token.endsWith(')')) {
+        foundPdfStrings = true;
+        final inner = _unescapePdfString(token.substring(1, token.length - 1));
+        if (inner.trim().isNotEmpty) {
+          if (currentLine.isNotEmpty && !currentLine.toString().endsWith(' ')) {
+            currentLine.write(' ');
+          }
+          currentLine.write(inner);
+        }
+      } else if (token.endsWith('TJ')) {
+        foundPdfStrings = true;
+        final litRegex = RegExp(r'\((?:\\.|[^\\)])*\)');
+        final parts = litRegex
+            .allMatches(token)
+            .map((m) => _unescapePdfString(m.group(0)!.substring(1, m.group(0)!.length - 1)))
+            .join('');
+        if (parts.trim().isNotEmpty) {
+          if (currentLine.isNotEmpty && !currentLine.toString().endsWith(' ')) {
+            currentLine.write(' ');
+          }
+          currentLine.write(parts);
+        }
+      } else if (token == 'Td' || token == 'TD' || token == 'T*' || token == 'ET') {
+        if (currentLine.isNotEmpty) {
+          lines.add(currentLine.toString().trim());
+          currentLine.clear();
+        }
+      }
+    }
+    if (currentLine.isNotEmpty) {
+      lines.add(currentLine.toString().trim());
+    }
+
+    if (foundPdfStrings && lines.isNotEmpty) {
+      return lines.join('\n');
+    }
+    return stream;
+  }
+
+  static String _unescapePdfString(String s) {
+    return s
+        .replaceAll(r'\(', '(')
+        .replaceAll(r'\)', ')')
+        .replaceAll(r'\\', '\\')
+        .replaceAll(r'\n', '\n')
+        .replaceAll(r'\r', '\r')
+        .replaceAll(r'\t', ' ');
+  }
+
+  /// Parses extracted text from Itaú (checking account and credit card) or other
+  /// Brazilian bank PDF statements.
+  static List<ImportedEntry> parsePdfText(
+    String text, {
+    bool expensesPositive = false,
+    int? defaultYear,
+  }) {
+    if (text.trim().isEmpty) return const [];
+
+    // Infer statement year from headers like "01/10/2026" or "Outubro/2026"
+    var inferredYear = defaultYear ?? DateTime.now().year;
+    final yearMatch = RegExp(r'\b(20\d{2})\b').firstMatch(text);
+    if (defaultYear == null && yearMatch != null) {
+      inferredYear = int.parse(yearMatch.group(1)!);
+    }
+
+    final entries = <ImportedEntry>[];
+    final rawLines = text
+        .split(RegExp(r'\r?\n'))
+        .map((l) => l.replaceAll(RegExp(r'\s+'), ' ').trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+
+    // Matches Itaú & Brazilian bank lines:
+    // Examples:
+    // "10/10 PIX TRANSF JOAO -150,00"
+    // "12/10 RSHOP-MERCADO EXTRA 12/10 89,90 -"
+    // "15/10/2026 REMUNERACAO SALARIO 4.500,00"
+    // "18/10 SISPAG LUZ 180,45 D"
+    // "20/10 TED RECEBIDA 1.200,00 C"
+    final lineRegex = RegExp(
+      r'^(\d{2}/\d{2}(?:/\d{2,4})?)\s+(.+?)\s+(?:R\$\s*)?(-?\s*(?:\d{1,3}(?:\.\d{3})*|\d+),\d{2})\s*([-+DCdc])?$',
+    );
+
+    for (final line in rawLines) {
+      final match = lineRegex.firstMatch(line);
+      if (match == null) continue;
+
+      final rawDate = match.group(1)!;
+      var rawDesc = match.group(2)!.trim();
+      final rawVal = match.group(3)!.replaceAll(' ', '');
+      final trailingSign = match.group(4)?.toUpperCase();
+
+      // Strip trailing secondary date in Itaú RSHOP lines (e.g. "RSHOP-MERCADO 12/10")
+      rawDesc = rawDesc.replaceAll(RegExp(r'\s+\d{2}/\d{2}$'), '').trim();
+      // If description ends with a '-' that belonged to the amount (e.g. "PIX JOAO - 150,00")
+      var descEndedWithMinus = false;
+      if (rawDesc.endsWith(' -') || rawDesc.endsWith('-')) {
+        descEndedWithMinus = true;
+        rawDesc = rawDesc.substring(0, rawDesc.length - 1).trim();
+      }
+
+      if (rawDesc.isEmpty || _ignoredPdfDescriptions.hasMatch(_fold(rawDesc))) {
+        continue;
+      }
+
+      DateTime? date = parseDate(rawDate);
+      if (date == null) {
+        final ddmm = RegExp(r'^(\d{2})/(\d{2})$').firstMatch(rawDate);
+        if (ddmm != null) {
+          date = DateTime(
+            inferredYear,
+            int.parse(ddmm.group(2)!),
+            int.parse(ddmm.group(1)!),
+          );
+        }
+      }
+      if (date == null) continue;
+
+      var amount = parseAmount(rawVal);
+      if (amount == null || amount == 0) continue;
+
+      final isExplicitNegative = rawVal.startsWith('-') ||
+          descEndedWithMinus ||
+          trailingSign == '-' ||
+          trailingSign == 'D';
+      final isExplicitPositive = trailingSign == '+' || trailingSign == 'C';
+
+      if (isExplicitNegative) {
+        amount = -amount.abs();
+      } else if (isExplicitPositive) {
+        amount = amount.abs();
+      } else if (expensesPositive) {
+        amount = -amount.abs();
+      }
+
+      final cleanDesc = _clean(rawDesc);
+      entries.add(
+        ImportedEntry(
+          date: date,
+          description: cleanDesc.isEmpty ? 'Lançamento Itaú' : cleanDesc,
+          amount: amount,
+        ),
+      );
+    }
+
+    return entries;
   }
 
   // ───────────────────────── duplicates and saving ─────────────────────────

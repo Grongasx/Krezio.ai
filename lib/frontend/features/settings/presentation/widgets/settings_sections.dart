@@ -8,13 +8,12 @@ import '../../../../theme/theme_controller.dart';
 import '../../../../widgets/krezio_components.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/services/data_export.dart';
-import '../../../../../backend/services/feedback_service.dart';
+import '../../../../../backend/services/notification_service.dart';
 import '../../../../../backend/services/tax_report.dart';
 import '../../../import/import_statement_screen.dart';
-import '../../../../../backend/config/app_version.dart';
+import '../../../onboarding/onboarding_screen.dart';
 import '../../../../../ai/voice/native_tts.dart';
 import '../../../../../ai/voice/voice_synthesis_service.dart';
-import 'package:flutter/foundation.dart';
 import '../../../../../backend/services/pin_lock.dart';
 import '../../../legal/legal_documents.dart';
 import '../../../security/biometric_auth.dart';
@@ -389,51 +388,61 @@ class PrivacySection extends StatelessWidget {
   }
 }
 
-/// "Fale com a gente": the user's message goes out through the share sheet
-/// (e-mail, WhatsApp…) with the app version attached.
-class HelpSection extends StatelessWidget {
+/// Push notifications for reminders and daily transaction logging.
+class NotificationsSection extends StatefulWidget {
   final FinancialRepository repository;
-  const HelpSection({super.key, required this.repository});
+  const NotificationsSection({super.key, required this.repository});
 
-  Future<void> _contact(BuildContext context) async {
-    final c = TextEditingController();
-    final send = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Fale com a gente'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Conte o que aconteceu ou o que você quer no app. Não inclua senhas.'),
-          const SizedBox(height: KrezioSpace.sm),
-          TextField(controller: c, maxLines: 5, autofocus: true, decoration: const InputDecoration(border: OutlineInputBorder())),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Enviar')),
-        ],
-      ),
-    );
-    if (send != true || c.text.trim().isEmpty) return;
-    final text = FeedbackService(repository).compose(c.text, platform: kIsWeb ? 'web' : defaultTargetPlatform.name);
-    try {
-      await SharePlus.instance.share(ShareParams(text: text, subject: 'Krezio.ai — feedback ${AppVersion.label}'));
-    } catch (e) {
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Não foi possível abrir o envio: $e')));
-    }
-  }
+  @override
+  State<NotificationsSection> createState() => _NotificationsSectionState();
+}
+
+class _NotificationsSectionState extends State<NotificationsSection> {
+  NotificationService get _service => NotificationService(widget.repository);
 
   @override
   Widget build(BuildContext context) {
-    return SettingsGroup(title: 'Ajuda', children: [
-      ListTile(
-        leading: const Icon(Icons.forum_outlined, color: KrezioColors.aiPurple),
-        title: const Text('Fale com a gente'),
-        subtitle: const Text('Dúvidas, problemas e sugestões'),
-        onTap: () => _contact(context),
+    final pendingCount = _service.evaluatePendingNotifications().length;
+    return SettingsGroup(title: 'Notificações Push & Lembretes', children: [
+      SwitchListTile(
+        secondary: const Icon(Icons.notifications_active_outlined, color: KrezioColors.aiPurple),
+        title: const Text('Notificações de Lembretes e Contas'),
+        subtitle: const Text('Avise quando contas a pagar ou a receber estiverem próximas do vencimento'),
+        value: _service.remindersPushEnabled,
+        onChanged: (val) => setState(() => _service.remindersPushEnabled = val),
       ),
+      SwitchListTile(
+        secondary: const Icon(Icons.edit_calendar_outlined, color: KrezioColors.aiPurple),
+        title: const Text('Lembrete diário para fazer lançamentos'),
+        subtitle: Text('Lembrar às ${_service.dailyLogReminderHour.toString().padLeft(2, '0')}:00 de registrar gastos e receitas'),
+        value: _service.dailyLogReminderEnabled,
+        onChanged: (val) => setState(() => _service.dailyLogReminderEnabled = val),
+      ),
+      if (_service.dailyLogReminderEnabled)
+        ListTile(
+          leading: const Icon(Icons.schedule, color: KrezioColors.aiPurple),
+          title: const Text('Horário do lembrete diário'),
+          trailing: DropdownButton<int>(
+            value: _service.dailyLogReminderHour,
+            underline: const SizedBox.shrink(),
+            items: [
+              for (final h in const [9, 12, 18, 20, 21, 22])
+                DropdownMenuItem(value: h, child: Text('${h.toString().padLeft(2, '0')}:00')),
+            ],
+            onChanged: (h) {
+              if (h != null) setState(() => _service.dailyLogReminderHour = h);
+            },
+          ),
+        ),
       ListTile(
-        leading: const Icon(Icons.info_outline, color: KrezioColors.aiPurple),
-        title: const Text('Versão'),
-        subtitle: Text('Krezio.ai ${AppVersion.label}'),
+        leading: const Icon(Icons.send_to_mobile_outlined, color: KrezioColors.emeraldGreen),
+        title: const Text('Verificar / Testar Notificação Push'),
+        subtitle: Text(
+          pendingCount > 0
+              ? '$pendingCount alerta(s) pendente(s) hoje — toque para disparar'
+              : 'Tudo em dia! Toque para enviar uma notificação de teste',
+        ),
+        onTap: () => _service.dispatchIfDue(context, force: true),
       ),
     ]);
   }
@@ -489,7 +498,21 @@ class ToolsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SettingsGroup(title: 'Ferramentas', children: [
+    return SettingsGroup(title: 'Ferramentas & Tour', children: [
+      ListTile(
+        leading: const Icon(Icons.explore_outlined, color: KrezioColors.aiPurple),
+        title: const Text('Tour pelo Krezio & César'),
+        subtitle: const Text('Reveja todas as funcionalidades do app passo a passo'),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => OnboardingScreen(
+              repository: repository,
+              onDone: () => Navigator.pop(context),
+            ),
+          ),
+        ),
+      ),
       ListTile(
         leading: const Icon(Icons.file_download_outlined, color: KrezioColors.aiPurple),
         title: const Text('Exportar extrato (CSV)'),
@@ -498,7 +521,7 @@ class ToolsSection extends StatelessWidget {
       ListTile(
         leading: const Icon(Icons.upload_file, color: KrezioColors.aiPurple),
         title: const Text('Importar extrato do banco'),
-        subtitle: const Text('OFX ou CSV, sem duplicar o que já existe'),
+        subtitle: const Text('PDF (Itaú e outros), OFX ou CSV, sem duplicar o que já existe'),
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ImportStatementScreen(repository: repository))),
       ),
       ListTile(

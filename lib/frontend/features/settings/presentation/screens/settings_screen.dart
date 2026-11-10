@@ -118,6 +118,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           ProfileSection(repository: repository),
           AppearanceSection(repository: repository),
+          NotificationsSection(repository: repository),
           const VoiceSection(),
           if (!isDemo) ...[
             SecuritySection(lock: PinLock(PrefsPinStore()), biometric: BiometricAuth()),
@@ -129,7 +130,6 @@ class SettingsScreen extends StatelessWidget {
               onExportLegacy: onExportLegacy,
             ),
             ToolsSection(repository: repository),
-            HelpSection(repository: repository),
           ],
           if (onExploreDemo != null)
             ListTile(
@@ -137,7 +137,6 @@ class SettingsScreen extends StatelessWidget {
               title: const Text('Explorar com exemplos'),
               onTap: onExploreDemo,
             ),
-
 
           // Money: accounts and open bills/debtors
           KrezioCard(
@@ -147,7 +146,7 @@ class SettingsScreen extends StatelessWidget {
                 ListTile(
                   leading: const Icon(Icons.account_balance_wallet_outlined, color: KrezioColors.aiPurple),
                   title: const Text('Contas e carteiras'),
-                  subtitle: const Text('Saldo por conta, transferências e fatura do cartão'),
+                  subtitle: const Text('Saldo por conta e fatura do cartão'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
                     context,
@@ -157,7 +156,7 @@ class SettingsScreen extends StatelessWidget {
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.receipt_long, color: KrezioColors.aiPurple),
-                  title: const Text('Contas e devedores'),
+                  title: const Text('Lembretes e Contas a Receber'),
                   subtitle: const Text('Contas em aberto e quem te deve'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.push(
@@ -173,10 +172,38 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             title: const Text('Versão do app'),
             trailing: Text(AppVersion.label),
-            onTap: () {
-              if (!EnvironmentConfig.tapVersion()) return;
+            onTap: () async {
+              if (!EnvironmentConfig.registerEasterEggTap()) return;
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Row(
+                    children: [
+                      Icon(Icons.hub_outlined, color: KrezioColors.aiPurple),
+                      SizedBox(width: 8),
+                      Expanded(child: Text('Modo de Homologação')),
+                    ],
+                  ),
+                  content: const Text(
+                    'Você ativou o easter egg de engenharia (5 cliques na versão do app)!\n\n'
+                    'Deseja habilitar o Modo de Homologação e o Visualizador da Rede Neural nesta sessão?',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Ativar Homologação'),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm != true || !context.mounted) return;
+              EnvironmentConfig.setEnvironment(AppEnvironment.homologation);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Homologação ativada nesta sessão.')),
+                const SnackBar(content: Text('Modo de Homologação ativado com sucesso! 🧠')),
               );
             },
           ),

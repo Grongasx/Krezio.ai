@@ -23,6 +23,8 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
   List<ImportedEntry>? _entries;
   String? _fileName;
   String? _raw;
+  List<int>? _rawBytes;
+  bool _isPdf = false;
   bool _expensesPositive = false;
   String _accountId = FinancialAccount.mainId;
   String? _error;
@@ -31,19 +33,30 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
   FinancialRepository get repo => widget.repository;
 
   Future<void> _pick() async {
-    final files = await FilePicker.pickFiles(type: FileType.custom, allowedExtensions: ['ofx', 'csv', 'txt']);
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'ofx', 'csv', 'txt'],
+    );
     if (files.isEmpty) return;
     final f = files.first;
     setState(() => _reading = true);
     final bytes = await f.xFile.readAsBytes();
+    final isPdfFile = f.name.toLowerCase().endsWith('.pdf') ||
+        (bytes.length >= 4 &&
+            bytes[0] == 0x25 &&
+            bytes[1] == 0x50 &&
+            bytes[2] == 0x44 &&
+            bytes[3] == 0x46); // %PDF
     String content;
     try {
       content = utf8.decode(bytes);
     } on FormatException {
-      content = latin1.decode(bytes); // many banks still export Latin-1
+      content = latin1.decode(bytes, allowInvalid: true);
     }
     setState(() {
       _fileName = f.name;
+      _rawBytes = bytes;
+      _isPdf = isPdfFile;
       _raw = content;
       _reading = false;
     });
@@ -53,11 +66,35 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
   void _parse() {
     final raw = _raw;
     if (raw == null) return;
-    final isOfx = raw.toUpperCase().contains('<OFX') || raw.toUpperCase().contains('<STMTTRN>');
-    final parsed = isOfx ? StatementImport.parseOfx(raw) : StatementImport.parseCsv(raw, expensesPositive: _expensesPositive);
+    List<ImportedEntry> parsed;
+    if (_isPdf && _rawBytes != null) {
+      parsed = StatementImport.parsePdfBytes(
+        _rawBytes!,
+        expensesPositive: _expensesPositive,
+      );
+      if (parsed.isEmpty) {
+        parsed = StatementImport.parsePdfText(
+          raw,
+          expensesPositive: _expensesPositive,
+        );
+      }
+    } else {
+      final isOfx = raw.toUpperCase().contains('<OFX') || raw.toUpperCase().contains('<STMTTRN>');
+      parsed = isOfx
+          ? StatementImport.parseOfx(raw)
+          : StatementImport.parseCsv(raw, expensesPositive: _expensesPositive);
+      if (parsed.isEmpty) {
+        parsed = StatementImport.parsePdfText(
+          raw,
+          expensesPositive: _expensesPositive,
+        );
+      }
+    }
     setState(() {
       _entries = StatementImport.markDuplicates(parsed, repo.transactions);
-      _error = parsed.isEmpty ? 'Não encontrei lançamentos nesse arquivo. Use o OFX ou o CSV exportado pelo banco.' : null;
+      _error = parsed.isEmpty
+          ? 'Não encontrei lançamentos nesse arquivo. Use o PDF (Itaú e outros), OFX ou CSV exportado pelo banco.'
+          : null;
     });
   }
 
@@ -90,7 +127,7 @@ class _ImportStatementScreenState extends State<ImportStatementScreen> {
       body: ListView(
         padding: const EdgeInsets.all(KrezioSpace.lg),
         children: [
-          const Text('Exporte o extrato no app ou site do banco em OFX (recomendado) ou CSV e escolha o arquivo aqui. '
+          const Text('Exporte o extrato no app ou site do banco em PDF (Itaú e outros), OFX ou CSV e escolha o arquivo aqui. '
               'Você vê tudo antes de importar, e o que já existe no app é ignorado.'),
           const SizedBox(height: KrezioSpace.md),
           KrezioButton(label: _fileName == null ? 'Escolher arquivo' : 'Trocar arquivo ($_fileName)', icon: Icons.upload_file, onPressed: _pick),

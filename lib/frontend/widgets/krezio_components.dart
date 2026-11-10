@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../backend/services/money.dart';
 import '../theme/krezio_theme.dart';
 
 /// Shared building blocks for every screen: buttons, fields, cards, dialogs and
@@ -113,6 +114,7 @@ class KrezioTextField extends StatelessWidget {
   final bool autofocus;
   final bool obscureText;
   final TextInputType? keyboardType;
+  final TextInputAction? textInputAction;
   final TextCapitalization textCapitalization;
   final Widget? suffixIcon;
   final ValueChanged<String>? onChanged;
@@ -127,6 +129,7 @@ class KrezioTextField extends StatelessWidget {
     this.autofocus = false,
     this.obscureText = false,
     this.keyboardType,
+    this.textInputAction,
     this.textCapitalization = TextCapitalization.none,
     this.suffixIcon,
     this.onChanged,
@@ -135,14 +138,16 @@ class KrezioTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final formSubmit = _KrezioFormSubmitScope.maybeOf(context);
     return TextField(
       controller: controller,
       autofocus: autofocus,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      textInputAction: textInputAction ?? TextInputAction.done,
       textCapitalization: textCapitalization,
       onChanged: onChanged,
-      onSubmitted: onSubmitted,
+      onSubmitted: onSubmitted ?? (formSubmit != null ? (_) => formSubmit() : null),
       style: const TextStyle(fontSize: KrezioFont.bodyLarge),
       decoration: InputDecoration(labelText: label, hintText: hint, errorText: errorText, suffixIcon: suffixIcon),
     );
@@ -156,6 +161,8 @@ class KrezioMoneyField extends StatelessWidget {
   final String label;
   final String? errorText;
   final bool autofocus;
+  final TextInputAction? textInputAction;
+  final ValueChanged<String>? onSubmitted;
 
   const KrezioMoneyField({
     super.key,
@@ -163,27 +170,51 @@ class KrezioMoneyField extends StatelessWidget {
     required this.label,
     this.errorText,
     this.autofocus = false,
+    this.textInputAction,
+    this.onSubmitted,
   });
 
-  /// "1.234,56" → 1234.56 · "12,5" → 12.5 · "80" → 80 · invalid or ≤ 0 → null.
+  /// "1.234,56" → 1234.56 · "4000" → 4000.00 · "12,5" → 12.5 · invalid or ≤ 0 → null.
   static double? parse(String text) {
-    var t = text.trim().replaceAll(RegExp(r'[R$\s]'), '');
-    if (t.contains(',')) t = t.replaceAll('.', '').replaceAll(',', '.');
-    final v = double.tryParse(t);
+    final v = Money.parse(text);
     return (v == null || !v.isFinite || v <= 0) ? null : v;
   }
 
   @override
   Widget build(BuildContext context) {
+    final formSubmit = _KrezioFormSubmitScope.maybeOf(context);
     return TextField(
       controller: controller,
       autofocus: autofocus,
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]'))],
+      textInputAction: textInputAction ?? TextInputAction.done,
+      onSubmitted: onSubmitted ?? (formSubmit != null ? (_) => formSubmit() : null),
+      inputFormatters: const [BrlCurrencyInputFormatter()],
       style: const TextStyle(fontSize: KrezioFont.bodyLarge),
-      decoration: InputDecoration(labelText: label, prefixText: 'R\$ ', errorText: errorText),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixText: 'R\$ ',
+        hintText: '0,00',
+        errorText: errorText,
+      ),
     );
   }
+}
+
+class _KrezioFormSubmitScope extends InheritedWidget {
+  final VoidCallback onSubmit;
+
+  const _KrezioFormSubmitScope({
+    required this.onSubmit,
+    required super.child,
+  });
+
+  static VoidCallback? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<_KrezioFormSubmitScope>()?.onSubmit;
+  }
+
+  @override
+  bool updateShouldNotify(_KrezioFormSubmitScope oldWidget) => onSubmit != oldWidget.onSubmit;
 }
 
 // ── Card ────────────────────────────────────────────────────────────────────
@@ -220,16 +251,25 @@ Future<bool> showKrezioConfirmDialog(
 }) async {
   final result = await showDialog<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-      title: Text(title),
-      content: Text(message),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(cancelLabel)),
-        danger
-            ? KrezioButton.danger(label: confirmLabel, onPressed: () => Navigator.of(ctx).pop(true))
-            : KrezioButton(label: confirmLabel, onPressed: () => Navigator.of(ctx).pop(true)),
-      ],
+    builder: (ctx) => CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter): () => Navigator.of(ctx).pop(true),
+        const SingleActivator(LogicalKeyboardKey.numpadEnter): () => Navigator.of(ctx).pop(true),
+      },
+      child: Focus(
+        autofocus: true,
+        child: AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text(cancelLabel)),
+            danger
+                ? KrezioButton.danger(label: confirmLabel, onPressed: () => Navigator.of(ctx).pop(true))
+                : KrezioButton(label: confirmLabel, onPressed: () => Navigator.of(ctx).pop(true)),
+          ],
+        ),
+      ),
     ),
   );
   return result ?? false;
@@ -246,28 +286,41 @@ Future<void> showKrezioFormDialog(
 }) {
   return showDialog<void>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
-      title: Text(title),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < fields.length; i++) ...[
-            if (i > 0) const SizedBox(height: KrezioSpace.md),
-            fields[i],
-          ],
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
-        KrezioButton(
-          label: confirmLabel,
-          onPressed: () {
-            if (onConfirm()) Navigator.of(ctx).pop();
-          },
+    builder: (ctx) {
+      void submit() {
+        if (onConfirm()) Navigator.of(ctx).pop();
+      }
+
+      return CallbackShortcuts(
+        bindings: {
+          const SingleActivator(LogicalKeyboardKey.enter): submit,
+          const SingleActivator(LogicalKeyboardKey.numpadEnter): submit,
+        },
+        child: _KrezioFormSubmitScope(
+          onSubmit: submit,
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: KrezioTheme.borderRadius),
+            title: Text(title),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (var i = 0; i < fields.length; i++) ...[
+                  if (i > 0) const SizedBox(height: KrezioSpace.md),
+                  fields[i],
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancelar')),
+              KrezioButton(
+                label: confirmLabel,
+                onPressed: submit,
+              ),
+            ],
+          ),
         ),
-      ],
-    ),
+      );
+    },
   );
 }
 

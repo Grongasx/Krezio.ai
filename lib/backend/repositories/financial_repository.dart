@@ -145,6 +145,9 @@ class FinancialRepository extends ChangeNotifier {
     _pendingPersist = _pendingPersist.then((_) => loaded.future);
     final generation = _dataGeneration;
     final seedIds = _transactions.map((t) => t.id).toSet();
+    final seedRemindersSnapshot = Map<String, FinancialReminder>.fromEntries(
+      _reminders.map((r) => MapEntry(r.id, r)),
+    );
 
     try {
       final hasData = await _persistence.hasPersistedData();
@@ -175,6 +178,10 @@ class FinancialRepository extends ChangeNotifier {
 
       // Records the user added while loading are kept on top of the saved ones.
       final addedMeanwhile = _transactions.where((t) => !seedIds.contains(t.id)).toList();
+      final remindersModifiedMeanwhile = _reminders.where((r) {
+        final prev = seedRemindersSnapshot[r.id];
+        return prev == null || prev.isCompleted != r.isCompleted;
+      }).toList();
 
       _transactions
         ..clear()
@@ -185,6 +192,14 @@ class FinancialRepository extends ChangeNotifier {
       _reminders
         ..clear()
         ..addAll(results[1] as List<FinancialReminder>);
+      for (final r in remindersModifiedMeanwhile) {
+        final idx = _reminders.indexWhere((x) => x.id == r.id);
+        if (idx >= 0) {
+          _reminders[idx] = r;
+        } else {
+          _reminders.insert(0, r);
+        }
+      }
       final loadedBudgets = results[2] as List<BudgetCategory>;
       if (loadedBudgets.isNotEmpty) {
         _budgets
@@ -1017,17 +1032,36 @@ class FinancialRepository extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── SAVINGS GOALS ──
+  // ── SAVINGS GOALS (COFRINHOS) ──
 
-  void addGoal(FinancialGoal goal) {
+  void addGoal(FinancialGoal goal, {bool recordExpense = false}) {
     if (!_isStorableAmount(goal.targetAmount) || goal.targetAmount <= 0) return;
     _goals.insert(0, goal);
+    if (recordExpense && goal.savedAmount > 0 && goal.savedAmount.isFinite) {
+      _transactions.insert(
+        0,
+        FinancialTransaction(
+          id: _newId('cofrinho-${goal.id}-'),
+          title: 'Cofrinho: ${goal.title}',
+          amount: goal.savedAmount,
+          type: TransactionType.expense,
+          category: 'investment',
+          paymentMethod: 'pix',
+          date: DateTime.now(),
+          notes: 'Aplicação inicial no cofrinho ${goal.title}',
+        ),
+      );
+      _recalculateBudgets();
+    }
     _persistAll();
     notifyListeners();
   }
 
   /// Adds [amount] toward a goal's saved total, marking it completed once reached.
-  FinancialGoal contributeToGoal(String goalId, double amount) {
+  /// When [recordExpense] is true, also logs the contribution as an expense
+  /// transaction in the statement; in all cases, [totalBalance] and [monthExpense]
+  /// deduct Cofrinho applications from the liquid balance as an expense.
+  FinancialGoal contributeToGoal(String goalId, double amount, {bool recordExpense = false}) {
     final idx = _goals.indexWhere((g) => g.id == goalId);
     if (idx == -1) {
       throw ArgumentError('Goal not found: $goalId');
@@ -1042,6 +1076,22 @@ class FinancialRepository extends ChangeNotifier {
       isCompleted: newSaved >= goal.targetAmount,
     );
     _goals[idx] = updated;
+    if (recordExpense) {
+      _transactions.insert(
+        0,
+        FinancialTransaction(
+          id: _newId('cofrinho-$goalId-'),
+          title: 'Cofrinho: ${goal.title}',
+          amount: amount,
+          type: TransactionType.expense,
+          category: 'investment',
+          paymentMethod: 'pix',
+          date: DateTime.now(),
+          notes: 'Aplicação no cofrinho ${goal.title}',
+        ),
+      );
+      _recalculateBudgets();
+    }
     _persistAll();
     notifyListeners();
     return updated;
@@ -1051,14 +1101,31 @@ class FinancialRepository extends ChangeNotifier {
   /// goes below zero; a goal that drops under its target is active again.
   /// [contributeToGoal] refuses negative amounts on purpose, so this is the
   /// only way down.
-  FinancialGoal withdrawFromGoal(String goalId, double amount) {
+  FinancialGoal withdrawFromGoal(String goalId, double amount, {bool recordIncome = false}) {
     final idx = _goals.indexWhere((g) => g.id == goalId);
     if (idx == -1) throw ArgumentError('Goal not found: $goalId');
     final goal = _goals[idx];
     if (!amount.isFinite || amount <= 0) return goal;
+    final actualWithdrawn = amount > goal.savedAmount ? goal.savedAmount : amount;
     final newSaved = (goal.savedAmount - amount).clamp(0.0, double.infinity);
     final updated = goal.copyWith(savedAmount: newSaved, isCompleted: newSaved >= goal.targetAmount);
     _goals[idx] = updated;
+    if (recordIncome && actualWithdrawn > 0) {
+      _transactions.insert(
+        0,
+        FinancialTransaction(
+          id: _newId('cofrinho-resgate-$goalId-'),
+          title: 'Resgate Cofrinho: ${goal.title}',
+          amount: actualWithdrawn,
+          type: TransactionType.income,
+          category: 'investment',
+          paymentMethod: 'pix',
+          date: DateTime.now(),
+          notes: 'Resgate do cofrinho ${goal.title}',
+        ),
+      );
+      _recalculateBudgets();
+    }
     _persistAll();
     notifyListeners();
     return updated;
@@ -1192,6 +1259,21 @@ class FinancialRepository extends ChangeNotifier {
 
   // ── GETTERS & AGGREGATIONS ──
 
+  double get _unrecordedCofrinhoSavings {
+    double recordedCofrinho = 0;
+    double recordedResgate = 0;
+    for (final tx in _transactions) {
+      if (tx.id.startsWith('cofrinho-resgate-')) {
+        recordedResgate += tx.amount;
+      } else if (tx.id.startsWith('cofrinho-')) {
+        recordedCofrinho += tx.amount;
+      }
+    }
+    final netRecorded = (recordedCofrinho - recordedResgate).clamp(0.0, double.infinity);
+    final totalSavedInGoals = _goals.fold<double>(0.0, (sum, g) => sum + g.savedAmount);
+    return (totalSavedInGoals - netRecorded).clamp(0.0, double.infinity);
+  }
+
   double get totalBalance {
     double income = 0;
     double expense = 0;
@@ -1202,7 +1284,7 @@ class FinancialRepository extends ChangeNotifier {
         expense += tx.amount;
       }
     }
-    return income - expense;
+    return income - expense - _unrecordedCofrinhoSavings;
   }
 
   double get monthIncome {
@@ -1217,12 +1299,13 @@ class FinancialRepository extends ChangeNotifier {
 
   double get monthExpense {
     final now = DateTime.now();
-    return _transactions
+    final txExpense = _transactions
         .where((tx) =>
             (tx.type == TransactionType.expense || (tx.type == TransactionType.transfer && !tx.isInternalTransfer)) &&
             tx.date.year == now.year &&
             tx.date.month == now.month)
         .fold(0.0, (acc, tx) => acc + tx.amount);
+    return txExpense + _unrecordedCofrinhoSavings;
   }
 
   Map<String, double> get categoryExpensesThisMonth {

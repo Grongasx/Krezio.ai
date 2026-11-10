@@ -246,18 +246,25 @@ class DashboardScreen extends StatelessWidget {
                             ),
                             const SizedBox(height: KrezioSpace.md),
                             ...upcomingBills.map((b) {
+                              final isIncome = b.type == TransactionType.income;
+                              final sign = isIncome ? '+ ' : '- ';
+                              final valColor = isIncome ? KrezioColors.emeraldGreen : KrezioColors.budgetOver;
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: KrezioSpace.xs),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text(
-                                      '${b.title} (${b.dueLabel})',
-                                      style: TextStyle(fontSize: KrezioFont.small, color: primaryTextColor),
+                                    Expanded(
+                                      child: Text(
+                                        '${b.title} (${b.dueLabel})',
+                                        style: TextStyle(fontSize: KrezioFont.small, color: primaryTextColor),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
+                                    const SizedBox(width: KrezioSpace.sm),
                                     Text(
-                                      hideAmounts ? 'Valor oculto' : Money.brl(b.amount),
-                                      style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: primaryTextColor),
+                                      hideAmounts ? 'Valor oculto' : '$sign${Money.brl(b.amount)}',
+                                      style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: valColor),
                                     ),
                                   ],
                                 ),
@@ -319,7 +326,7 @@ class DashboardScreen extends StatelessWidget {
                               final dayStr = r.targetDate.day.toString().padLeft(2, '0');
                               final monthStr = r.targetDate.month.toString().padLeft(2, '0');
                               final amountStr = r.amount != null
-                                  ? (hideAmounts ? 'Valor oculto' : Money.brl(r.amount!))
+                                  ? (hideAmounts ? 'Valor oculto' : '${r.amountPrefix}${Money.brl(r.amount!)}')
                                   : '';
 
                               return Padding(
@@ -332,7 +339,7 @@ class DashboardScreen extends StatelessWidget {
                                       child: Icon(
                                         r.isCompleted ? Icons.check_circle : Icons.radio_button_unchecked,
                                         size: 18,
-                                        color: r.isCompleted ? KrezioColors.emeraldGreen : secondaryTextColor,
+                                        color: r.isCompleted ? KrezioColors.emeraldGreen : r.amountColor,
                                       ),
                                     ),
                                     const SizedBox(width: KrezioSpace.sm),
@@ -368,7 +375,7 @@ class DashboardScreen extends StatelessWidget {
                                             style: TextStyle(
                                               fontSize: KrezioFont.small,
                                               fontWeight: FontWeight.bold,
-                                              color: r.isCompleted ? secondaryTextColor : KrezioColors.friendlyOrange,
+                                              color: r.isCompleted ? secondaryTextColor : r.amountColor,
                                             ),
                                           ),
                                         Text(

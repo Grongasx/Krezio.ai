@@ -40,20 +40,42 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     (
       Icons.account_balance_wallet_outlined,
       'Suas finanças, sem planilha',
-      'Registre gastos e receitas, acompanhe orçamentos e metas, e veja para onde vai o seu dinheiro.',
-      <String>[],
+      'Bem-vindo ao Tour do Krezio.ai! Veja seu saldo líquido em tempo real, gráficos por categoria, recorrências e para onde vai o seu dinheiro.',
+      [
+        '📊 Painel inteligente com visão mensal',
+        '🔒 Modo privacidade com um toque (••••)',
+        '🔁 Recorrências semanais, quinzenais e mensais',
+      ],
     ),
     (
-      Icons.chat_bubble_outline,
-      'Fale com o César como fala com um amigo',
-      'Escreva ou fale do seu jeito. Ele entende e pergunta quando tiver dúvida.',
-      ['"gastei 50 no mercado no pix"', '"quanto gastei com uber esse mês?"', '"apaga o último"', '"onde posso economizar?"'],
+      Icons.auto_awesome,
+      'Conheça o César: Voz Live & Texto',
+      'Converse com o César por texto ou em tempo real por voz (César Live). Ele registra gastos, tira dúvidas e simula cenários no seu próprio aparelho.',
+      [
+        '"gastei 50 no mercado no pix"',
+        '"quanto gastei com uber esse mês?"',
+        '"posso comprar um tênis de 300?"',
+        '"me lembra de pagar a luz dia 10"',
+      ],
+    ),
+    (
+      Icons.savings_outlined,
+      'Cofrinhos, Lembretes & Extratos PDF',
+      'Guarde dinheiro nos Cofrinhos (descontando do saldo líquido como despesa), controle quem te deve (+ verde) e contas a pagar (- vermelho), e importe extratos em PDF (Itaú), OFX ou CSV.',
+      [
+        '🐷 Cofrinhos que protegem seu saldo líquido',
+        '📄 Importação de PDF (Itaú), OFX e CSV',
+        '🔔 Notificações push dos seus lembretes',
+      ],
     ),
     (
       Icons.lock_outline,
-      'Privacidade no seu aparelho',
-      'O César interpreta comandos no aparelho. A fala usa os recursos de voz da plataforma.',
-      <String>[],
+      'Privacidade 100% no seu aparelho',
+      'O motor neural do César roda localmente no seu dispositivo. Proteja o app com PIN ou biometria e exporte seus dados quando quiser.',
+      [
+        '🧠 Inteligência artificial on-device',
+        '🛡️ Proteção por PIN e Biometria',
+      ],
     ),
   ];
 
@@ -156,23 +178,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget _introPage(IconData icon, String title, String text, List<String> examples) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xxl),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 72, color: KrezioColors.aiPurple),
-          const SizedBox(height: KrezioSpace.xl),
-          Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold)),
-          const SizedBox(height: KrezioSpace.md),
-          Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: KrezioFont.bodyLarge)),
-          const SizedBox(height: KrezioSpace.lg),
-          for (final e in examples)
-            Padding(
-              padding: const EdgeInsets.only(bottom: KrezioSpace.sm),
-              child: Chip(label: Text(e)),
-            ),
-        ],
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xxl, vertical: KrezioSpace.md),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 64, color: KrezioColors.aiPurple),
+            const SizedBox(height: KrezioSpace.lg),
+            Text(title, textAlign: TextAlign.center, style: const TextStyle(fontSize: KrezioFont.headline, fontWeight: FontWeight.bold)),
+            const SizedBox(height: KrezioSpace.md),
+            Text(text, textAlign: TextAlign.center, style: const TextStyle(fontSize: KrezioFont.body)),
+            const SizedBox(height: KrezioSpace.lg),
+            for (final e in examples)
+              Padding(
+                padding: const EdgeInsets.only(bottom: KrezioSpace.xs),
+                child: Chip(label: Text(e, style: const TextStyle(fontSize: KrezioFont.small))),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -185,9 +209,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         const SizedBox(height: KrezioSpace.sm),
         const Text('Tudo é opcional e dá para mudar depois.'),
         const SizedBox(height: KrezioSpace.lg),
-        KrezioTextField(controller: _name, label: 'Como o César te chama?', hint: 'Ex.: Ana', textCapitalization: TextCapitalization.words),
+        KrezioTextField(
+          controller: _name,
+          label: 'Como o César te chama?',
+          hint: 'Ex.: Ana',
+          textCapitalization: TextCapitalization.words,
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) => _finish(),
+        ),
         const SizedBox(height: KrezioSpace.md),
-        KrezioMoneyField(controller: _income, label: 'Renda mensal (para sugerir um orçamento)'),
+        KrezioMoneyField(
+          controller: _income,
+          label: 'Renda mensal (para sugerir um orçamento)',
+          onSubmitted: (_) => _finish(),
+        ),
         const SizedBox(height: KrezioSpace.lg),
         const Text('Onde mais vai o seu dinheiro?', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: KrezioSpace.sm),

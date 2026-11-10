@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/local_nlp_engine.dart';
 import 'package:krezio_ai/ai/voice/voice_conversation_controller.dart';
 import 'package:krezio_ai/ai/voice/voice_synthesis_service.dart';
+import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 
 class MockVoiceSynthesisService extends VoiceSynthesisService {
@@ -125,6 +126,60 @@ void main() {
       expect(merged.isComplete, true);
       expect(merged.amount, 150.0);
       expect(merged.personName, 'Joao');
+    });
+
+    test('VAD adaptativo: frases completas encerram rápido e frases incompletas aguardam mais', () {
+      final goodbyeWait = controller.computeSilenceDebounce('tchau César');
+      final completeWait = controller.computeSilenceDebounce('gastei 50 no mercado no pix');
+      final incompleteWait = controller.computeSilenceDebounce('gastei 50 no mercado');
+      final midPrepositionWait = controller.computeSilenceDebounce('gastei 50 no');
+
+      expect(goodbyeWait.inMilliseconds, lessThanOrEqualTo(900));
+      expect(completeWait.inMilliseconds, lessThanOrEqualTo(1100));
+      expect(incompleteWait.inMilliseconds, greaterThanOrEqualTo(1600));
+      expect(midPrepositionWait.inMilliseconds, greaterThanOrEqualTo(1800));
+    });
+
+    test('Fluxo multi-turno com dicas de slot pendente e quick-reply no César Live', () async {
+      FinancialTransactionDraft? completed;
+      final spokenUserPhrases = <String>[];
+      controller.onUserSpoken = spokenUserPhrases.add;
+      controller.onTransactionCompleted = (d) => completed = d;
+
+      await controller.submitQuickPhrase('gastei 80 no mercado');
+      expect(controller.activeDraft, isNotNull);
+      expect(controller.activeDraft!.isComplete, isFalse);
+      expect(controller.pendingSlotHintNotifier.value, contains('Forma de pagamento'));
+      expect(controller.quickRepliesNotifier.value, contains('No Pix'));
+
+      await controller.submitQuickPhrase('No Pix');
+      expect(completed, isNotNull);
+      expect(completed!.isComplete, isTrue);
+      expect(completed!.amount, 80.0);
+      expect(completed!.paymentMethod, 'pix');
+      expect(controller.pendingSlotHintNotifier.value, isNull);
+      expect(spokenUserPhrases, ['gastei 80 no mercado', 'No Pix']);
+      expect(controller.conversationHistoryNotifier.value.length, greaterThanOrEqualTo(4));
+    });
+
+    test('Criação e aporte em metas financeiras por voz no César Live', () async {
+      final repo = FinancialRepository();
+      final liveWithRepo = VoiceConversationController(
+        engine: engine,
+        repository: repo,
+        voiceSynthesisService: mockVoiceSynthesis,
+        sttInstance: stt.SpeechToText(),
+      );
+      addTearDown(liveWithRepo.dispose);
+
+      await liveWithRepo.submitQuickPhrase('quero juntar 5000 para viagem');
+      expect(repo.goals.any((g) => g.title.toLowerCase().contains('viagem')), isTrue);
+      expect(liveWithRepo.cesarSpeechNotifier.value, contains('Meta criada!'));
+
+      await liveWithRepo.submitQuickPhrase('guardei 500 na meta da viagem');
+      final updatedGoal = repo.goals.firstWhere((g) => g.title.toLowerCase().contains('viagem'));
+      expect(updatedGoal.savedAmount, 500.0);
+      expect(liveWithRepo.cesarSpeechNotifier.value, contains('10%'));
     });
   });
 

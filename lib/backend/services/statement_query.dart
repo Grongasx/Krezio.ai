@@ -16,6 +16,8 @@ class StatementFilter {
   final String? paymentMethod;
   final bool onlyInstallments;
   final bool onlyRecurrent;
+  final double? minAmount;
+  final double? maxAmount;
   final String text;
 
   const StatementFilter({
@@ -27,6 +29,8 @@ class StatementFilter {
     this.paymentMethod,
     this.onlyInstallments = false,
     this.onlyRecurrent = false,
+    this.minAmount,
+    this.maxAmount,
     this.text = '',
   });
 
@@ -37,6 +41,8 @@ class StatementFilter {
       paymentMethod == null &&
       !onlyInstallments &&
       !onlyRecurrent &&
+      minAmount == null &&
+      maxAmount == null &&
       text.trim().isEmpty;
 
   StatementFilter copyWith({
@@ -48,10 +54,14 @@ class StatementFilter {
     String? paymentMethod,
     bool? onlyInstallments,
     bool? onlyRecurrent,
+    double? minAmount,
+    double? maxAmount,
     String? text,
     bool clearCategory = false,
     bool clearType = false,
     bool clearPayment = false,
+    bool clearMinAmount = false,
+    bool clearMaxAmount = false,
   }) {
     return StatementFilter(
       period: period ?? this.period,
@@ -62,6 +72,8 @@ class StatementFilter {
       paymentMethod: clearPayment ? null : paymentMethod ?? this.paymentMethod,
       onlyInstallments: onlyInstallments ?? this.onlyInstallments,
       onlyRecurrent: onlyRecurrent ?? this.onlyRecurrent,
+      minAmount: clearMinAmount ? null : minAmount ?? this.minAmount,
+      maxAmount: clearMaxAmount ? null : maxAmount ?? this.maxAmount,
       text: text ?? this.text,
     );
   }
@@ -121,6 +133,8 @@ class StatementQuery {
       if (filter.paymentMethod != null && t.paymentMethod != filter.paymentMethod) return false;
       if (filter.onlyInstallments && (t.installments ?? 1) <= 1) return false;
       if (filter.onlyRecurrent && !t.isRecurrent) return false;
+      if (filter.minAmount != null && t.amount < filter.minAmount!) return false;
+      if (filter.maxAmount != null && t.amount > filter.maxAmount!) return false;
       if (q.isNotEmpty) {
         final haystack = [
           t.title,

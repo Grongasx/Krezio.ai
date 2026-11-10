@@ -109,16 +109,23 @@ class FinancialReminder {
     }
   }
 
+  bool get isReceivable =>
+      type == ReminderType.loanReceivable || type == ReminderType.dividend;
+
+  Color get amountColor =>
+      isReceivable ? KrezioColors.emeraldGreen : KrezioColors.budgetOver;
+
+  String get amountPrefix => isReceivable ? '+ ' : '- ';
+
   Color get color {
     switch (type) {
       case ReminderType.loanReceivable:
-        return KrezioColors.friendlyOrange;
       case ReminderType.dividend:
         return KrezioColors.emeraldGreen;
       case ReminderType.billPayment:
-        return KrezioColors.aiPurple;
+        return KrezioColors.budgetOver;
       case ReminderType.general:
-        return Colors.blueAccent;
+        return KrezioColors.budgetOver;
     }
   }
 
