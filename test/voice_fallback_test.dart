@@ -146,5 +146,70 @@ void main() {
       ])), isNull);
       expect(FlutterNativeTts.fallbackPitch, lessThan(1));
     });
+
+    test('prioriza a voz masculina padrão do Google sobre outras vozes masculinas', () {
+      final voices = VoicePicker.portuguese([
+        {'name': 'Microsoft Daniel - Portuguese (Brazil)', 'locale': 'pt-BR', 'gender': 'male'},
+        {'name': 'pt-br-x-ptd-local', 'locale': 'pt-BR', 'network_required': '0', 'features': ''},
+      ]);
+      final chosen = VoicePicker.choose(voices)!;
+      expect(chosen.name, 'pt-br-x-ptd-local');
+      expect(chosen.male, isTrue);
+      expect(chosen.isGoogle, isTrue);
+      expect(FlutterNativeTts.googleEngine, 'com.google.android.tts');
+      expect(FlutterNativeTts.defaultGoogleMaleVoice, 'pt-br-x-ptd-local');
+    });
+
+    test('Opção 3: Piper VITS INT8 quantizado e cache local com padrão Google masculino', () async {
+      final s = VoiceSynthesisService.internal();
+      await s.initialize();
+      expect(s.quantizedModelName, 'pt_BR-faber-int8.onnx');
+      expect(s.quantization, 'int8');
+      expect(s.defaultEngine, 'com.google.android.tts');
+      expect(s.defaultVoice, 'pt-br-x-ptd-local');
+      expect(s.onnxManager.gender, 'male');
+
+      final url1 = s.onnxManager.buildSynthesisUrl('Olá! Eu sou o César.');
+      final url2 = s.onnxManager.buildSynthesisUrl('Olá! Eu sou o César.');
+      expect(url1, contains('pt_BR-faber-int8.onnx'));
+      expect(url1, contains('quantization=int8'));
+      expect(url1, contains('gender=male'));
+      expect(url1, equals(url2));
+      expect(s.onnxManager.cachedPhraseCount, greaterThanOrEqualTo(1));
+    });
+
+    test('velocidade de comunicação calibrada e ajustável até 2.0x', () async {
+      final s = VoiceSynthesisService.internal();
+      expect(FlutterNativeTts.calibratedBaseRate, greaterThan(0.5));
+      expect(FlutterNativeTts.platformRateFor(1.0, isWeb: false), closeTo(0.65, 0.001));
+      expect(FlutterNativeTts.platformRateFor(1.5, isWeb: false), closeTo(0.975, 0.001));
+      expect(FlutterNativeTts.platformRateFor(1.0, isWeb: true), closeTo(1.15, 0.001));
+
+      await s.setSpeechRate(1.5);
+      expect(s.speechRate, 1.5);
+      expect(s.speechRateNotifier.value, 1.5);
+      expect(VoiceSynthesisService.speedLabelOf(1.5), 'Rápida');
+      expect(VoiceSynthesisService.speedLabelOf(1.75), 'Turbo');
+    });
+
+    test('prioriza vozes masculinas neurais/HD e humaniza cláusulas e texto falado', () {
+      final voices = VoicePicker.portuguese(android);
+      final naturalChoice = VoicePicker.choose(voices, preferNatural: true)!;
+      expect(naturalChoice.name, 'pt-br-x-ptd-network');
+      expect(naturalChoice.isNatural, isTrue);
+
+      final clauses = VoicePicker.splitIntoNaturalClauses('Pronto! Anotei 50 reais. Quer lançar mais alguma coisa?');
+      expect(clauses, ['Pronto!', 'Anotei 50 reais.', 'Quer lançar mais alguma coisa?']);
+
+      final s = VoiceSynthesisService.internal();
+      expect(
+        s.preprocessTextForSpeech('**Parcelado** em 10x no 5º dia útil no débito/crédito 🎉'),
+        'Parcelado em 10 vezes no quinto dia útil no débito ou crédito',
+      );
+      expect(
+        s.preprocessTextForSpeech('### Resumo\n- Mercado: R\$ 50,00\n- Uber: R\$ 30,00'),
+        'Resumo. Mercado: 50 reais. Uber: 30 reais',
+      );
+    });
   });
 }

@@ -57,9 +57,10 @@ class VoiceConversationController {
   bool _isSttInitialized = false;
   Timer? _speechTimeoutTimer;
   Timer? _silenceDebounceTimer;
+  Timer? _postSpeechRestartTimer;
 
   /// Hands-free ends after this long listening without hearing anything.
-  Duration idleTimeout = const Duration(seconds: 10);
+  Duration idleTimeout = const Duration(seconds: 60);
   Timer? _idleTimer;
 
   /// Set by "tchau César": the conversation ends once César says goodbye.
@@ -137,10 +138,27 @@ class VoiceConversationController {
         },
         onError: (error) {
           debugPrint('[VoiceConversationController] STT Error: ${error.errorMsg}');
-          if ((error.errorMsg == 'error_no_match' || error.errorMsg == 'no-speech') &&
+          final msg = error.errorMsg.toLowerCase();
+          final isRecoverable = msg.contains('no_match') ||
+              msg.contains('no-speech') ||
+              msg.contains('speech_timeout') ||
+              msg.contains('timeout') ||
+              msg.contains('error_7') ||
+              msg.contains('error_6') ||
+              msg.contains('client') ||
+              msg.contains('busy');
+          if (isRecoverable &&
               isHandsFreeNotifier.value &&
+              !isMutedNotifier.value &&
               !_isDisposed) {
-            _startListeningInternal();
+            Future.delayed(const Duration(milliseconds: 250), () {
+              if (!_isDisposed &&
+                  stateNotifier.value == VoiceState.listening &&
+                  isHandsFreeNotifier.value &&
+                  !isMutedNotifier.value) {
+                _startListeningInternal();
+              }
+            });
           } else if (stateNotifier.value == VoiceState.listening) {
             audioLevelNotifier.value = 0.0;
           }
@@ -171,6 +189,7 @@ class VoiceConversationController {
   Future<void> startListening() async {
     if (_isDisposed || isMutedNotifier.value) return;
 
+    _postSpeechRestartTimer?.cancel();
     _silenceDebounceTimer?.cancel();
     await voiceSynthesis.stop();
 
@@ -192,6 +211,8 @@ class VoiceConversationController {
         await speechToText.stop();
         await Future.delayed(const Duration(milliseconds: 150));
       }
+      if (_isDisposed || isMutedNotifier.value) return;
+      if (stateNotifier.value == VoiceState.speaking || stateNotifier.value == VoiceState.thinking) return;
 
       stateNotifier.value = VoiceState.listening;
       audioLevelNotifier.value = 0.20;
@@ -204,10 +225,11 @@ class VoiceConversationController {
           cancelOnError: false,
         ),
         onResult: (result) {
+          if (_isDisposed || stateNotifier.value != VoiceState.listening) return;
           final words = result.recognizedWords.trim();
           if (words.isNotEmpty) {
             userTranscriptNotifier.value = result.recognizedWords;
-            _idleTimer?.cancel();
+            _armIdleTimer();
           }
 
           // 1. Immediate finalize if engine flagged finalResult
@@ -232,21 +254,44 @@ class VoiceConversationController {
           final normalized = (level + 10) / 20.0;
           audioLevelNotifier.value = normalized.clamp(0.05, 1.0);
         },
-        pauseFor: const Duration(seconds: 3),
+        pauseFor: const Duration(seconds: 6),
+        listenFor: const Duration(seconds: 45),
       );
     } catch (e) {
       debugPrint('[VoiceConversationController] _startListeningInternal error: $e');
     }
   }
 
-  /// Manually commits whatever words have been transcribed so far without waiting.
+  /// Manually commits whatever words have been transcribed so far and stops recording.
   void manualCommitSpeech() {
+    stopRecordingUserSpeech(processTranscript: true);
+  }
+
+  /// Stops recording the user's microphone immediately.
+  /// If [processTranscript] is true and words were recognized, sends them to César;
+  /// otherwise pauses the microphone so it does not auto-restart.
+  Future<void> stopRecordingUserSpeech({bool processTranscript = true}) async {
     _silenceDebounceTimer?.cancel();
-    if (userTranscriptNotifier.value.trim().isNotEmpty) {
+    _idleTimer?.cancel();
+    _postSpeechRestartTimer?.cancel();
+    if (processTranscript && userTranscriptNotifier.value.trim().isNotEmpty) {
       _processCurrentTranscript();
-    } else if (stateNotifier.value != VoiceState.listening) {
-      startListening();
+      return;
     }
+    stateNotifier.value = VoiceState.paused;
+    await stopListening();
+  }
+
+  /// Immediately stops César's ongoing speech without waiting for it to finish.
+  Future<void> interruptCesarSpeech() async {
+    _postSpeechRestartTimer?.cancel();
+    _speechTimeoutTimer?.cancel();
+    _idleTimer?.cancel();
+    audioLevelNotifier.value = 0.0;
+    if (!_isDisposed) {
+      stateNotifier.value = VoiceState.idle;
+    }
+    await voiceSynthesis.stop();
   }
 
   /// Stops listening to the user.
@@ -261,12 +306,15 @@ class VoiceConversationController {
   }
 
   void _processCurrentTranscript() {
+    if (stateNotifier.value == VoiceState.thinking || stateNotifier.value == VoiceState.speaking) return;
+    _postSpeechRestartTimer?.cancel();
     _silenceDebounceTimer?.cancel();
+    _idleTimer?.cancel();
     var phrase = userTranscriptNotifier.value.trim();
     if (phrase.isEmpty) return;
 
-    stopListening();
     stateNotifier.value = VoiceState.thinking;
+    stopListening();
 
     if (isGoodbye(phrase)) {
       _endAfterSpeaking = true;
@@ -455,15 +503,15 @@ class VoiceConversationController {
       onTransactionCompleted?.call(draft);
       final amountStr = draft.amount != null ? 'de ${Money.brl(draft.amount!)}' : '';
       if (draft.billingDay != null && draft.paymentMarginDays != null) {
-        responseText = 'Anotado! Boleto de ${draft.description} registrado: cai dia ${draft.billingDay} com vencimento no dia ${draft.dueDay}, margem de ${draft.paymentMarginDays} dias para pagar.';
+        responseText = 'Pronto! Anotei o boleto de ${draft.description}: fecha dia ${draft.billingDay} e vence no dia ${draft.dueDay}, com ${draft.paymentMarginDays} dias de margem.';
       } else if (draft.isReminder && draft.reminderType == 'loan_receivable') {
-        responseText = 'Combinado! Lembrete de empréstimo registrado $amountStr. Te avisarei na data combinada!';
+        responseText = 'Combinado! Anotei o empréstimo $amountStr. Eu te lembro na data combinada.';
       } else if (draft.isReminder && draft.reminderType == 'dividend') {
-        responseText = 'Excelente! Lembrete de dividendos registrado $amountStr no seu calendário!';
+        responseText = 'Perfeito! Deixei o lembrete de dividendos $amountStr agendado.';
       } else if (draft.intent == 'income') {
-        responseText = 'Perfeito! Receita $amountStr registrada com sucesso no seu planejamento!';
+        responseText = 'Boa! Registrei a receita $amountStr.';
       } else {
-        responseText = 'Anotado! Despesa $amountStr lançada com sucesso no Krezio.ai!';
+        responseText = 'Pronto! Anotei a despesa $amountStr.';
       }
       if (!isMerged && draft.assumptionNote != null) responseText += ' ${draft.assumptionNote}';
       activeDraft = null; // Clear draft upon completion
@@ -502,6 +550,8 @@ class VoiceConversationController {
   }
 
   Future<void> _speakAsCesar(String text) async {
+    _postSpeechRestartTimer?.cancel();
+    _idleTimer?.cancel();
     cesarSpeechNotifier.value = text;
     stateNotifier.value = VoiceState.speaking;
     audioLevelNotifier.value = 0.6; // Pulsing during speech
@@ -525,9 +575,14 @@ class VoiceConversationController {
         return;
       }
       if (isHandsFreeNotifier.value && !isMutedNotifier.value) {
-        // Wait 300ms for browser audio device context to cleanly switch from playback to record
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (!_isDisposed && isHandsFreeNotifier.value && !isMutedNotifier.value) {
+        // Wait 300ms for browser/mobile audio context to cleanly switch from playback to record
+        _postSpeechRestartTimer?.cancel();
+        _postSpeechRestartTimer = Timer(const Duration(milliseconds: 300), () {
+          if (!_isDisposed &&
+              isHandsFreeNotifier.value &&
+              !isMutedNotifier.value &&
+              stateNotifier.value == VoiceState.speaking &&
+              !voiceSynthesis.isSpeakingNotifier.value) {
             startListening();
           }
         });
@@ -563,6 +618,7 @@ class VoiceConversationController {
   }
 
   Future<void> pauseOrResume() async {
+    _postSpeechRestartTimer?.cancel();
     if (stateNotifier.value == VoiceState.paused) {
       stateNotifier.value = VoiceState.idle;
       await startListening();
@@ -575,6 +631,7 @@ class VoiceConversationController {
 
   Future<void> stopConversation() async {
     if (_isDisposed) return;
+    _postSpeechRestartTimer?.cancel();
     _speechTimeoutTimer?.cancel();
     _silenceDebounceTimer?.cancel();
     _idleTimer?.cancel();
@@ -591,6 +648,7 @@ class VoiceConversationController {
   void dispose() {
     if (_isDisposed) return;
     _isDisposed = true;
+    _postSpeechRestartTimer?.cancel();
     _idleTimer?.cancel();
     _speechTimeoutTimer?.cancel();
     _silenceDebounceTimer?.cancel();

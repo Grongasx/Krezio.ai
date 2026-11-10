@@ -1,12 +1,20 @@
 {
-  "active_model": "faber-medium",
+  "active_model": "faber-int8",
   "model_name": "pt_BR-faber-medium",
-  "description": "Voz masculina madura, natural e profissional de consultor financeiro (Recomendado)",
+  "quantized_model_name": "pt_BR-faber-int8",
+  "quantization": "int8",
+  "estimated_size_mb": 15.4,
+  "gender": "male",
+  "default_engine": "com.google.android.tts",
+  "default_voice": "pt-br-x-ptd-local",
+  "prefer_google_default": true,
+  "description": "Voz masculina madura, natural e profissional de consultor financeiro (Padrão Google TTS Masculino + Piper VITS INT8 Quantizado)",
   "architecture": "Piper VITS (ONNX)",
   "language": "pt-BR",
   "sample_rate": 22050,
   "files": {
     "model": "pt_BR-faber-medium.onnx",
+    "quantized_model": "pt_BR-faber-int8.onnx",
     "config": "pt_BR-faber-medium.onnx.json",
     "tokens": "tokens.txt"
   },

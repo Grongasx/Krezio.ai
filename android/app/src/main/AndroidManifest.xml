@@ -70,7 +70,8 @@
         <intent>
             <action android:name="android.speech.RecognitionService"/>
         </intent>
-        <!-- Flutter TTS usa as vozes instaladas no aparelho. -->
+        <!-- Flutter TTS usa as vozes instaladas no aparelho (priorizando Google TTS Masculino). -->
+        <package android:name="com.google.android.tts"/>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>

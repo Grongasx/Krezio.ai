@@ -207,6 +207,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _openVoiceConversationModal() {
+    _stopListeningIfActive();
     VoiceConversationModal.show(context, _voiceController);
   }
 
@@ -301,6 +302,21 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _stopListeningIfActive() async {
+    if (_isListening || _speech.isListening) {
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+        });
+      } else {
+        _isListening = false;
+      }
+      try {
+        await _speech.stop();
+      } catch (_) {}
+    }
+  }
+
   void _toggleListening() async {
     if (!_speechEnabled) {
       _initSpeech();
@@ -308,12 +324,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (_isListening) {
-      await _speech.stop();
-      if (mounted) {
-        setState(() {
-          _isListening = false;
-        });
-      }
+      await _stopListeningIfActive();
     } else {
       if (mounted) {
         setState(() {
@@ -326,11 +337,10 @@ class _ChatScreenState extends State<ChatScreen> {
         partialResults: true,
         listenMode: stt.ListenMode.dictation,
         onResult: (result) {
-          if (mounted) {
-            setState(() {
-              _textController.text = result.recognizedWords;
-            });
-          }
+          if (!mounted || !_isListening) return;
+          setState(() {
+            _textController.text = result.recognizedWords;
+          });
         },
       );
     }
@@ -386,6 +396,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendMessage(String input) {
+    _stopListeningIfActive();
     var text = input.trim();
     if (text.isEmpty) return;
 
@@ -677,7 +688,7 @@ class _ChatScreenState extends State<ChatScreen> {
           timestamp: DateTime.now(),
           spokenText: affordability.spokenText,
         );
-        _voiceSynthesis.speak(affordability.spokenText);
+        _voiceSynthesis.speak(affordability.formattedText);
         Future.delayed(const Duration(milliseconds: 150), () {
           if (!mounted) return;
           setState(() => _messages.add(assistantMsg));
@@ -708,7 +719,7 @@ class _ChatScreenState extends State<ChatScreen> {
         chart: reportResult.chart,
       );
 
-      _voiceSynthesis.speak(reportResult.spokenText);
+      _voiceSynthesis.speak(reportResult.formattedText);
 
       Future.delayed(const Duration(milliseconds: 150), () {
         if (!mounted) return;
@@ -912,7 +923,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _drafts.dropped();
     final notice = _assistant?.takeNotice();
     final text = notice == null ? reply.text : '$notice\n\n${reply.text}';
-    if (speak) _voiceSynthesis.speak(reply.spokenText);
+    if (speak) _voiceSynthesis.speak(text);
     final assistantMsg = ChatMessage(
       id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
       sender: MessageSender.assistant,
@@ -1326,6 +1337,53 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
+            // Active Voice / Recording Control Bar
+            ValueListenableBuilder<bool>(
+              valueListenable: _voiceSynthesis.isSpeakingNotifier,
+              builder: (context, isCesarSpeaking, _) {
+                if (!_isListening && !isCesarSpeaking) return const SizedBox.shrink();
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
+                  decoration: BoxDecoration(
+                    color: isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface,
+                    border: Border(
+                      top: BorderSide(color: isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder),
+                    ),
+                  ),
+                  child: Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: KrezioSpace.sm,
+                    runSpacing: KrezioSpace.xs,
+                    children: [
+                      if (_isListening)
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
+                          ),
+                          icon: const Icon(Icons.stop_circle_rounded, size: 16),
+                          label: const Text('Parar de gravar', style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold)),
+                          onPressed: _toggleListening,
+                        ),
+                      if (isCesarSpeaking)
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.redAccent,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
+                          ),
+                          icon: const Icon(Icons.stop_circle_rounded, size: 16),
+                          label: const Text('Parar fala do César', style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold)),
+                          onPressed: () => _voiceSynthesis.stop(),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+
             // Input Bar
             Container(
               padding: const EdgeInsets.all(KrezioSpace.md),
@@ -1372,18 +1430,21 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                   ),
                   const SizedBox(width: KrezioSpace.sm),
-                  Material(
-                    color: _isListening ? Colors.redAccent : (isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface),
-                    borderRadius: KrezioTheme.borderRadius,
-                    child: InkWell(
+                  Tooltip(
+                    message: _isListening ? 'Parar de gravar' : 'Gravar minha fala',
+                    child: Material(
+                      color: _isListening ? Colors.redAccent : (isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface),
                       borderRadius: KrezioTheme.borderRadius,
-                      onTap: _toggleListening,
-                      child: Padding(
-                        padding: const EdgeInsets.all(KrezioSpace.md),
-                        child: Icon(
-                          _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                          color: _isListening ? Colors.white : (isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText),
-                          size: 20,
+                      child: InkWell(
+                        borderRadius: KrezioTheme.borderRadius,
+                        onTap: _toggleListening,
+                        child: Padding(
+                          padding: const EdgeInsets.all(KrezioSpace.md),
+                          child: Icon(
+                            _isListening ? Icons.stop_rounded : Icons.mic_none_rounded,
+                            color: _isListening ? Colors.white : (isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText),
+                            size: 20,
+                          ),
                         ),
                       ),
                     ),
@@ -1602,14 +1663,28 @@ class _ChatScreenState extends State<ChatScreen> {
                   valueListenable: _voiceSynthesis.availabilityNotifier,
                   builder: (_, availability, child) => availability == VoiceAvailability.unavailable
                     ? const SizedBox.shrink()
-                    : IconButton(
-                  icon: const Icon(Icons.volume_up_outlined, size: 18),
-                  color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
-                  tooltip: 'Ouvir César falando',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  onPressed: () => _voiceSynthesis.speak(msg.spokenText ?? msg.text),
-                    ),
+                    : ValueListenableBuilder<bool>(
+                        valueListenable: _voiceSynthesis.isSpeakingNotifier,
+                        builder: (_, isSpeaking, __) => IconButton(
+                          icon: Icon(
+                            isSpeaking ? Icons.stop_circle_outlined : Icons.volume_up_outlined,
+                            size: 18,
+                          ),
+                          color: isSpeaking
+                              ? Colors.redAccent
+                              : (isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText),
+                          tooltip: isSpeaking ? 'Parar fala do César' : 'Ouvir César falando',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: () {
+                            if (isSpeaking) {
+                              _voiceSynthesis.stop();
+                            } else {
+                              _voiceSynthesis.speak(msg.text.isNotEmpty ? msg.text : (msg.spokenText ?? ''));
+                            }
+                          },
+                        ),
+                      ),
                 ),
               ],
             ],

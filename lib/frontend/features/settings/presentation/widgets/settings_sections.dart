@@ -511,8 +511,8 @@ class ToolsSection extends StatelessWidget {
   }
 }
 
-/// César's voice on this device: automatic (a male voice) or one chosen from
-/// the system voices in Portuguese, with a button to hear it.
+/// César's voice on this device: defaults to Google's male voice (`pt-br-x-ptd-local`),
+/// with optional On-Device Lightweight Piper VITS INT8 model or system voice picker.
 class VoiceSection extends StatefulWidget {
   const VoiceSection({super.key});
 
@@ -521,8 +521,10 @@ class VoiceSection extends StatefulWidget {
 }
 
 class _VoiceSectionState extends State<VoiceSection> {
+  VoiceSynthesisService get _synthesis => VoiceSynthesisService();
+
   FlutterNativeTts? get _tts {
-    final t = VoiceSynthesisService().nativeTts;
+    final t = _synthesis.nativeTts;
     return t is FlutterNativeTts ? t : null;
   }
 
@@ -544,10 +546,12 @@ class _VoiceSectionState extends State<VoiceSection> {
             ),
             ListTile(
               leading: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple),
-              title: const Text('Automática (voz masculina)'),
+              title: const Text('Padrão do Google (voz masculina natural)'),
+              subtitle: const Text('Google TTS · prioriza voz Neural HD masculina'),
               onTap: () async {
+                _synthesis.setUseQuantizedOnnx(false);
                 await tts.useVoice(null);
-                await tts.speak('Olá! Eu sou o César.');
+                await _synthesis.speak('Olá! Eu sou o César. Como posso te ajudar hoje?');
               },
             ),
             if (voices.isEmpty)
@@ -556,11 +560,14 @@ class _VoiceSectionState extends State<VoiceSection> {
               ListTile(
                 leading: Icon(v.male ? Icons.man : Icons.record_voice_over_outlined),
                 title: Text(v.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${v.locale}${v.male ? ' · masculina' : ''}${v.local ? '' : ' · precisa de internet'}'),
+                subtitle: Text(
+                  '${v.locale}${v.isNatural ? ' · ✨ Natural HD' : ''}${v.isGoogle ? ' · Google' : ''}${v.male ? ' · masculina' : ''}${v.local ? '' : ' · online'}',
+                ),
                 trailing: const Icon(Icons.play_arrow),
                 onTap: () async {
+                  _synthesis.setUseQuantizedOnnx(false);
                   await tts.useVoice(v.name);
-                  await tts.speak('Olá! Eu sou o César.');
+                  await _synthesis.speak('Olá! Eu sou o César. Como posso te ajudar hoje?');
                 },
               ),
           ],
@@ -575,8 +582,85 @@ class _VoiceSectionState extends State<VoiceSection> {
       ListTile(
         leading: const Icon(Icons.record_voice_over_outlined, color: KrezioColors.aiPurple),
         title: const Text('Escolher a voz'),
-        subtitle: const Text('Masculina por padrão; toque para ouvir as vozes do celular'),
+        subtitle: const Text('Padrão do Google (masculina); toque para ouvir as vozes do celular'),
         onTap: () => _choose(context),
+      ),
+      ValueListenableBuilder<double>(
+        valueListenable: _synthesis.speechRateNotifier,
+        builder: (context, rate, _) {
+          final clamped = rate.clamp(0.75, 2.0);
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.xs),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.speed_rounded, color: KrezioColors.aiPurple),
+                    const SizedBox(width: KrezioSpace.md),
+                    Expanded(
+                      child: Text(
+                        'Velocidade de comunicação: ${rate.toStringAsFixed(2)}× (${VoiceSynthesisService.speedLabelOf(rate)})',
+                        style: const TextStyle(fontSize: KrezioFont.bodySmall, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Ouvir velocidade',
+                      icon: const Icon(Icons.play_circle_outline, color: KrezioColors.emeraldGreen),
+                      onPressed: () => _synthesis.speak('Olá! Eu sou o César, falando na velocidade selecionada.'),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: clamped,
+                  min: 0.75,
+                  max: 2.0,
+                  divisions: 25,
+                  activeColor: KrezioColors.aiPurple,
+                  label: '${rate.toStringAsFixed(2)}×',
+                  onChanged: (v) async {
+                    await _synthesis.setSpeechRate(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+                Wrap(
+                  spacing: KrezioSpace.xs,
+                  runSpacing: KrezioSpace.xs,
+                  children: [
+                    for (final preset in VoiceSynthesisService.speedPresets)
+                      ChoiceChip(
+                        label: Text('${preset}×', style: const TextStyle(fontSize: KrezioFont.caption)),
+                        selected: (rate - preset).abs() < 0.03,
+                        selectedColor: KrezioColors.aiPurple.withValues(alpha: 0.2),
+                        onSelected: (_) async {
+                          await _synthesis.setSpeechRate(preset);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: KrezioSpace.xs),
+              ],
+            ),
+          );
+        },
+      ),
+      ValueListenableBuilder<bool>(
+        valueListenable: _synthesis.onnxManager.useOnnxModelNotifier,
+        builder: (context, useOnnx, _) => SwitchListTile(
+          secondary: const Icon(Icons.memory_outlined, color: KrezioColors.aiPurple),
+          title: const Text('Modelo On-Device Leve (Piper VITS INT8)'),
+          subtitle: Text(
+            useOnnx
+                ? 'Ativo (${_synthesis.quantizedModelName} · ~15 MB · Masculina)'
+                : 'Desativado (usando padrão do Google masculino)',
+          ),
+          value: useOnnx,
+          onChanged: (enabled) {
+            _synthesis.setUseQuantizedOnnx(enabled);
+            setState(() {});
+          },
+        ),
       ),
     ]);
   }

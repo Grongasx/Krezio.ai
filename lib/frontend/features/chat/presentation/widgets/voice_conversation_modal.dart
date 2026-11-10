@@ -219,14 +219,14 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                 ),
                 const SizedBox(height: KrezioSpace.lg),
                 Text(
-                  'Velocidade da fala: ${tts.speechRate.toStringAsFixed(2)}×',
+                  'Velocidade da fala: ${tts.speechRate.toStringAsFixed(2)}× (${VoiceSynthesisService.speedLabelOf(tts.speechRate)})',
                   style: const TextStyle(color: Colors.white70, fontSize: KrezioFont.bodySmall),
                 ),
                 Slider(
-                  value: tts.speechRate.clamp(0.70, 1.30),
-                  min: 0.70,
-                  max: 1.30,
-                  divisions: 12,
+                  value: tts.speechRate.clamp(0.75, 2.0),
+                  min: 0.75,
+                  max: 2.0,
+                  divisions: 25,
                   activeColor: KrezioColors.emeraldGreen,
                   inactiveColor: Colors.white12,
                   onChanged: (value) {
@@ -234,6 +234,23 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                     setSheetState(() {});
                   },
                 ),
+                Wrap(
+                  spacing: KrezioSpace.xs,
+                  runSpacing: KrezioSpace.xs,
+                  children: [
+                    for (final preset in VoiceSynthesisService.speedPresets)
+                      ChoiceChip(
+                        label: Text('${preset}×', style: const TextStyle(fontSize: KrezioFont.caption)),
+                        selected: (tts.speechRate - preset).abs() < 0.03,
+                        selectedColor: KrezioColors.emeraldGreen.withValues(alpha: 0.25),
+                        onSelected: (_) {
+                          tts.setSpeechRate(preset);
+                          setSheetState(() {});
+                        },
+                      ),
+                  ],
+                ),
+                const SizedBox(height: KrezioSpace.md),
                 ValueListenableBuilder<bool>(
                   valueListenable: widget.controller.isSpeakerMutedNotifier,
                   builder: (context, muted, _) => ElevatedButton.icon(
@@ -304,14 +321,9 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                     GestureDetector(
                       onTap: () {
                         if (state == VoiceState.listening) {
-                          if (widget.controller.userTranscriptNotifier.value.trim().isNotEmpty) {
-                            widget.controller.manualCommitSpeech();
-                          } else {
-                            widget.controller.startListening();
-                          }
+                          widget.controller.stopRecordingUserSpeech(processTranscript: true);
                         } else if (state == VoiceState.speaking) {
-                          widget.controller.voiceSynthesis.stop();
-                          widget.controller.startListening();
+                          widget.controller.interruptCesarSpeech();
                         } else {
                           widget.controller.startListening();
                         }
@@ -550,18 +562,7 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                       ),
                     ),
                     const SizedBox(height: KrezioSpace.md),
-                    Text(
-                      state == VoiceState.listening
-                          ? (widget.controller.userTranscriptNotifier.value.trim().isNotEmpty
-                              ? '✨ Aguarde 1s em silêncio ou toque na esfera para enviar'
-                              : 'Fale normalmente ou toque na esfera')
-                          : (state == VoiceState.speaking ? 'Toque na esfera para interromper' : ''),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        fontSize: KrezioFont.caption,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
+                    _buildImmediateSpeechActionButtons(state),
                   ],
                 );
               },
@@ -570,6 +571,90 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
         );
       },
     );
+  }
+
+  /// Explicit, one-tap buttons to stop recording user speech or stop César from speaking.
+  Widget _buildImmediateSpeechActionButtons(VoiceState state) {
+    if (state == VoiceState.listening) {
+      return ValueListenableBuilder<String>(
+        valueListenable: widget.controller.userTranscriptNotifier,
+        builder: (context, transcript, _) {
+          final hasWords = transcript.trim().isNotEmpty;
+          return Wrap(
+            alignment: WrapAlignment.center,
+            spacing: KrezioSpace.sm,
+            runSpacing: KrezioSpace.xs,
+            children: [
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent.withValues(alpha: 0.90),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                ),
+                icon: const Icon(Icons.stop_circle_rounded, size: 18),
+                label: const Text(
+                  'Parar de gravar',
+                  style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold),
+                ),
+                onPressed: () => widget.controller.stopRecordingUserSpeech(processTranscript: false),
+              ),
+              if (hasWords)
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF06B6D4),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                  ),
+                  icon: const Icon(Icons.send_rounded, size: 16),
+                  label: const Text(
+                    'Concluir e enviar fala',
+                    style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold),
+                  ),
+                  onPressed: () => widget.controller.stopRecordingUserSpeech(processTranscript: true),
+                ),
+            ],
+          );
+        },
+      );
+    }
+
+    if (state == VoiceState.speaking) {
+      return ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.redAccent,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xl, vertical: KrezioSpace.sm),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        ),
+        icon: const Icon(Icons.stop_circle_rounded, size: 18),
+        label: const Text(
+          'Parar fala do César',
+          style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold),
+        ),
+        onPressed: () => widget.controller.interruptCesarSpeech(),
+      );
+    }
+
+    if (state == VoiceState.paused || state == VoiceState.idle) {
+      return ElevatedButton.icon(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: KrezioColors.aiPurple,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.xl, vertical: KrezioSpace.sm),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        ),
+        icon: const Icon(Icons.mic_rounded, size: 18),
+        label: const Text(
+          'Gravar minha fala',
+          style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold),
+        ),
+        onPressed: () => widget.controller.startListening(),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   /// Harmonic soundwave frequency bars dancing inside the neural orb.
@@ -701,39 +786,47 @@ class _VoiceConversationModalState extends State<VoiceConversationModal> with Ti
                             ),
                           ],
                         ),
-                        const SizedBox(height: KrezioSpace.sm),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: InkWell(
-                            onTap: () => widget.controller.manualCommitSpeech(),
-                            borderRadius: BorderRadius.circular(14),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF06B6D4).withValues(alpha: 0.2),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(
-                                  color: const Color(0xFF06B6D4).withValues(alpha: 0.6),
-                                  width: 1,
-                                ),
-                              ),
-                              child: const Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.send_rounded, color: Color(0xFF06B6D4), size: 12),
-                                  SizedBox(width: KrezioSpace.xs),
-                                  Text(
-                                    'Enviar fala agora ➔',
-                                    style: TextStyle(
-                                      color: Color(0xFF67E8F9),
-                                      fontSize: KrezioFont.caption,
-                                      fontWeight: FontWeight.bold,
+                        ValueListenableBuilder<VoiceState>(
+                          valueListenable: widget.controller.stateNotifier,
+                          builder: (context, currentState, _) {
+                            if (currentState != VoiceState.listening) return const SizedBox.shrink();
+                            return Padding(
+                              padding: const EdgeInsets.only(top: KrezioSpace.sm),
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: InkWell(
+                                  onTap: () => widget.controller.stopRecordingUserSpeech(processTranscript: true),
+                                  borderRadius: BorderRadius.circular(14),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.xs),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF06B6D4).withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(
+                                        color: const Color(0xFF06B6D4).withValues(alpha: 0.6),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.send_rounded, color: Color(0xFF06B6D4), size: 12),
+                                        SizedBox(width: KrezioSpace.xs),
+                                        Text(
+                                          'Enviar fala agora ➔',
+                                          style: TextStyle(
+                                            color: Color(0xFF67E8F9),
+                                            fontSize: KrezioFont.caption,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ],
                     ),
