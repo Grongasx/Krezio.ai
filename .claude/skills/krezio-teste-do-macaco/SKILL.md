@@ -1,6 +1,6 @@
 ---
-name: krezio-chaos-test
-description: Teste do caos no César e no repositório financeiro — entradas hostis e absurdas, fluxos interrompidos, sequências aleatórias de comandos (fuzzing) e verificação de invariantes (saldo consistente, nada duplicado, nada perdido). Registra falhas em docs/qa/findings-caos.md. Use para "teste do caos", "fuzz", "estressar a IA", "quebrar o César".
+name: krezio-teste-do-macaco
+description: Teste do macaco no César e no repositório financeiro — entradas hostis e absurdas, fluxos interrompidos, sequências aleatórias de comandos (fuzzing) e verificação de invariantes (saldo consistente, nada duplicado, nada perdido). Registra falhas em docs/qa/findings-caos.md. Use para "teste do macaco", "fuzz", "estressar a IA", "quebrar o César".
 ---
 
 # Teste do caos do César
