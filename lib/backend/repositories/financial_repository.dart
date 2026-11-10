@@ -387,6 +387,11 @@ class FinancialRepository extends ChangeNotifier {
     return DateTime(prev.year, prev.month, day > lastDayPrev ? lastDayPrev : day);
   }
 
+  static DateTime _seedCurrentMonthDate(DateTime now, int day) {
+    if (day <= now.day) return DateTime(now.year, now.month, day);
+    return DateTime(now.year, now.month, now.day > 1 ? now.day - 1 : 1);
+  }
+
   void _seedInitialData() {
     final now = DateTime.now();
     _transactions.addAll([
@@ -397,7 +402,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.income,
         category: 'salary',
         paymentMethod: 'pix',
-        date: seedDate(now, 5),
+        date: _seedCurrentMonthDate(now, 5),
         bankSource: 'Banco Inter',
       ),
       FinancialTransaction(
@@ -407,7 +412,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'supermarket',
         paymentMethod: 'debit_card',
-        date: seedDate(now, 10),
+        date: _seedCurrentMonthDate(now, 10),
       ),
       FinancialTransaction(
         id: 'init-3',
@@ -416,7 +421,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'housing',
         paymentMethod: 'bank_slip',
-        date: seedDate(now, 8),
+        date: _seedCurrentMonthDate(now, 8),
         isRecurrent: true,
         dueDay: 8,
       ),
@@ -427,7 +432,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'health',
         paymentMethod: 'credit_card',
-        date: seedDate(now, 12),
+        date: _seedCurrentMonthDate(now, 12),
         isRecurrent: true,
         dueDay: 12,
       ),
@@ -438,7 +443,7 @@ class FinancialRepository extends ChangeNotifier {
         type: TransactionType.expense,
         category: 'transport',
         paymentMethod: 'pix',
-        date: seedDate(now, 14),
+        date: _seedCurrentMonthDate(now, 14),
       ),
     ]);
 

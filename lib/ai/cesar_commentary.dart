@@ -217,6 +217,9 @@ class CesarCommentary {
     return ' Sua média é ${_m(avg)} por mês: este mês está no seu ritmo de sempre.';
   }
 
+  double _categorySpentThisMonth(String category) =>
+      _expenses.where((t) => t.category == category && _inMonth(t, now)).fold(0.0, (a, t) => a + t.amount);
+
   /// A lower limit for the budget of [thing] that would hold half of what it
   /// usually costs — or null when it wouldn't change anything.
   LimitOffer? _limitFor(_Thing thing, double monthly) {
@@ -224,7 +227,8 @@ class CesarCommentary {
     if (b == null || monthly <= 0) return null;
     final base = b.monthlyLimit > 0 ? b.monthlyLimit : (_profile.categories[b.category]?.mean ?? 0);
     if (base <= 0) return null;
-    final floor = (b.currentSpent / 50).ceil() * 50.0;
+    final spent = _categorySpentThisMonth(b.category);
+    final floor = (spent / 50).ceil() * 50.0;
     final target = max(_round(base - monthly * 0.5, 50), floor);
     if (target <= 0 || target >= base - 25) return null;
     return (category: b.category, name: b.name, limit: target, old: b.monthlyLimit);
@@ -233,8 +237,10 @@ class CesarCommentary {
   /// When no lower limit makes sense because this month already went past it.
   String _overNote(_Thing thing) {
     final b = repository.budgets.where((b) => b.category == thing.budget).firstOrNull;
-    if (b == null || b.monthlyLimit <= 0 || !b.isOverBudget) return '';
-    return '\n\n⚠️ Este mês você já passou do limite de **${b.name}**: ${_m(b.currentSpent)} de ${_m(b.monthlyLimit)}.';
+    if (b == null || b.monthlyLimit <= 0) return '';
+    final spent = _categorySpentThisMonth(b.category);
+    if (spent <= b.monthlyLimit) return '';
+    return '\n\n⚠️ Este mês você já passou do limite de **${b.name}**: ${_m(spent)} de ${_m(b.monthlyLimit)}.';
   }
 
   String _offerText(LimitOffer o) => o.old > 0
