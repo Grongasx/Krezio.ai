@@ -228,38 +228,35 @@ class SettingsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.hub_outlined,
-                              color: isHomolog ? KrezioColors.aiPurple : secondaryTextColor,
-                            ),
-                            const SizedBox(width: KrezioSpace.md),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Modo de Homologação',
-                                  style: TextStyle(
-                                    fontSize: KrezioFont.body,
-                                    fontWeight: FontWeight.bold,
-                                    color: primaryTextColor,
-                                  ),
+                        Icon(
+                          Icons.hub_outlined,
+                          color: isHomolog ? KrezioColors.aiPurple : secondaryTextColor,
+                        ),
+                        const SizedBox(width: KrezioSpace.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Modo de Homologação',
+                                style: TextStyle(
+                                  fontSize: KrezioFont.body,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryTextColor,
                                 ),
-                                Text(
-                                  isHomolog
-                                      ? 'Ambiente de Testes / Staging Ativo'
-                                      : 'Ambiente de Produção Padrão',
-                                  style: TextStyle(
-                                    fontSize: KrezioFont.small,
-                                    color: isHomolog ? KrezioColors.aiPurple : secondaryTextColor,
-                                  ),
+                              ),
+                              Text(
+                                isHomolog
+                                    ? 'Staging & XAI Ativo'
+                                    : 'Ambiente de Produção Padrão',
+                                style: TextStyle(
+                                  fontSize: KrezioFont.small,
+                                  color: isHomolog ? KrezioColors.aiPurple : secondaryTextColor,
                                 ),
-                              ],
-                            ),
-                          ],
+                              ),
+                            ],
+                          ),
                         ),
                         Switch(
                           value: isHomolog,
@@ -273,7 +270,7 @@ class SettingsScreen extends StatelessWidget {
                       const Divider(height: 1),
                       const SizedBox(height: KrezioSpace.md),
                       Text(
-                        'O modo de homologação ativa o inspetor visual transparente da rede neural e auditoria on-device de inferências.',
+                        'Ativa o Inspetor XAI de Pipeline NLP on-device: atribuição de pesos TF-IDF, calibração Softmax, diff de regras e benchmark.',
                         style: TextStyle(fontSize: KrezioFont.small, color: secondaryTextColor, height: 1.35),
                       ),
                       const SizedBox(height: KrezioSpace.md),
@@ -288,9 +285,9 @@ class SettingsScreen extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+                            icon: const Icon(Icons.hub, color: Colors.white, size: 18),
                             label: const Text(
-                              'Abrir Visualizador da Rede Neural 🧠',
+                              'Abrir Inspetor NLP & XAI 🧠',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,

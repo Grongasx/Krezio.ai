@@ -149,5 +149,24 @@ void main() {
       expect(partial, contains('Restam R\$ 100,00'));
       expect(partial, isNot(contains('a mais')));
     });
+
+    test('quitação sem repetir valor ("me pagou tudo" / "quitou a dívida") usa o saldo da dívida', () {
+      final repo = FinancialRepository();
+      for (final phrase in ['o joão me pagou tudo', 'o joão quitou a dívida', 'o joão pagou o que devia']) {
+        final resolved = DebtPaymentParser.resolveForRepository(phrase, repo);
+        expect(resolved, isNotNull, reason: phrase);
+        expect(resolved!.match.personName, 'João');
+        expect(resolved.match.amountPaid, 150.0);
+        expect(resolved.matches.length, 1);
+      }
+
+      // Sem dívida aberta para Maria, "a maria pagou tudo" não inventa cobrança.
+      expect(DebtPaymentParser.resolveForRepository('a maria me pagou tudo', repo), isNull);
+
+      // Verbo "me acertou" com valor explícito também funciona.
+      final settled = DebtPaymentParser.parse('o joão me acertou 50 reais')!;
+      expect(settled.personName, 'João');
+      expect(settled.amountPaid, 50.0);
+    });
   });
 }

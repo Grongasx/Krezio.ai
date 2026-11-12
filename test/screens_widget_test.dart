@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,6 +14,7 @@ import 'package:krezio_ai/frontend/features/dashboard/presentation/screens/dashb
 import 'package:krezio_ai/frontend/features/dashboard/presentation/widgets/category_donut_chart.dart';
 import 'package:krezio_ai/frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:krezio_ai/frontend/features/chat/presentation/screens/chat_screen.dart';
+import 'package:krezio_ai/frontend/features/homologation/presentation/screens/neural_inspector_screen.dart';
 import 'package:krezio_ai/frontend/features/onboarding/onboarding_screen.dart';
 import 'package:krezio_ai/frontend/features/security/lock_screen.dart';
 import 'package:krezio_ai/frontend/features/transactions/presentation/screens/transactions_screen.dart';
@@ -279,12 +281,205 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.widgetWithText(TextField, 'Descrição / Estabelecimento'), 'Café expresso');
-    await tester.enterText(find.widgetWithText(TextField, 'Valor (R\$)'), '12');
+    await tester.enterText(find.widgetWithText(TextField, 'Valor (R\$)'), '1200');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
 
     expect(saved, isNotNull);
     expect(saved!.title, 'Café expresso');
     expect(saved!.amount, 12.0);
+  });
+
+  testWidgets('categorias de lançamento condizem com Despesa vs Receita e Orçamentos fica na aba de Lançamentos', (tester) async {
+    await phone(tester);
+    await tester.pumpWidget(app(Scaffold(
+      body: Builder(
+        builder: (ctx) => ElevatedButton(
+          onPressed: () => showModalBottomSheet(
+            context: ctx,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => AddTransactionModal(
+              isDark: true,
+              onAdd: (_) {},
+            ),
+          ),
+          child: const Text('Abrir modal'),
+        ),
+      ),
+    )));
+    await tester.tap(find.text('Abrir modal'));
+    await tester.pumpAndSettle();
+
+    // Em Despesa: Supermercado aparece, Salário não aparece
+    expect(find.widgetWithText(ChoiceChip, 'Supermercado'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Salário'), findsNothing);
+
+    // Ao trocar para Receita: Salário aparece, Supermercado não aparece
+    await tester.tap(find.text('Receita'));
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ChoiceChip, 'Salário'), findsOneWidget);
+    expect(find.widgetWithText(ChoiceChip, 'Supermercado'), findsNothing);
+  });
+
+  testWidgets('aba de lançamentos alterna entre Extrato e Orçamentos com filtros distribuídos', (tester) async {
+    await phone(tester);
+    final repo = FinancialRepository(seedDemo: true, persistChanges: false);
+    await tester.pumpWidget(app(TransactionsScreen(repository: repo, isDark: true)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Extrato'), findsOneWidget);
+    expect(find.text('Orçamentos'), findsOneWidget);
+
+    await tester.tap(find.text('Orçamentos'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Teto de Gastos Mensal'), findsOneWidget);
+    expect(find.text('Todos'), findsOneWidget);
+    expect(find.text('No controle'), findsOneWidget);
+    expect(find.text('Atenção'), findsOneWidget);
+    expect(find.text('Estourados'), findsOneWidget);
+  });
+
+  testWidgets('modo de homologação: inspetor XAI renderiza todas as abas sem overflow no mobile e gera JSON válido', (tester) async {
+    await phone(tester);
+    final engine = LocalFinancialNlpEngine.fromJsonString(
+      File('models/on_device/krezio_nlp_model.json').readAsStringSync(),
+    );
+    await tester.pumpWidget(app(NeuralInspectorScreen(
+      engine: engine,
+      initialQuery: 'asinei a netflx de 55 no cartao credito',
+      isDark: true,
+    )));
+    await tester.pump();
+    expect(find.text('NLP PIPELINE'), findsOneWidget);
+    expect(find.text('HOMOLOGAÇÃO'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Tab 2: Softmax & XAI
+    await tester.ensureVisible(find.text('Softmax & XAI'));
+    await tester.tap(find.text('Softmax & XAI'));
+    await tester.pump();
+    expect(find.text('ML Softmax Bruto vs. Saída Pós-Regras'), findsOneWidget);
+    expect(find.text('Pré-processamento, Typos & OOV'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Tab 3: Slots & Regras
+    await tester.ensureVisible(find.text('Slots & Regras'));
+    await tester.tap(find.text('Slots & Regras'));
+    await tester.pump();
+    expect(find.text('Árvore de Decisão & Extração de Slots'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Tab 4: Benchmark & Agenda
+    await tester.ensureVisible(find.text('Benchmark & Agenda'));
+    await tester.tap(find.text('Benchmark & Agenda'));
+    await tester.pump();
+    expect(find.text('Benchmark Golden Set On-Device'), findsOneWidget);
+    expect(find.text('Pass Rate'), findsOneWidget);
+    expect(find.text('Override Rate'), findsOneWidget);
+    expect(find.text('Margem Δp'), findsOneWidget);
+    expect(find.text('Zero-Vec Rate'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Tab 5: Trace JSON (valid JSON output)
+    await tester.ensureVisible(find.text('Trace JSON'));
+    await tester.tap(find.text('Trace JSON'));
+    await tester.pump();
+    final jsonTextWidget = tester.widget<SelectableText>(find.byType(SelectableText).first);
+    final decoded = jsonDecode(jsonTextWidget.data!);
+    expect(decoded, isA<Map<String, dynamic>>());
+    expect(decoded['classifiers']['intent']['predicted'], isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('chat card mantém largura elegante (<= 420px) no desktop e zero overflow', (tester) async {
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    final engine = LocalFinancialNlpEngine.fromJsonString(File('models/on_device/krezio_nlp_model.json').readAsStringSync());
+    final repo = repoWith([]);
+    await tester.pumpWidget(app(ChatScreen(engine: engine, repository: repo, onToggleTheme: () {}, isDarkMode: true)));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField).last, 'gastei 45,90 no mercado no pix');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump(const Duration(seconds: 1));
+
+    final cardFinder = find.byKey(const ValueKey('chat-transaction-card'));
+    expect(cardFinder, findsOneWidget);
+    expect(tester.getSize(cardFinder).width, lessThanOrEqualTo(420.0));
+    expect(find.text('DESPESA'), findsOneWidget);
+    expect(find.text('Registrado'), findsOneWidget);
+    expect(find.text('R\$ 45,90'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('chat: dividir conta exibe card limpo com a minha parte e cria lembrete a receber', (tester) async {
+    await phone(tester);
+    final engine = LocalFinancialNlpEngine.fromJsonString(File('models/on_device/krezio_nlp_model.json').readAsStringSync());
+    final repo = repoWith([]);
+    await tester.pumpWidget(app(ChatScreen(engine: engine, repository: repo, onToggleTheme: () {}, isDarkMode: true)));
+    await tester.pump();
+
+    await tester.enterText(find.byType(TextField).last, 'fui em um jantar, o total deu 320, dividimos em 3');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.drag(find.byType(ListView).last, const Offset(0, -400));
+    await tester.pumpAndSettle();
+
+    expect(repo.transactions.single.title, 'Jantar');
+    expect(repo.transactions.single.amount, 106.67);
+    expect(repo.reminders.single.amount, 213.33);
+    expect(find.byKey(const ValueKey('chat-transaction-card')), findsOneWidget);
+    expect(find.text('Jantar'), findsOneWidget);
+    expect(find.text('R\$ 106,67'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('transactions: botão Filtros abre modal com Período, Tipo de Lançamento e sem Margem de Valor', (tester) async {
+    await phone(tester);
+    final repo = repoWith([]);
+    await tester.pumpWidget(app(TransactionsScreen(repository: repo, isDark: true)));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Filtros'), findsOneWidget);
+    expect(find.text('Margem de Valor'), findsNothing);
+    expect(find.text('Categorias'), findsNothing);
+
+    await tester.tap(find.text('Filtros'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Período'), findsOneWidget);
+    expect(find.text('Tipo de Lançamento'), findsOneWidget);
+    expect(find.text('Despesas'), findsOneWidget);
+    expect(find.text('Receitas'), findsOneWidget);
+    expect(find.text('Parceladas'), findsOneWidget);
+    expect(find.text('Recorrentes'), findsOneWidget);
+    expect(find.text('Margem de Valor (Gasto / Recebido)'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('chat: sugestões categorizadas com dropdowns populam o campo de texto', (tester) async {
+    await phone(tester);
+    final engine = LocalFinancialNlpEngine.fromJsonString(File('models/on_device/krezio_nlp_model.json').readAsStringSync());
+    final repo = repoWith([]);
+    await tester.pumpWidget(app(ChatScreen(engine: engine, repository: repo, onToggleTheme: () {}, isDarkMode: true)));
+    await tester.pump();
+
+    expect(find.text('Lançamentos'), findsOneWidget);
+    await tester.tap(find.text('Lançamentos'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Almoço / restaurante'), findsOneWidget);
+    await tester.tap(find.text('Almoço / restaurante'));
+    await tester.pumpAndSettle();
+
+    final input = tester.widget<TextField>(find.byType(TextField).last);
+    expect(input.controller?.text, 'Paguei 58 no almoço no débito');
+    expect(tester.takeException(), isNull);
   });
 }

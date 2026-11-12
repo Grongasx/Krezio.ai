@@ -5,20 +5,28 @@ import '../../../../../ai/cesar_text.dart';
 import '../../../../../backend/repositories/financial_repository.dart';
 import '../../../../../backend/models/budget_category.dart';
 import '../../../../../backend/models/financial_transaction.dart';
-import '../../../../../backend/services/money.dart';
 import '../../../../../backend/services/statement_query.dart';
 import '../widgets/transaction_list_tile.dart';
 import '../../../../widgets/ledger_undo.dart';
 import '../widgets/add_transaction_modal.dart';
+import '../../../budgets/presentation/widgets/budgets_view.dart';
 
 class TransactionsScreen extends StatefulWidget {
   final FinancialRepository repository;
   final bool isDark;
 
+  /// Opens directly on the Orçamentos view (from the dashboard).
+  final bool showBudgets;
+
+  /// Budget category to highlight first in the Orçamentos view.
+  final String? focusedBudget;
+
   const TransactionsScreen({
     super.key,
     required this.repository,
     required this.isDark,
+    this.showBudgets = false,
+    this.focusedBudget,
   });
 
   @override
@@ -28,6 +36,7 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   StatementFilter _filter = const StatementFilter();
   final _searchController = TextEditingController();
+  late bool _showBudgets = widget.showBudgets;
 
   static const _payments = {
     'pix': 'Pix',
@@ -63,28 +72,112 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             backgroundColor: widget.isDark ? KrezioColors.darkBackground : KrezioColors.lightBackground,
             elevation: 0,
             title: Text(
-              'Extrato de Transações',
+              _showBudgets ? 'Orçamentos' : 'Extrato de Transações',
               style: TextStyle(fontSize: KrezioFont.title, fontWeight: FontWeight.bold, color: primaryTextColor),
             ),
             actions: [
+              if (_showBudgets)
+                IconButton(
+                  tooltip: 'Nova categoria',
+                  icon: const Icon(Icons.add, color: KrezioColors.aiPurple),
+                  onPressed: () => BudgetsView.showAddCategoryDialog(context, widget.repository),
+                )
+              else ...[
               IconButton(
-                tooltip: 'Mais filtros',
+                tooltip: 'Filtros',
                 icon: Badge(
-                  isLabelVisible: _filter.category != null ||
-                      _filter.paymentMethod != null ||
-                      _filter.minAmount != null ||
-                      _filter.maxAmount != null,
+                  isLabelVisible: _hasActiveModalFilters(),
                   child: Icon(Icons.tune, color: primaryTextColor),
                 ),
                 onPressed: () => _openFilterSheet(context),
               ),
               IconButton(
+                tooltip: 'Novo lançamento',
                 icon: const Icon(Icons.add, color: KrezioColors.aiPurple),
                 onPressed: () => _openAddModal(context),
               ),
+              ],
             ],
           ),
           body: Column(
+            children: [
+              _viewSwitcher(bgSurface, secondaryTextColor),
+              if (_showBudgets)
+                Expanded(
+                  child: BudgetsView(
+                    repository: widget.repository,
+                    isDark: widget.isDark,
+                    focusedCategory: widget.focusedBudget,
+                  ),
+                )
+              else
+                Expanded(child: _buildStatement(context, filtered, days, now, bgSurface, primaryTextColor, secondaryTextColor)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// "Extrato | Orçamentos" segmented switch at the top of the tab.
+  Widget _viewSwitcher(Color bgSurface, Color unselected) {
+    Widget seg(String label, IconData icon, bool budgets) {
+      final selected = _showBudgets == budgets;
+      return Expanded(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() => _showBudgets = budgets),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: KrezioSpace.sm),
+            decoration: BoxDecoration(
+              color: selected ? KrezioColors.aiPurple : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 16, color: selected ? Colors.white : unselected),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: KrezioFont.small,
+                    fontWeight: FontWeight.bold,
+                    color: selected ? Colors.white : unselected,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(KrezioSpace.lg, KrezioSpace.xs, KrezioSpace.lg, KrezioSpace.xs),
+      child: Container(
+        padding: const EdgeInsets.all(KrezioSpace.xs),
+        decoration: BoxDecoration(color: bgSurface, borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          children: [
+            seg('Extrato', Icons.receipt_long_outlined, false),
+            seg('Orçamentos', Icons.pie_chart_outline, true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatement(
+    BuildContext context,
+    List<FinancialTransaction> filtered,
+    List<StatementDay> days,
+    DateTime now,
+    Color bgSurface,
+    Color primaryTextColor,
+    Color secondaryTextColor,
+  ) {
+    return Column(
             children: [
               // Search: ignores accents and case ("acougue" finds "Açougue").
               Padding(
@@ -113,51 +206,29 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
               ),
 
-              // Organic Filter Bar: Period Popups, Value Range Popup, Category/Payment Popups & Quick Chips
-              _chipRow([
-                _filterPopupChip(
-                  icon: Icons.calendar_today_outlined,
-                  label: _periodLabel(),
-                  active: _filter.period != StatementPeriod.all,
-                  onTap: () => _openPeriodPopup(context),
+              // Unified Filter Trigger + Active Filter Pills
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.xs),
+                child: Row(
+                  children: [
+                    _filterPopupChip(
+                      icon: Icons.tune,
+                      label: _activeFilterCount() > 0 ? 'Filtros (${_activeFilterCount()})' : 'Filtros',
+                      active: _hasActiveModalFilters(),
+                      onTap: () => _openFilterSheet(context),
+                    ),
+                    const SizedBox(width: KrezioSpace.sm),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: _buildActiveFilterChips(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                _filterPopupChip(
-                  icon: Icons.attach_money,
-                  label: _amountRangeLabel(),
-                  active: _filter.minAmount != null || _filter.maxAmount != null,
-                  onTap: () => _openAmountRangeDialog(context),
-                ),
-                _filterPopupChip(
-                  icon: Icons.category_outlined,
-                  label: _filter.category != null ? _categoryName(_filter.category!) : 'Categorias',
-                  active: _filter.category != null,
-                  onTap: () => _openFilterSheet(context),
-                ),
-                _chip('Despesas', _filter.type == TransactionType.expense, () => _toggleType(TransactionType.expense)),
-                _chip('Receitas', _filter.type == TransactionType.income, () => _toggleType(TransactionType.income)),
-                _chip('Parceladas', _filter.onlyInstallments,
-                    () => setState(() => _filter = _filter.copyWith(onlyInstallments: !_filter.onlyInstallments))),
-                _chip('Recorrentes', _filter.onlyRecurrent,
-                    () => setState(() => _filter = _filter.copyWith(onlyRecurrent: !_filter.onlyRecurrent))),
-              ]),
-
-              // Active Removable Filter Pills
-              if (_filter.category != null ||
-                  _filter.paymentMethod != null ||
-                  _filter.minAmount != null ||
-                  _filter.maxAmount != null)
-                _chipRow([
-                  if (_filter.minAmount != null || _filter.maxAmount != null)
-                    _chip('${_amountRangeLabel()} ✕', true, () {
-                      setState(() => _filter = _filter.copyWith(clearMinAmount: true, clearMaxAmount: true));
-                    }),
-                  if (_filter.category != null)
-                    _chip('${_categoryName(_filter.category!)} ✕', true,
-                        () => setState(() => _filter = _filter.copyWith(clearCategory: true))),
-                  if (_filter.paymentMethod != null)
-                    _chip('${_payments[_filter.paymentMethod] ?? _filter.paymentMethod} ✕', true,
-                        () => setState(() => _filter = _filter.copyWith(clearPayment: true))),
-                ]),
+              ),
 
               // Filtered total
               if (!_filter.isEmpty && filtered.isNotEmpty)
@@ -202,10 +273,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     : _buildGroupedList(days, now, secondaryTextColor),
               ),
             ],
-          ),
-        );
-      },
-    );
+          );
   }
 
   Widget _buildGroupedList(List<StatementDay> days, DateTime now, Color secondaryTextColor) {
@@ -247,21 +315,77 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   String _signedMoney(double v) => v > 0 ? '+${CesarText.money(v)}' : CesarText.money(v);
 
-  Widget _chipRow(List<Widget> chips) => Align(
-        alignment: Alignment.centerLeft,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.xs),
-          child: Row(children: [for (final c in chips) Padding(padding: const EdgeInsets.only(right: KrezioSpace.sm), child: c)]),
-        ),
-      );
-
   Widget _chip(String label, bool selected, VoidCallback onTap) => ChoiceChip(
         label: Text(label, style: const TextStyle(fontSize: KrezioFont.small)),
         selected: selected,
         selectedColor: KrezioColors.aiPurple,
         onSelected: (_) => onTap(),
       );
+
+  bool _hasActiveModalFilters() =>
+      _filter.period != StatementPeriod.all ||
+      _filter.type != null ||
+      _filter.onlyInstallments ||
+      _filter.onlyRecurrent ||
+      _filter.category != null ||
+      _filter.paymentMethod != null;
+
+  int _activeFilterCount() {
+    var count = 0;
+    if (_filter.period != StatementPeriod.all) count++;
+    if (_filter.type != null) count++;
+    if (_filter.onlyInstallments) count++;
+    if (_filter.onlyRecurrent) count++;
+    if (_filter.category != null) count++;
+    if (_filter.paymentMethod != null) count++;
+    return count;
+  }
+
+  List<Widget> _buildActiveFilterChips() {
+    final chips = <Widget>[];
+    if (_filter.period != StatementPeriod.all) {
+      chips.add(Padding(
+        padding: const EdgeInsets.only(right: KrezioSpace.xs),
+        child: _chip('${_periodLabel()} ✕', true, () => _setPeriod(StatementPeriod.all)),
+      ));
+    }
+    if (_filter.type == TransactionType.expense) {
+      chips.add(Padding(
+        padding: const EdgeInsets.only(right: KrezioSpace.xs),
+        child: _chip('Despesas ✕', true, () => setState(() => _filter = _filter.copyWith(clearType: true))),
+      ));
+    } else if (_filter.type == TransactionType.income) {
+      chips.add(Padding(
+        padding: const EdgeInsets.only(right: KrezioSpace.xs),
+        child: _chip('Receitas ✕', true, () => setState(() => _filter = _filter.copyWith(clearType: true))),
+      ));
+    }
+    if (_filter.onlyInstallments) {
+      chips.add(Padding(
+        padding: const EdgeInsets.only(right: KrezioSpace.xs),
+        child: _chip('Parceladas ✕', true, () => setState(() => _filter = _filter.copyWith(onlyInstallments: false))),
+      ));
+    }
+    if (_filter.onlyRecurrent) {
+      chips.add(Padding(
+        padding: const EdgeInsets.only(right: KrezioSpace.xs),
+        child: _chip('Recorrentes ✕', true, () => setState(() => _filter = _filter.copyWith(onlyRecurrent: false))),
+      ));
+    }
+    if (_filter.category != null) {
+      chips.add(Padding(
+        padding: const EdgeInsets.only(right: KrezioSpace.xs),
+        child: _chip('${_categoryName(_filter.category!)} ✕', true, () => setState(() => _filter = _filter.copyWith(clearCategory: true))),
+      ));
+    }
+    if (_filter.paymentMethod != null) {
+      chips.add(Padding(
+        padding: const EdgeInsets.only(right: KrezioSpace.xs),
+        child: _chip('${_payments[_filter.paymentMethod] ?? _filter.paymentMethod} ✕', true, () => setState(() => _filter = _filter.copyWith(clearPayment: true))),
+      ));
+    }
+    return chips;
+  }
 
   Widget _filterPopupChip({
     required IconData icon,
@@ -274,9 +398,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? KrezioColors.aiPurple.withOpacity(0.18) : Colors.transparent,
+          color: active ? KrezioColors.aiPurple.withValues(alpha: 0.18) : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: active ? KrezioColors.aiPurple : borderColor,
@@ -285,21 +409,26 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 15, color: active ? KrezioColors.aiPurple : null),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: KrezioFont.small,
-                fontWeight: active ? FontWeight.bold : FontWeight.w500,
-                color: active ? KrezioColors.aiPurple : null,
+            Icon(icon, size: 14, color: active ? KrezioColors.aiPurple : null),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: KrezioFont.caption,
+                  fontWeight: active ? FontWeight.bold : FontWeight.w500,
+                  color: active ? KrezioColors.aiPurple : null,
+                ),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 2),
             Icon(
               Icons.keyboard_arrow_down,
-              size: 16,
+              size: 14,
               color: active ? KrezioColors.aiPurple : null,
             ),
           ],
@@ -311,7 +440,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   String _periodLabel() {
     switch (_filter.period) {
       case StatementPeriod.all:
-        return 'Período: Tudo';
+        return 'Todo o histórico';
       case StatementPeriod.thisMonth:
         return 'Este mês';
       case StatementPeriod.lastMonth:
@@ -322,179 +451,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         }
         return 'Personalizado';
     }
-  }
-
-  String _amountRangeLabel() {
-    final min = _filter.minAmount;
-    final max = _filter.maxAmount;
-    if (min != null && max != null) {
-      return '${Money.brl(min)} – ${Money.brl(max)}';
-    }
-    if (min != null) return 'Acima de ${Money.brl(min)}';
-    if (max != null) return 'Até ${Money.brl(max)}';
-    return 'Margem de Valor';
-  }
-
-  void _openPeriodPopup(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(KrezioSpace.lg, 0, KrezioSpace.lg, KrezioSpace.lg),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Filtrar por Período', style: TextStyle(fontSize: KrezioFont.bodyLarge, fontWeight: FontWeight.bold)),
-              const SizedBox(height: KrezioSpace.md),
-              ListTile(
-                leading: const Icon(Icons.all_inclusive),
-                title: const Text('Todo o histórico'),
-                trailing: _filter.period == StatementPeriod.all ? const Icon(Icons.check, color: KrezioColors.aiPurple) : null,
-                onTap: () {
-                  _setPeriod(StatementPeriod.all);
-                  Navigator.pop(ctx);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.today),
-                title: const Text('Este mês'),
-                trailing: _filter.period == StatementPeriod.thisMonth ? const Icon(Icons.check, color: KrezioColors.aiPurple) : null,
-                onTap: () {
-                  _setPeriod(StatementPeriod.thisMonth);
-                  Navigator.pop(ctx);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.history),
-                title: const Text('Mês passado'),
-                trailing: _filter.period == StatementPeriod.lastMonth ? const Icon(Icons.check, color: KrezioColors.aiPurple) : null,
-                onTap: () {
-                  _setPeriod(StatementPeriod.lastMonth);
-                  Navigator.pop(ctx);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.date_range),
-                title: const Text('Escolher datas (Personalizado)'),
-                trailing: _filter.period == StatementPeriod.custom ? const Icon(Icons.check, color: KrezioColors.aiPurple) : null,
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _pickRange(context);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _openAmountRangeDialog(BuildContext context) {
-    final minCtrl = TextEditingController(
-      text: _filter.minAmount != null ? Money.groupedDecimal(_filter.minAmount!) : '',
-    );
-    final maxCtrl = TextEditingController(
-      text: _filter.maxAmount != null ? Money.groupedDecimal(_filter.maxAmount!) : '',
-    );
-
-    showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        void apply() {
-          final minVal = KrezioMoneyField.parse(minCtrl.text);
-          final maxVal = KrezioMoneyField.parse(maxCtrl.text);
-          setState(() {
-            _filter = _filter.copyWith(
-              minAmount: minVal,
-              maxAmount: maxVal,
-              clearMinAmount: minVal == null,
-              clearMaxAmount: maxVal == null,
-            );
-          });
-          Navigator.pop(ctx);
-        }
-
-        return AlertDialog(
-          title: const Text('Margem de Valor (Gasto / Recebido)'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Defina o intervalo de valor para filtrar os lançamentos:',
-                  style: TextStyle(fontSize: KrezioFont.small),
-                ),
-                const SizedBox(height: KrezioSpace.md),
-                KrezioMoneyField(
-                  controller: minCtrl,
-                  label: 'Valor mínimo (R\$)',
-                  autofocus: true,
-                  textInputAction: TextInputAction.next,
-                  onSubmitted: (_) => apply(),
-                ),
-                const SizedBox(height: KrezioSpace.md),
-                KrezioMoneyField(
-                  controller: maxCtrl,
-                  label: 'Valor máximo (R\$)',
-                  onSubmitted: (_) => apply(),
-                ),
-                const SizedBox(height: KrezioSpace.md),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    ActionChip(
-                      label: const Text('Até R\$ 50', style: TextStyle(fontSize: KrezioFont.caption)),
-                      onPressed: () {
-                        minCtrl.clear();
-                        maxCtrl.text = '50,00';
-                      },
-                    ),
-                    ActionChip(
-                      label: const Text('R\$ 50 – R\$ 200', style: TextStyle(fontSize: KrezioFont.caption)),
-                      onPressed: () {
-                        minCtrl.text = '50,00';
-                        maxCtrl.text = '200,00';
-                      },
-                    ),
-                    ActionChip(
-                      label: const Text('R\$ 200 – R\$ 1.000', style: TextStyle(fontSize: KrezioFont.caption)),
-                      onPressed: () {
-                        minCtrl.text = '200,00';
-                        maxCtrl.text = '1.000,00';
-                      },
-                    ),
-                    ActionChip(
-                      label: const Text('Acima de R\$ 1.000', style: TextStyle(fontSize: KrezioFont.caption)),
-                      onPressed: () {
-                        minCtrl.text = '1.000,00';
-                        maxCtrl.clear();
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                setState(() => _filter = _filter.copyWith(clearMinAmount: true, clearMaxAmount: true));
-                Navigator.pop(ctx);
-              },
-              child: const Text('Limpar margem'),
-            ),
-            FilledButton(
-              onPressed: apply,
-              child: const Text('Aplicar'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   void _clearFilters() {
@@ -528,13 +484,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }.toList()
       ..sort((a, b) => _categoryName(a).compareTo(_categoryName(b)));
 
-    final minCtrl = TextEditingController(
-      text: _filter.minAmount != null ? Money.groupedDecimal(_filter.minAmount!) : '',
-    );
-    final maxCtrl = TextEditingController(
-      text: _filter.maxAmount != null ? Money.groupedDecimal(_filter.maxAmount!) : '',
-    );
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -542,23 +491,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) {
           final secondary = widget.isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
-          void apply() {
-            final minVal = KrezioMoneyField.parse(minCtrl.text);
-            final maxVal = KrezioMoneyField.parse(maxCtrl.text);
-            setState(() {
-              _filter = _filter.copyWith(
-                minAmount: minVal,
-                maxAmount: maxVal,
-                clearMinAmount: minVal == null,
-                clearMaxAmount: maxVal == null,
-              );
-            });
-            Navigator.pop(ctx);
-          }
 
           return SafeArea(
             child: ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.84),
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.88),
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   KrezioSpace.lg,
@@ -573,13 +509,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         const Text(
-                          'Filtros Avançados',
+                          'Filtros',
                           style: TextStyle(fontSize: KrezioFont.title, fontWeight: FontWeight.bold),
                         ),
                         TextButton(
                           onPressed: () {
-                            minCtrl.clear();
-                            maxCtrl.clear();
                             _clearFilters();
                             setModalState(() {});
                           },
@@ -589,37 +523,69 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     ),
                     const SizedBox(height: KrezioSpace.md),
 
-                    // Section 1: Margem de Valor
+                    // Section 1: Período / Data
                     KrezioCard(
                       padding: const EdgeInsets.all(KrezioSpace.md),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Row(
                             children: [
-                              Icon(Icons.payments_outlined, size: 18, color: KrezioColors.emeraldGreen),
-                              SizedBox(width: 8),
-                              Text('Margem de Valor (Gasto / Recebido)', style: TextStyle(fontWeight: FontWeight.bold)),
+                              const Icon(Icons.calendar_today_outlined, size: 18, color: KrezioColors.aiPurple),
+                              const SizedBox(width: 8),
+                              const Text('Período', style: TextStyle(fontWeight: FontWeight.bold)),
+                              const Spacer(),
+                              if (_filter.period != StatementPeriod.all)
+                                Text(
+                                  _periodLabel(),
+                                  style: TextStyle(fontSize: KrezioFont.caption, color: secondary),
+                                ),
                             ],
                           ),
                           const SizedBox(height: KrezioSpace.sm),
-                          Row(
+                          Wrap(
+                            spacing: KrezioSpace.sm,
+                            runSpacing: KrezioSpace.sm,
                             children: [
-                              Expanded(
-                                child: KrezioMoneyField(
-                                  controller: minCtrl,
-                                  label: 'Mínimo',
-                                  textInputAction: TextInputAction.next,
-                                  onSubmitted: (_) => apply(),
-                                ),
+                              ChoiceChip(
+                                label: const Text('Este mês', style: TextStyle(fontSize: KrezioFont.small)),
+                                selected: _filter.period == StatementPeriod.thisMonth,
+                                selectedColor: KrezioColors.aiPurple,
+                                onSelected: (_) {
+                                  _setPeriod(StatementPeriod.thisMonth);
+                                  setModalState(() {});
+                                },
                               ),
-                              const SizedBox(width: KrezioSpace.sm),
-                              Expanded(
-                                child: KrezioMoneyField(
-                                  controller: maxCtrl,
-                                  label: 'Máximo',
-                                  onSubmitted: (_) => apply(),
+                              ChoiceChip(
+                                label: const Text('Mês passado', style: TextStyle(fontSize: KrezioFont.small)),
+                                selected: _filter.period == StatementPeriod.lastMonth,
+                                selectedColor: KrezioColors.aiPurple,
+                                onSelected: (_) {
+                                  _setPeriod(StatementPeriod.lastMonth);
+                                  setModalState(() {});
+                                },
+                              ),
+                              ChoiceChip(
+                                label: const Text('Todo o histórico', style: TextStyle(fontSize: KrezioFont.small)),
+                                selected: _filter.period == StatementPeriod.all,
+                                selectedColor: KrezioColors.aiPurple,
+                                onSelected: (_) {
+                                  _setPeriod(StatementPeriod.all);
+                                  setModalState(() {});
+                                },
+                              ),
+                              ChoiceChip(
+                                avatar: const Icon(Icons.date_range, size: 14),
+                                label: Text(
+                                  _filter.period == StatementPeriod.custom ? _periodLabel() : 'Personalizado...',
+                                  style: const TextStyle(fontSize: KrezioFont.small),
                                 ),
+                                selected: _filter.period == StatementPeriod.custom,
+                                selectedColor: KrezioColors.aiPurple,
+                                onSelected: (_) async {
+                                  await _pickRange(context);
+                                  setModalState(() {});
+                                },
                               ),
                             ],
                           ),
@@ -628,7 +594,48 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     ),
                     const SizedBox(height: KrezioSpace.md),
 
-                    // Section 2: Categorias com ícones
+                    // Section 2: Tipo de Lançamento
+                    KrezioCard(
+                      padding: const EdgeInsets.all(KrezioSpace.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.swap_vert_circle_outlined, size: 18, color: KrezioColors.friendlyOrange),
+                              SizedBox(width: 8),
+                              Text('Tipo de Lançamento', style: TextStyle(fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                          const SizedBox(height: KrezioSpace.sm),
+                          Wrap(
+                            spacing: KrezioSpace.sm,
+                            runSpacing: KrezioSpace.sm,
+                            children: [
+                              _chip('Despesas', _filter.type == TransactionType.expense, () {
+                                _toggleType(TransactionType.expense);
+                                setModalState(() {});
+                              }),
+                              _chip('Receitas', _filter.type == TransactionType.income, () {
+                                _toggleType(TransactionType.income);
+                                setModalState(() {});
+                              }),
+                              _chip('Parceladas', _filter.onlyInstallments, () {
+                                setState(() => _filter = _filter.copyWith(onlyInstallments: !_filter.onlyInstallments));
+                                setModalState(() {});
+                              }),
+                              _chip('Recorrentes', _filter.onlyRecurrent, () {
+                                setState(() => _filter = _filter.copyWith(onlyRecurrent: !_filter.onlyRecurrent));
+                                setModalState(() {});
+                              }),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: KrezioSpace.md),
+
+                    // Section 3: Categorias com ícones
                     KrezioCard(
                       padding: const EdgeInsets.all(KrezioSpace.md),
                       child: Column(
@@ -676,7 +683,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     ),
                     const SizedBox(height: KrezioSpace.md),
 
-                    // Section 3: Forma de Pagamento
+                    // Section 4: Forma de Pagamento
                     KrezioCard(
                       padding: const EdgeInsets.all(KrezioSpace.md),
                       child: Column(
@@ -684,7 +691,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         children: [
                           const Row(
                             children: [
-                              Icon(Icons.credit_card_outlined, size: 18, color: KrezioColors.friendlyOrange),
+                              Icon(Icons.credit_card_outlined, size: 18, color: KrezioColors.emeraldGreen),
                               SizedBox(width: 8),
                               Text('Forma de Pagamento', style: TextStyle(fontWeight: FontWeight.bold)),
                             ],
@@ -711,7 +718,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     KrezioButton(
                       label: 'Aplicar Filtros',
                       expand: true,
-                      onPressed: apply,
+                      onPressed: () => Navigator.pop(ctx),
                     ),
                   ],
                 ),

@@ -138,7 +138,8 @@ class ChatActionHistory {
         for (final id in ids) {
           repository.deleteTransaction(id);
         }
-        return UndoResult(action, 'Desfeito! Removi o lançamento que eu tinha registrado: $names. ↩️', removedIds: ids);
+        final what = ids.length == 1 ? 'o lançamento que eu tinha registrado' : 'os lançamentos que eu tinha registrado';
+        return UndoResult(action, 'Desfeito! Removi $what: $names. ↩️', removedIds: ids);
       case ChatActionKind.edited:
         final back = action.records.where((t) => existing.containsKey(t.id)).toList();
         if (back.isEmpty) return UndoResult(action, 'O lançamento que eu tinha alterado ($names) não existe mais, então não desfiz nada.', undone: false);

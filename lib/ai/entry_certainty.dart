@@ -98,12 +98,16 @@ class EntryCertainty {
     'comando', 'bando', 'fernando', 'orlando', 'armando', 'interesse', 'classe', 'dividendo', 'adendo', 'lindo', 'oitava',
   };
 
+  static final _hostileNoiseOrForeign = RegExp(
+      r'(?:∞|\bnan\b|\binfinity\b|\bel\s+(?:pix|supermercado|mercado|dinero)\b|\ben\s+(?:el|la|supermercado|tienda)\b)');
+
   /// The certainty of an entry told in [turns] (in order; later turns are
   /// answers to César's questions).
   static CertaintyReading read(List<String> turns) {
     final folded = [for (final t in turns) _fold(t)];
     final story = folded.first;
-    if (turns.first.trim().endsWith('?')) return const CertaintyReading.low('question');
+    if (turns.first.contains('?')) return const CertaintyReading.low('question');
+    if (_hostileNoiseOrForeign.hasMatch(story)) return const CertaintyReading.low('noise');
     for (final t in turns) {
       if (HypothesisDetector.mentionsFailure(t) && !_endsOnFact(t)) return const CertaintyReading.low('failure');
     }

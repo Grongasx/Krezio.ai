@@ -11,6 +11,75 @@ abstract class NativeTts {
   Future<void> stop();
 }
 
+/// Low-level wrapper over `flutter_tts` so [FlutterNativeTts] can be tested
+/// directly against Web (`null` return), Android (`1`/`0`), and error events.
+abstract class TtsBackend {
+  Future<List<String>> getEngines();
+  Future<void> setEngine(String engine);
+  Future<void> setLanguage(String language);
+  Future<void> awaitSpeakCompletion(bool value);
+  void setCompletionHandler(VoidCallback handler);
+  void setErrorHandler(void Function(dynamic message) handler);
+  Future<List<Map<String, String>>> getVoices();
+  Future<void> setVoice(Map<String, String> voice);
+  Future<void> setPitch(double pitch);
+  Future<void> setSpeechRate(double rate);
+  Future<void> setVolume(double volume);
+  Future<dynamic> speak(String text);
+  Future<void> stop();
+}
+
+class _FlutterTtsBackend implements TtsBackend {
+  final FlutterTts _tts = FlutterTts();
+
+  @override
+  Future<List<String>> getEngines() async {
+    final raw = await _tts.getEngines as List?;
+    return raw == null ? const [] : [for (final e in raw) '$e'];
+  }
+
+  @override
+  Future<void> setEngine(String engine) => _tts.setEngine(engine);
+
+  @override
+  Future<void> setLanguage(String language) => _tts.setLanguage(language);
+
+  @override
+  Future<void> awaitSpeakCompletion(bool value) => _tts.awaitSpeakCompletion(value);
+
+  @override
+  void setCompletionHandler(VoidCallback handler) => _tts.setCompletionHandler(handler);
+
+  @override
+  void setErrorHandler(void Function(dynamic message) handler) => _tts.setErrorHandler(handler);
+
+  @override
+  Future<List<Map<String, String>>> getVoices() async {
+    final raw = (await _tts.getVoices as List?) ?? const [];
+    return [
+      for (final v in raw) Map<String, String>.from((v as Map).map((k, x) => MapEntry('$k', '$x'))),
+    ];
+  }
+
+  @override
+  Future<void> setVoice(Map<String, String> voice) => _tts.setVoice(voice);
+
+  @override
+  Future<void> setPitch(double pitch) => _tts.setPitch(pitch);
+
+  @override
+  Future<void> setSpeechRate(double rate) => _tts.setSpeechRate(rate);
+
+  @override
+  Future<void> setVolume(double volume) => _tts.setVolume(volume);
+
+  @override
+  Future<dynamic> speak(String text) => _tts.speak(text);
+
+  @override
+  Future<void> stop() => _tts.stop();
+}
+
 /// A system voice in Portuguese.
 class TtsVoice {
   final String name;
@@ -131,12 +200,26 @@ class FlutterNativeTts implements NativeTts {
   static const defaultGoogleMaleVoice = 'pt-br-x-ptd-local';
   static const defaultGoogleNaturalMaleVoice = 'pt-br-x-ptd-network';
 
-  final FlutterTts _tts = FlutterTts();
+  final TtsBackend _tts;
+  final bool _isWeb;
+  final TargetPlatform? _platformOverride;
+
+  FlutterNativeTts({
+    @visibleForTesting TtsBackend? backend,
+    @visibleForTesting bool? isWebOverride,
+    @visibleForTesting TargetPlatform? platformOverride,
+  })  : _tts = backend ?? _FlutterTtsBackend(),
+        _isWeb = isWebOverride ?? kIsWeb,
+        _platformOverride = platformOverride;
+
+  TargetPlatform get _platform => _platformOverride ?? defaultTargetPlatform;
+
   bool _ready = false;
   bool _voiceMatched = false;
   Future<void>? _initializing;
   Completer<bool>? _current;
   Completer<bool>? _clauseCompleter;
+  bool _lastClauseCompleted = false;
 
   /// Pitch used when no male voice exists: subtle warm resonance (< 1.0) without
   /// phase-vocoder metallic distortion.
@@ -175,11 +258,11 @@ class FlutterNativeTts implements NativeTts {
   }
 
   Future<void> _configure() async {
-    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+    if (!_isWeb && _platform == TargetPlatform.android) {
       // Force Google Speech Services (`com.google.android.tts`) as the default
       // engine on Android so César uses Google's male voice (`pt-br-x-ptd-local`).
       try {
-        final engines = ((await _tts.getEngines as List?) ?? const []).map((e) => '$e').toList();
+        final engines = await _tts.getEngines();
         if (engines.isEmpty || engines.contains(googleEngine)) {
           await _tts.setEngine(googleEngine);
         }
@@ -208,7 +291,10 @@ class FlutterNativeTts implements NativeTts {
         return;
       }
       final clause = _clauseCompleter;
-      if (clause != null && !clause.isCompleted) clause.complete(false);
+      if (clause != null && !clause.isCompleted) {
+        clause.complete(false);
+        return;
+      }
       _complete(false);
     });
     _ready = true;
@@ -222,8 +308,7 @@ class FlutterNativeTts implements NativeTts {
   /// Portuguese voices of this device.
   Future<List<TtsVoice>> voices() async {
     try {
-      final raw = (await _tts.getVoices as List?) ?? const [];
-      return VoicePicker.portuguese([for (final v in raw) Map<String, String>.from((v as Map).map((k, x) => MapEntry('$k', '$x')))]);
+      return VoicePicker.portuguese(await _tts.getVoices());
     } catch (e) {
       debugPrint('[NativeTts] voices: $e');
       return const [];
@@ -238,15 +323,25 @@ class FlutterNativeTts implements NativeTts {
       await Future.delayed(const Duration(milliseconds: 100));
       available = await voices();
     }
-    final preferNatural = !forceLocal && (kIsWeb || defaultTargetPlatform != TargetPlatform.android);
-    final voice = VoicePicker.choose(available, chosen: chosen, preferNatural: preferNatural);
+    final preferNatural = !forceLocal && (_isWeb || _platform != TargetPlatform.android);
+    final candidates = forceLocal
+        ? (() {
+            final localOnly = available.where((v) => v.local).toList();
+            return localOnly.isNotEmpty ? localOnly : available;
+          })()
+        : available;
+    final voice = VoicePicker.choose(
+      candidates,
+      chosen: forceLocal ? null : chosen,
+      preferNatural: preferNatural,
+    );
     if (voice != null) {
       await _tts.setVoice(voice.asMap);
       await _tts.setPitch(naturalMalePitch);
       _voiceMatched = true;
     } else {
       _voiceMatched = false;
-      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      if (!_isWeb && _platform == TargetPlatform.android) {
         try {
           await _tts.setVoice(const {'name': defaultGoogleMaleVoice, 'locale': 'pt-BR'});
           await _tts.setPitch(naturalMalePitch);
@@ -295,7 +390,7 @@ class FlutterNativeTts implements NativeTts {
         } catch (_) {}
       }
       if (!identical(_current, outcome)) return;
-      await _tts.setSpeechRate(platformRateFor(rate));
+      await _tts.setSpeechRate(platformRateFor(rate, isWeb: _isWeb, platform: _platform));
       await _tts.setVolume(volume);
       if (!identical(_current, outcome)) return;
 
@@ -311,8 +406,9 @@ class FlutterNativeTts implements NativeTts {
 
         var ok = await _speakClause(outcome, clause);
 
-        // If a network/chosen voice failed to synthesize, fallback to local voice and retry once.
-        if (!ok && identical(_current, outcome)) {
+        // Fallback to local voice ONLY if the engine rejected synthesis before playing;
+        // never replay a clause that already completed/played audio.
+        if (!ok && !_lastClauseCompleted && identical(_current, outcome)) {
           try {
             await _applyVoice(forceLocal: true);
             if (!identical(_current, outcome)) return;
@@ -334,17 +430,35 @@ class FlutterNativeTts implements NativeTts {
 
   Future<bool> _speakClause(Completer<bool> outcome, String clause) async {
     if (!identical(_current, outcome)) return false;
+    _lastClauseCompleted = false;
     final clauseDone = Completer<bool>();
     _clauseCompleter = clauseDone;
     final sw = Stopwatch()..start();
-    final result = await _tts.speak(clause);
-    sw.stop();
-    final ok = result == 1 || result == true;
-    if (!ok) {
-      if (!clauseDone.isCompleted) clauseDone.complete(false);
-      return false;
-    }
-    if (!clauseDone.isCompleted) {
+    try {
+      final speakFuture = _tts.speak(clause).then<dynamic>((v) => v, onError: (_) => 0);
+      // Race with clauseDone so Web `utterance.onError` (which discards
+      // flutter_tts_web's completer without resolving it) cannot hang.
+      final firstResult = await Future.any<dynamic>([speakFuture, clauseDone.future]);
+      sw.stop();
+
+      if (clauseDone.isCompleted) {
+        final doneOk = await clauseDone.future;
+        if (doneOk) {
+          _lastClauseCompleted = true;
+          return identical(_current, outcome);
+        }
+        if (sw.elapsedMilliseconds >= 400) _lastClauseCompleted = true;
+        return false;
+      }
+
+      // `flutter_tts_web` resolves `await speak(...)` with `null` after
+      // `utterance.onEnd`, while native platforms return `1` or `true`.
+      final explicitFailure = firstResult != null && firstResult != 1 && firstResult != true;
+      if (explicitFailure) {
+        if (!clauseDone.isCompleted) clauseDone.complete(false);
+        return false;
+      }
+
       final minSpeechMs = (clause.length * 25).clamp(150, 1500);
       final waitDuration = sw.elapsedMilliseconds < minSpeechMs
           ? Duration(seconds: 8 + clause.length ~/ 4)
@@ -353,12 +467,16 @@ class FlutterNativeTts implements NativeTts {
         waitDuration,
         onTimeout: () => true,
       );
-      if (!finishedOk) return false;
-    } else {
-      final finishedOk = await clauseDone.future;
-      if (!finishedOk) return false;
+      if (finishedOk) {
+        _lastClauseCompleted = true;
+      } else if (sw.elapsedMilliseconds >= 400) {
+        _lastClauseCompleted = true;
+      }
+      return finishedOk && identical(_current, outcome);
+    } finally {
+      sw.stop();
+      if (identical(_clauseCompleter, clauseDone)) _clauseCompleter = null;
     }
-    return identical(_current, outcome);
   }
 
   @override

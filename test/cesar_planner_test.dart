@@ -50,6 +50,11 @@ void main() {
   test('quem cobrar e situação geral', () {
     expect(route('quem eu preciso cobrar esse mês'), 'planner:charge');
     expect(route('tem alguém atrasado comigo?'), 'planner:charge');
+    expect(route('quem está me devendo e quanto falta receber'), 'planner:charge');
+    expect(route('quem está me devendo'), 'planner:charge');
+    expect(route('quanto falta receber'), 'planner:charge');
+    expect(route('quanto tenho a receber'), 'planner:charge');
+    expect(route('quem me deve'), 'planner:charge');
     for (final s in ['bom dia! como tá minha situação?', 'me atualiza das minhas finanças', 'resumo da semana']) {
       expect(route(s), 'planner:situation', reason: s);
     }

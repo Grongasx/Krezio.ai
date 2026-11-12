@@ -1,3 +1,4 @@
+import '../../backend/services/calendar_service.dart';
 import '../../backend/services/money.dart';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
@@ -637,7 +638,7 @@ class VoiceConversationController {
 
       // 1. Questions about the data, with follow-ups ("e ontem?").
       if (pendingBatch == null) {
-        final answer = assistant.handleQuestion(phrase);
+        final answer = assistant.handleQuestion(phrase, hasPendingDraft: hasPendingEarly);
         if (answer != null) {
           activeDraft = null;
           onAssistantReply?.call(answer);
@@ -661,9 +662,9 @@ class VoiceConversationController {
     // the normal parse below (same as the chat).
     String? preface;
     if (repository != null) {
-      final debtPayment = DebtPaymentParser.parse(phrase);
-      final List<FinancialReminder> matches =
-          debtPayment == null ? const [] : repository!.findDebtorsByName(debtPayment.personName);
+      final resolved = DebtPaymentParser.resolveForRepository(phrase, repository!);
+      final debtPayment = resolved?.match;
+      final List<FinancialReminder> matches = resolved?.matches ?? const [];
       if (debtPayment != null && matches.isEmpty) {
         preface = DebtPaymentParser.noOpenDebtNote(debtPayment.personName);
       } else if (debtPayment != null) {
@@ -891,7 +892,10 @@ class VoiceConversationController {
         responseText =
             'Pronto! Anotei o boleto de ${draft.description}: fecha dia ${draft.billingDay} e vence no dia ${draft.dueDay}, com ${draft.paymentMarginDays} dias de margem.';
       } else if (draft.isReminder && draft.reminderType == 'loan_receivable') {
-        responseText = 'Combinado! Anotei o empréstimo $amountStr. Eu te lembro na data combinada.';
+        final hasSalaryAnalogy = (draft.calendarConsultationNote?.contains('5º dia útil') ?? false) && draft.targetDate != null;
+        responseText = hasSalaryAnalogy
+            ? 'Combinado! Anotei o empréstimo $amountStr considerando o salário no 5º dia útil (${RealtimeCalendarService.formatDateLabel(draft.targetDate!)}). Eu te lembro nessa data.'
+            : 'Combinado! Anotei o empréstimo $amountStr. Eu te lembro na data combinada.';
       } else if (draft.isReminder && draft.reminderType == 'dividend') {
         responseText = 'Perfeito! Deixei o lembrete de dividendos $amountStr agendado.';
       } else if (draft.intent == 'income') {

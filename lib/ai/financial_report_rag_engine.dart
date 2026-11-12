@@ -58,8 +58,10 @@ class FinancialReportRagEngine {
   /// devendo?" / "tem alguém me devendo?" — the last ones used to become a
   /// loan draft ("cobrar o ele").
   static final RegExp _debtorsQuestion = RegExp(
-    r'(?:quem|quais\s+pessoas?|algu[ée]m)\s+(?:(?:est[áa]|t[áa])\s+)?(?:me\s+)?devendo|(?:quem|algu[ée]m)\s+(?:ainda\s+)?me\s+deve\b|'
-    r'quem\s+eu\s+deveria\s+cobrar|quem\s+tem\s+que\s+me\s+pagar|quem\s+vai\s+me\s+pagar|tem\s+algu[ée]m\s+(?:que\s+)?(?:me\s+)?dev(?:e|endo)',
+    r'(?:quem|quais\s+pessoas?|algu[ée]m)\s+(?:(?:est[áa]|t[áa])\s+)?(?:me\s+)?dev(?:e|endo)|(?:quem|algu[ée]m)\s+(?:ainda\s+)?me\s+deve\b|'
+    r'quem\s+eu\s+deveria\s+cobrar|quem\s+tem\s+que\s+me\s+pagar|quem\s+vai\s+me\s+pagar|tem\s+algu[ée]m\s+(?:que\s+)?(?:me\s+)?dev(?:e|endo)|'
+    r'(?:quanto|qto|qnto)\s+(?:eu\s+)?(?:ainda\s+)?(?:falta|tenho)\s+(?:pra\s+|para\s+|a\s+)?receber\b|'
+    r'\b(?:contas?|valores?|cobran[çc]as?)\s+a\s+receber\b',
   );
 
   /// Identifies if a user prompt is an analytical/reporting query rather than a simple transaction creation.
@@ -153,9 +155,14 @@ class FinancialReportRagEngine {
   }
 
   /// Main RAG execution pipeline: retrieves relevant facts, synthesizes spoken response and formatted markdown.
-  ReportRagResult generateReport(String query, {List<dynamic>? history}) {
-    final intent = classifyIntent(query);
-    final dateRange = TemporalDateParser.parse(query);
+  ReportRagResult generateReport(
+    String query, {
+    List<dynamic>? history,
+    ReportIntent? forcedIntent,
+    DateRangeResult? forcedRange,
+  }) {
+    final intent = forcedIntent ?? classifyIntent(query);
+    final dateRange = forcedRange ?? TemporalDateParser.parse(query);
     final withChart = wantsChart(query);
 
     switch (intent) {
@@ -453,12 +460,20 @@ class FinancialReportRagEngine {
   // ── OVERVIEW REPORT ──
 
   ReportRagResult _generateOverviewReport(String query, DateRangeResult? dateRange, bool withChart) {
-    final income = repository.monthIncome;
-    final expense = repository.monthExpense;
+    final isScopedRange = dateRange != null && dateRange.label != 'este mês';
+    final scopedTxs = isScopedRange
+        ? repository.transactions.where((t) => dateRange.contains(t.date)).toList()
+        : repository.transactions;
+    final income = isScopedRange
+        ? scopedTxs.where((t) => t.type == TransactionType.income).fold(0.0, (a, t) => a + t.amount)
+        : repository.monthIncome;
+    final expense = isScopedRange
+        ? scopedTxs.where((t) => t.type == TransactionType.expense).fold(0.0, (a, t) => a + t.amount)
+        : repository.monthExpense;
     final balance = repository.totalBalance;
     final debtors = repository.getActiveDebtors();
     final totalReceivable = debtors.fold(0.0, (acc, d) => acc + (d.amount ?? 0.0));
-    final momChange = repository.monthOverMonthExpenseChange;
+    final momChange = isScopedRange ? null : repository.monthOverMonthExpenseChange;
 
     String trendSpoken = '';
     String trendFormatted = '';
@@ -476,22 +491,30 @@ class FinancialReportRagEngine {
       }
     }
 
-    final spoken = 'Seu saldo geral atual é de ${Money.brl(balance)}. Este mês você recebeu ${Money.brl(income)} e gastou ${Money.brl(expense)}.$trendSpoken Você ainda tem ${Money.brl(totalReceivable)} a receber.';
+    final periodLabel = isScopedRange ? dateRange.label : 'este mês';
+    final spoken = isScopedRange
+        ? 'No período $periodLabel, você recebeu ${Money.brl(income)} e gastou ${Money.brl(expense)}. Seu saldo geral atual é de ${Money.brl(balance)}.'
+        : 'Seu saldo geral atual é de ${Money.brl(balance)}. Este mês você recebeu ${Money.brl(income)} e gastou ${Money.brl(expense)}.$trendSpoken Você ainda tem ${Money.brl(totalReceivable)} a receber.';
 
     final formatted = StringBuffer();
-    formatted.writeln('### 📊 Resumo Financeiro Geral');
+    formatted.writeln(isScopedRange ? '### 📊 Resumo Financeiro (${dateRange.label})' : '### 📊 Resumo Financeiro Geral');
     formatted.writeln('- **Saldo Geral em Conta:** `${Money.brl(balance)}`');
-    formatted.writeln('- **Receitas deste Mês:** `+ ${Money.brl(income)}`');
-    formatted.writeln('- **Despesas deste Mês:** `- ${Money.brl(expense)}`');
-    formatted.write(trendFormatted);
-    formatted.writeln('- **A Receber (Empréstimos):** `${Money.brl(totalReceivable)}`');
-    formatted.writeln('\n${repository.generateAiInsight()}');
+    formatted.writeln('- **Receitas (${isScopedRange ? dateRange.label : 'deste Mês'}):** `+ ${Money.brl(income)}`');
+    formatted.writeln('- **Despesas (${isScopedRange ? dateRange.label : 'deste Mês'}):** `- ${Money.brl(expense)}`');
+    if (isScopedRange) {
+      final net = income - expense;
+      formatted.writeln('- **Saldo do Período:** `${net >= 0 ? '+ ' : ''}${Money.brl(net)}`');
+    } else {
+      formatted.write(trendFormatted);
+      formatted.writeln('- **A Receber (Empréstimos):** `${Money.brl(totalReceivable)}`');
+      formatted.writeln('\n${repository.generateAiInsight()}');
+    }
 
     final chart = withChart
         ? ReportChartData.bars([
             MapEntry('Receitas', income),
             MapEntry('Despesas', expense),
-            MapEntry('A Receber', totalReceivable),
+            if (!isScopedRange) MapEntry('A Receber', totalReceivable),
             MapEntry('Saldo', balance),
           ])
         : null;
@@ -499,7 +522,7 @@ class FinancialReportRagEngine {
     return ReportRagResult(
       intent: ReportIntent.overview,
       dateRange: dateRange,
-      matchedItems: repository.transactions,
+      matchedItems: scopedTxs,
       spokenText: spoken,
       formattedText: formatted.toString(),
       chart: chart,

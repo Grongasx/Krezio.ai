@@ -1281,6 +1281,22 @@ void main() {
       expect(trace.installmentDecision.isExempt, false);
       expect(trace.missingSlots.contains('installments'), true);
     });
+
+    test('inspect() expõe atribuições XAI por token, margem, typos e zero-vector gate', () {
+      final trace = engine.inspect('asinei a netflx de 55 no cartao credito');
+      expect(trace.typoFixes.values, contains('netflix'));
+      expect(trace.vocabHitRate, greaterThan(0));
+      expect(trace.intentModel.topContributions, isNotEmpty);
+      expect(trace.intentModel.margin, inInclusiveRange(0.0, 1.0));
+      expect(trace.intentModel.normalizedEntropy, inInclusiveRange(0.0, 1.0));
+      expect(trace.intentModel.isZeroVectorFallback, false);
+
+      final oovTrace = engine.inspect('xyzqwert abcdqqw');
+      expect(oovTrace.activeFeatures, isEmpty);
+      expect(oovTrace.oovNgrams, isNotEmpty);
+      expect(oovTrace.intentModel.isZeroVectorFallback, true);
+      expect(oovTrace.intentModel.predictedLabel, 'unknown');
+    });
   });
 
   group('Receitas Recorrentes e Salário Agendado (Casos Complexos)', () {
@@ -1370,6 +1386,43 @@ void main() {
       expect(res.isReminder, true);
       expect(res.personName, 'João');
       expect(res.targetDate, isNotNull);
+    });
+
+    test('Analogia de salário (5º dia útil) para "quando recebesse" e "iria pagar"', () {
+      final expectedPayday = engine.calendarService.getNextSalaryPayday();
+
+      final d1 = engine.parse('falei que o joão iria pagar quando recebesse');
+      expect(d1.isReminder, isTrue);
+      expect(d1.reminderType, 'loan_receivable');
+      expect(d1.personName, 'João');
+      expect(d1.amount, isNull);
+      expect(d1.missingSlots, contains('amount'));
+      expect(d1.targetDate, expectedPayday);
+      expect(d1.calendarConsultationNote, contains('5º dia útil'));
+      expect(d1.clarificationPrompt, contains('salário'));
+      expect(d1.clarificationPrompt, contains('5º dia útil'));
+      expect(d1.clarificationPrompt, contains('João'));
+
+      final d2 = engine.mergeDrafts(d1, '200');
+      expect(d2.isComplete, isTrue);
+      expect(d2.amount, 200.0);
+      expect(d2.personName, 'João');
+      expect(d2.targetDate, expectedPayday);
+
+      final direct = engine.parse('emprestei 150 pro joão, ele disse que ia pagar quando recebesse');
+      expect(direct.isComplete, isTrue);
+      expect(direct.amount, 150.0);
+      expect(direct.personName, 'João');
+      expect(direct.targetDate, expectedPayday);
+
+      final prompt = LocalFinancialNlpEngine.loanReminderText(
+        personName: 'João',
+        targetDate: DateTime(2026, 11, 20),
+        amount: 150,
+        fromSalaryAnalogy: false,
+      );
+      expect(prompt, contains('20/11'));
+      expect(prompt, isNot(contains('5º dia útil')));
     });
 
     test('Lembrete de dividendos reconhece ativo e data de proventos', () {
@@ -2146,6 +2199,19 @@ void main() {
       expectCategory('meu filho de 8 anos pediu um brinquedo e acabei gastando 120 na loja', 'expense_other');
       expectCategory('fui no aniversário do joão, levei um presente de 80 reais', 'expense_other');
       expectCategory('comprei presentes de natal de 200 no pix', 'expense_other');
+    });
+
+    test('anti-overfit em lazer: supermercado, combos de compras, pet e falsos positivos vão para a categoria certa', () {
+      expectCategory('comprei refrigerante no mercado de 12 no pix', 'supermarket');
+      expectCategory('comprei chocolate no carrefour de 40 no débito', 'supermarket');
+      expectCategory('comprei biscoito e leite na padaria de 18 no dinheiro', 'supermarket');
+      expectCategory('comprei um pacote de café de 22 no pix', 'supermarket');
+      expectCategory('comprei batata doce e arroz de 35 no pix', 'supermarket');
+      expectCategory('comprei um iphone pro max de 4500 no credito', 'expense_other');
+      expectCategory('comprei um combo de ferramentas de 150 no crédito', 'expense_other');
+      expectCategory('comprei ração e petisco na cobasi de 90 no pix', 'expense_other');
+      expectCategory('comprei um caderno de 35 no pix', 'education');
+      expectCategory('comprei shampoo e protetor solar de 80 no pix', 'health');
     });
 
     test('valor e descrição sem categoria conhecida: pergunta a categoria uma vez, junto com o pagamento', () {

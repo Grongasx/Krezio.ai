@@ -155,7 +155,12 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
   }
 
   Future<void> _setCurrency(String c) async {
-    setState(() => _currency = c);
+    setState(() {
+      _currency = c;
+      // Re-normalize the typed value so the BRL mask keeps working.
+      final v = LocalFinancialNlpEngine.cleanAndParseAmount(_amountController.text);
+      if (c == Currencies.base && v != null) _amountController.text = Money.groupedDecimal(v);
+    });
     if (c == Currencies.base) return;
     final rate = await CurrencyService().rateToBrl(c);
     if (rate != null && mounted && _currency == c) {
@@ -171,31 +176,55 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _allCategories => [
-        ..._categories,
-        ...widget.customCategories.map((c) => {'id': c.category, 'label': c.name, 'icon': c.icon}),
-      ];
+  /// Categories offered for the selected type: expenses never show "Salário"
+  /// and incomes never show "Supermercado".
+  List<Map<String, dynamic>> get _allCategories => _selectedType == TransactionType.income
+      ? _incomeCategories
+      : [
+          ..._expenseCategories,
+          ...widget.customCategories.map((c) => {'id': c.category, 'label': c.name, 'icon': c.icon}),
+        ];
 
-  /// Category actually saved. Income keeps whatever income category the
-  /// transaction already had (e.g. "income_other" from the chat) when editing,
-  /// instead of forcing everything to "salary".
+  static const _incomeIds = {'salary', 'investment', 'income_other'};
+
+  /// Category actually saved, always consistent with the selected type.
   String get _resolvedCategory {
     if (_selectedType == TransactionType.transfer) return 'transfer';
-    if (_selectedType != TransactionType.income) return _selectedCategory;
-    final original = widget.initialTransaction;
-    if (original != null && original.type == TransactionType.income) return original.category;
-    return 'salary';
+    final isIncomeCat = _incomeIds.contains(_selectedCategory);
+    if (_selectedType == TransactionType.income) {
+      if (isIncomeCat) return _selectedCategory;
+      final original = widget.initialTransaction;
+      if (original != null && original.type == TransactionType.income) return original.category;
+      return 'salary';
+    }
+    return isIncomeCat ? 'expense_other' : _selectedCategory;
   }
 
-  final List<Map<String, dynamic>> _categories = [
+  /// Switches type and picks a sensible category of that type.
+  void _setType(TransactionType type) {
+    setState(() {
+      _selectedType = type;
+      final ids = _allCategories.map((c) => c['id']).toSet();
+      if (!ids.contains(_selectedCategory)) {
+        _selectedCategory = type == TransactionType.income ? 'salary' : 'supermarket';
+      }
+    });
+  }
+
+  static final List<Map<String, dynamic>> _expenseCategories = [
     {'id': 'supermarket', 'label': 'Supermercado', 'icon': Icons.shopping_cart_outlined},
     {'id': 'transport', 'label': 'Transporte', 'icon': Icons.directions_car_outlined},
     {'id': 'leisure', 'label': 'Lazer/Comida', 'icon': Icons.restaurant_outlined},
     {'id': 'housing', 'label': 'Moradia', 'icon': Icons.home_outlined},
     {'id': 'health', 'label': 'Saúde', 'icon': Icons.local_hospital_outlined},
     {'id': 'education', 'label': 'Educação', 'icon': Icons.school_outlined},
+    {'id': 'expense_other', 'label': 'Outros', 'icon': Icons.more_horiz},
+  ];
+
+  static final List<Map<String, dynamic>> _incomeCategories = [
     {'id': 'salary', 'label': 'Salário', 'icon': Icons.work_outline},
-    {'id': 'investment', 'label': 'Investimento', 'icon': Icons.trending_up},
+    {'id': 'investment', 'label': 'Investimentos', 'icon': Icons.trending_up},
+    {'id': 'income_other', 'label': 'Outras receitas', 'icon': Icons.attach_money},
   ];
 
   final List<Map<String, String>> _paymentMethods = [
@@ -436,8 +465,8 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
                     ),
                     const SizedBox(height: KrezioSpace.md),
 
-                    // Category Chips (if expense)
-                    if (_selectedType == TransactionType.expense) ...[
+                    // Category Chips (filtered by type)
+                    if (_selectedType != TransactionType.transfer) ...[
                       Text(
                         'Categoria',
                         style: TextStyle(fontSize: KrezioFont.small, fontWeight: FontWeight.bold, color: secondaryTextColor),
@@ -770,7 +799,7 @@ class _AddTransactionModalState extends State<AddTransactionModal> {
     final isSelected = _selectedType == type;
     return Expanded(
       child: InkWell(
-        onTap: () => setState(() => _selectedType = type),
+        onTap: () => _setType(type),
         borderRadius: KrezioTheme.borderRadius,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: KrezioSpace.sm),

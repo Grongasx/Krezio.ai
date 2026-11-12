@@ -66,6 +66,40 @@ class KrezioSpace {
 
 class KrezioTheme {
   static final BorderRadius borderRadius = BorderRadius.circular(16);
+  static final BorderRadius inputRadius = BorderRadius.circular(12);
+
+  static InputDecorationTheme _inputTheme({
+    required Color fill,
+    required Color border,
+    required Color label,
+  }) =>
+      InputDecorationTheme(
+        filled: true,
+        fillColor: fill,
+        labelStyle: TextStyle(fontSize: KrezioFont.bodySmall, color: label),
+        hintStyle: TextStyle(fontSize: KrezioFont.bodySmall, color: label.withOpacity(0.75)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
+        border: OutlineInputBorder(
+          borderRadius: inputRadius,
+          borderSide: BorderSide(color: border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: inputRadius,
+          borderSide: BorderSide(color: border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: inputRadius,
+          borderSide: const BorderSide(color: KrezioColors.aiPurple, width: 1.6),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: inputRadius,
+          borderSide: const BorderSide(color: KrezioColors.budgetOver),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: inputRadius,
+          borderSide: const BorderSide(color: KrezioColors.budgetOver, width: 1.6),
+        ),
+      );
 
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
@@ -79,8 +113,19 @@ class KrezioTheme {
       onPrimary: Colors.white,
       onSurface: KrezioColors.lightPrimaryText,
     ),
-    appBarTheme: const AppBarTheme(
+    inputDecorationTheme: _inputTheme(
+      fill: KrezioColors.lightSurface,
+      border: KrezioColors.lightBorder,
+      label: KrezioColors.lightSecondaryText,
+    ),
+    dialogTheme: DialogThemeData(
       backgroundColor: KrezioColors.lightSurface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: borderRadius),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: KrezioColors.lightBackground,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 1,
       iconTheme: IconThemeData(color: KrezioColors.lightPrimaryText),
@@ -88,10 +133,12 @@ class KrezioTheme {
         color: KrezioColors.lightPrimaryText,
         fontSize: KrezioFont.title,
         fontWeight: FontWeight.bold,
+        letterSpacing: -0.3,
       ),
     ),
     cardTheme: CardThemeData(
       color: KrezioColors.lightSurface,
+      surfaceTintColor: Colors.transparent,
       elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: borderRadius),
     ),
@@ -109,8 +156,22 @@ class KrezioTheme {
       onPrimary: Colors.white,
       onSurface: KrezioColors.darkPrimaryText,
     ),
-    appBarTheme: const AppBarTheme(
+    inputDecorationTheme: _inputTheme(
+      fill: KrezioColors.darkSurfaceVariant,
+      border: KrezioColors.darkBorder,
+      label: KrezioColors.darkSecondaryText,
+    ),
+    dialogTheme: DialogThemeData(
       backgroundColor: KrezioColors.darkSurface,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: borderRadius,
+        side: const BorderSide(color: KrezioColors.darkBorder),
+      ),
+    ),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: KrezioColors.darkBackground,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       scrolledUnderElevation: 1,
       iconTheme: IconThemeData(color: KrezioColors.darkPrimaryText),
@@ -118,10 +179,12 @@ class KrezioTheme {
         color: KrezioColors.darkPrimaryText,
         fontSize: KrezioFont.title,
         fontWeight: FontWeight.bold,
+        letterSpacing: -0.3,
       ),
     ),
     cardTheme: CardThemeData(
       color: KrezioColors.darkSurface,
+      surfaceTintColor: Colors.transparent,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: borderRadius,

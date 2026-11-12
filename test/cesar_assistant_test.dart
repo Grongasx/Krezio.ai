@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/cesar_assistant.dart';
 import 'package:krezio_ai/ai/local_nlp_engine.dart';
+import 'package:krezio_ai/backend/models/financial_reminder.dart';
 import 'package:krezio_ai/backend/models/financial_transaction.dart';
 import 'package:krezio_ai/backend/repositories/financial_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -590,6 +591,39 @@ void main() {
     test('referência a lançamento antigo com oração relativa continua sendo comando', () async {
       final c = await fresh([seed('m', 'Mercado', 50, today, category: 'supermarket')]);
       expect(c.send('apaga o mercado que eu paguei 50 no pix')!.route, 'confirm_delete');
+    });
+  });
+
+  group('Cobranças a receber e quem está devendo', () {
+    test('quem está me devendo e quanto falta receber traz relatório correto', () async {
+      final c = await fresh();
+      c.repo.addReminder(FinancialReminder(
+        id: 'rem-1',
+        title: 'Empréstimo João',
+        amount: 150.0,
+        targetDate: today.add(const Duration(days: 3)),
+        type: ReminderType.loanReceivable,
+        personName: 'João',
+      ));
+      final r1 = c.send('quem está me devendo e quanto falta receber')!;
+      expect(r1.route, 'planner:charge');
+      expect(r1.text, contains('João'));
+      expect(r1.text, contains('150'));
+
+      final r2 = c.send('quanto falta receber')!;
+      expect(r2.route, 'planner:charge');
+      expect(r2.text, contains('150'));
+
+      final r3 = c.send('quem está me devendo')!;
+      expect(r3.route, 'planner:charge');
+      expect(r3.text, contains('João'));
+    });
+
+    test('quem está me devendo sem cobranças pendentes responde claramente', () async {
+      final c = await fresh();
+      final r = c.send('quem está me devendo e quanto falta receber')!;
+      expect(r.route, 'planner:charge');
+      expect(r.text, contains('Ninguém te deve nada no momento'));
     });
   });
 }

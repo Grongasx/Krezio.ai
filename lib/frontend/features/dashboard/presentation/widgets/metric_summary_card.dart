@@ -11,6 +11,7 @@ class MetricSummaryCard extends StatelessWidget {
   final bool isDark;
   final bool isLarge;
   final bool hideAmount;
+  final VoidCallback? onTogglePrivacy;
 
   const MetricSummaryCard({
     super.key,
@@ -21,6 +22,7 @@ class MetricSummaryCard extends StatelessWidget {
     required this.isDark,
     this.isLarge = false,
     this.hideAmount = false,
+    this.onTogglePrivacy,
   });
 
   @override
@@ -32,15 +34,35 @@ class MetricSummaryCard extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(isLarge ? KrezioSpace.xl : KrezioSpace.lg),
       decoration: BoxDecoration(
-        color: bgSurface,
+        color: isLarge ? null : bgSurface,
+        gradient: isLarge
+            ? LinearGradient(
+                colors: isDark
+                    ? [const Color(0xFF231F33), KrezioColors.darkSurface]
+                    : [const Color(0xFFFDFBFF), KrezioColors.lightSurface],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
         borderRadius: KrezioTheme.borderRadius,
-        border: Border.all(color: borderColor),
+        border: Border.all(
+          color: isLarge ? KrezioColors.aiPurple.withOpacity(isDark ? 0.35 : 0.25) : borderColor,
+          width: isLarge ? 1.2 : 1.0,
+        ),
         boxShadow: isDark
-            ? []
+            ? (isLarge
+                ? [
+                    BoxShadow(
+                      color: KrezioColors.aiPurple.withOpacity(0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ]
+                : [])
             : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 10,
+                  color: Colors.black.withOpacity(isLarge ? 0.06 : 0.04),
+                  blurRadius: isLarge ? 14 : 10,
                   offset: const Offset(0, 4),
                 )
               ],
@@ -51,15 +73,32 @@ class MetricSummaryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: isLarge ? 13 : 11,
-                  fontWeight: FontWeight.w500,
-                  color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: isLarge ? KrezioFont.bodySmall : KrezioFont.caption,
+                    fontWeight: FontWeight.w600,
+                    color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                  ),
                 ),
-              )),
-              const SizedBox(width: KrezioSpace.xs),
+              ),
+              if (onTogglePrivacy != null) ...[
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  tooltip: hideAmount ? 'Mostrar valores' : 'Ocultar valores',
+                  onPressed: onTogglePrivacy,
+                  icon: Icon(
+                    hideAmount ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    size: 18,
+                    color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                  ),
+                ),
+                const SizedBox(width: KrezioSpace.xs),
+              ] else
+                const SizedBox(width: KrezioSpace.xs),
               Container(
                 padding: const EdgeInsets.all(KrezioSpace.sm),
                 decoration: BoxDecoration(
@@ -70,18 +109,22 @@ class MetricSummaryCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: isLarge ? 12 : 6),
-          FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Text(
-            amountStr,
-            semanticsLabel: hideAmount ? 'Valor oculto' : null,
-            style: TextStyle(
-              fontSize: isLarge ? 34 : 16,
-              fontFeatures: const [FontFeature.tabularFigures()],
-              fontWeight: FontWeight.bold,
-              color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
-              letterSpacing: -0.5,
+          SizedBox(height: isLarge ? 10 : 6),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              amountStr,
+              semanticsLabel: hideAmount ? 'Valor oculto' : null,
+              style: TextStyle(
+                fontSize: isLarge ? 34 : 16,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                fontWeight: FontWeight.bold,
+                color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
+                letterSpacing: -0.5,
+              ),
             ),
-          )),
+          ),
         ],
       ),
     );

@@ -63,6 +63,7 @@ class CesarAdvisor {
   Iterable<FinancialTransaction> get _expenses => repository.transactions.where((t) => t.type == TransactionType.expense);
 
   static String _cleanTerm(String raw) => raw
+      .replaceAll(RegExp(r'\b(?:gastos?|despesas?|custos?|compras?)\s+(?:com|de|do|da|dos|das|em)?\b'), ' ')
       .replaceAll(RegExp(r'\b(?:do|da|de|dos|das|o|a|os|as|meu|minha|meus|minhas|com|no|na)\b'), ' ')
       .replaceAll(RegExp(r'\b(?:quanto|quantos|eu|economizo|economizaria|sobra|sobraria|por|mes|ao|todo|agora|ai|cesar)\b.*$'), '')
       .replaceAll(RegExp(r'\s+'), ' ')
@@ -74,10 +75,10 @@ class CesarAdvisor {
     if (term.isEmpty) return false;
     final f = CesarText.fold(term);
     // "delivery", "streaming": the apps, whatever their titles say.
-    if (RegExp(r'^(?:delivery|deliveries|pedidos?\s+de\s+comida|comida\s+por\s+app|app\s+de\s+comida)$').hasMatch(f)) {
+    if (RegExp(r'\b(?:delivery|deliveries|pedidos?\s+de\s+comida|comida\s+por\s+app|app\s+de\s+comida)\b').hasMatch(f)) {
       return FinancialProfile.deliveryTitles.hasMatch(CesarText.fold(t.title));
     }
-    if (RegExp(r'^(?:streaming|streamings)$').hasMatch(f)) return FinancialProfile.streamingTitles.hasMatch(CesarText.fold(t.title));
+    if (RegExp(r'\b(?:streaming|streamings)\b').hasMatch(f)) return FinancialProfile.streamingTitles.hasMatch(CesarText.fold(t.title));
     final inTitles = _titleTerms.putIfAbsent(f, () => repository.transactions.any((x) => CesarText.fold(x.title).contains(f)));
     if (inTitles) return CesarText.fold(t.title).contains(f);
     final code = CesarText.resolveCategory(term, repository.budgets);
@@ -715,10 +716,10 @@ class CesarAdvisor {
 
   // ───────────────────────── 5.5: "e se…?" ─────────────────────────
 
-  /// "se eu cortar o delivery, quanto economizo?"
+  /// "se eu cortar o delivery, quanto economizo?" / "cortar gastos com delivery"
   Advice? _cut(String s) {
-    final m = RegExp(r'\bse\s+(?:eu\s+)?(?:cortar|cortasse|parar\s+de\s+(?:gastar\s+com|pedir|usar|comprar)|parasse\s+de\s+(?:gastar\s+com|pedir|usar)|'
-            r'cancelar|cancelasse|tirar|tirasse|deixar\s+de\s+(?:gastar\s+com|pedir|usar|comprar))\s+(.+)$')
+    final m = RegExp(r'\b(?:se\s+(?:eu\s+)?)?(?:cortar|cortasse|parar\s+de\s+(?:gastar\s+com|pedir|usar|comprar)|parasse\s+de\s+(?:gastar\s+com|pedir|usar)|'
+            r'cancelar|cancelasse|tirar|tirasse|deixar\s+de\s+(?:gastar\s+com|pedir|usar|comprar)|cortando)\s+(.+)$')
         .firstMatch(s);
     if (m == null) return null;
     final term = _cleanTerm(m.group(1)!);
@@ -947,8 +948,10 @@ class CesarAdvisor {
   }
 
   Advice? _subscriptions(String s) {
-    if (!RegExp(r'\b(?:assinaturas?|gastos?\s+fixos?|contas?\s+fixas?|despesas?\s+fixas?|recorrentes?|mensalidades)\b').hasMatch(s) ||
-        !RegExp(r'\b(?:quais|qual|quanto|quantas|quantos|lista|liste|mostra|mostre|tenho|pago|ver)\b').hasMatch(s)) {
+    final asksMonthlyRecurring = RegExp(r'\b(?:o\s+que|quais)\s+(?:eu\s+)?(?:pago|gasto|tenho\s+que\s+pagar)\s+tod[oa]\s+mes\b').hasMatch(s);
+    if (!asksMonthlyRecurring &&
+        (!RegExp(r'\b(?:assinaturas?|gastos?\s+fixos?|contas?\s+fixas?|despesas?\s+fixas?|recorrentes?|mensalidades)\b').hasMatch(s) ||
+            !RegExp(r'\b(?:quais|qual|quanto|quantas|quantos|lista|liste|mostra|mostre|tenho|pago|ver)\b').hasMatch(s))) {
       return null;
     }
     final list = _recurring();

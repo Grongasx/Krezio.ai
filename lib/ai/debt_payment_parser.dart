@@ -1,5 +1,15 @@
 import 'local_nlp_engine.dart';
+import '../backend/models/financial_reminder.dart';
+import '../backend/repositories/financial_repository.dart';
 import '../backend/services/money.dart';
+
+/// Resolution of a debt-payment utterance against [FinancialRepository].
+class DebtPaymentResolution {
+  final DebtPaymentMatch match;
+  final List<FinancialReminder> matches;
+
+  const DebtPaymentResolution({required this.match, required this.matches});
+}
 
 /// A detected "someone paid me back" phrase, e.g. "o João me pagou a dívida dele,
 /// porém apenas 70 reais" -> personName: "João", amountPaid: 70.0.
@@ -29,9 +39,9 @@ class DebtPaymentParser {
   static const _fromWhom = r'(?:de|do|da)\s+(?!(?:volta|novo|gra[cç]a)\b)';
 
   static final RegExp _paymentVerbPattern = RegExp(
-    r'me\s+pagou|me\s+devolveu|me\s+quitou|'
-    r'quitou\s+(?:a\s+)?(?:d[ií]vida|empr[eé]stimo|o\s+que\s+dev(?:ia|e))|'
-    r'pagou\s+(?:a\s+)?(?:d[ií]vida|empr[eé]stimo|o\s+que\s+dev(?:ia|e))|'
+    r'me\s+(?:pagou|devolveu|quitou|acertou)|'
+    r'(?:quitou|acertou)\s+(?:a\s+)?(?:d[ií]vida|empr[eé]stimo|o\s+que\s+dev(?:ia|e))|'
+    r'pagou\s+(?:a\s+|o\s+)?(?:d[ií]vida|empr[eé]stimo|o\s+que\s+dev(?:ia|e))|'
     // "o joão pagou 50 do que me devia" (CONV-026).
     r'pagou\s+(?:r\$\s*)?[\d.,]+\s*(?:reais?|contos?)?\s+(?:do|da|de)\s+(?:o\s+)?(?:que\s+)?(?:me\s+)?(?:dev(?:ia|e)|d[ií]vida|empr[eé]stimo)|'
     r'recebi\s+' + _recebiInfix + _fromWhom,
@@ -39,12 +49,50 @@ class DebtPaymentParser {
   );
 
   static final List<RegExp> _namePatterns = [
-    RegExp(r'\b(?:o|a)\s+([a-zA-ZÀ-ÿ]+)\s+me\s+(?:pagou|devolveu|quitou)\b', caseSensitive: false),
-    RegExp(r'\b(?:o|a)\s+([a-zA-ZÀ-ÿ]+)\s+(?:quitou|pagou)\s+(?:a\s+)?(?:d[ií]vida|empr[eé]stimo|o\s+que\s+dev(?:ia|e))\b', caseSensitive: false),
-    RegExp(r'\b(?:o|a)\s+([a-zA-ZÀ-ÿ]+)\s+(?:me\s+)?pagou\s+(?:r\$\s*)?[\d.,]+', caseSensitive: false),
+    RegExp(r'\b(?:o|a)\s+([a-zA-ZÀ-ÿ]+)\s+(?:j[aá]\s+)?me\s+(?:pagou|devolveu|quitou|acertou)\b', caseSensitive: false),
+    RegExp(r'\b(?:o|a)\s+([a-zA-ZÀ-ÿ]+)\s+(?:j[aá]\s+)?(?:quitou|pagou|acertou|devolveu)\s+(?:tudo|(?:a\s+|o\s+)?(?:d[ií]vida|empr[eé]stimo|o\s+que\s+dev(?:ia|e)))\b', caseSensitive: false),
+    RegExp(r'\b(?:o|a)\s+([a-zA-ZÀ-ÿ]+)\s+(?:me\s+)?(?:pagou|acertou)\s+(?:r\$\s*)?[\d.,]+', caseSensitive: false),
     RegExp(r'\brecebi\s+' + _recebiInfix + _fromWhom + r'([a-zA-ZÀ-ÿ]+)\b', caseSensitive: false),
-    RegExp(r'\b([a-zA-ZÀ-ÿ]+)\s+me\s+(?:pagou|devolveu|quitou)\b', caseSensitive: false),
+    RegExp(r'\b([a-zA-ZÀ-ÿ]+)\s+(?:j[aá]\s+)?me\s+(?:pagou|devolveu|quitou|acertou)\b', caseSensitive: false),
   ];
+
+  static final RegExp _fullSettlementVerb = RegExp(
+    r'\b(?:quitou|pagou\s+tudo|devolveu\s+tudo|acertou\s+tudo|me\s+pagou\s+tudo|me\s+devolveu\s+tudo|me\s+acertou\s+tudo|'
+    r'pagou\s+(?:a\s+|o\s+)?(?:d[ií]vida|empr[eé]stimo|o\s+que\s+dev(?:ia|e))(?:\s+tod[oa])?|'
+    r'devolveu\s+(?:o\s+)?(?:empr[eé]stimo|dinheiro\s+todo))\b',
+    caseSensitive: false,
+  );
+
+  /// Extracts a debtor's name from explicit full-settlement phrasing without a
+  /// repeated numeric amount (e.g. "o joão quitou a dívida", "o joão me pagou tudo").
+  /// Plain "o joão me pagou" without "tudo"/"quitou" stays null.
+  static String? parseFullSettlementName(String text) {
+    if (!_fullSettlementVerb.hasMatch(text)) return null;
+    if (_extractAmount(text) != null) return null;
+    return _extractName(text);
+  }
+
+  /// Resolves either an explicit-amount payment or an unambiguous full
+  /// settlement against active debtors in [repo].
+  static DebtPaymentResolution? resolveForRepository(String text, FinancialRepository repo) {
+    final explicit = parse(text);
+    if (explicit != null) {
+      return DebtPaymentResolution(
+        match: explicit,
+        matches: repo.findDebtorsByName(explicit.personName),
+      );
+    }
+    final settleName = parseFullSettlementName(text);
+    if (settleName == null) return null;
+    final matches = repo.findDebtorsByName(settleName);
+    if (matches.isEmpty) return null;
+    final amount = matches.fold(0.0, (sum, r) => sum + (r.amount ?? 0.0));
+    if (amount <= 0) return null;
+    return DebtPaymentResolution(
+      match: DebtPaymentMatch(personName: settleName, amountPaid: amount),
+      matches: matches,
+    );
+  }
 
   // Includes common nouns that follow "recebi ... de/do/da" in ordinary income
   // statements ("recebi 3000 de salário") so they're never mistaken for a person's name.
@@ -149,8 +197,8 @@ class DebtPaymentParser {
     for (final pattern in patterns) {
       final match = pattern.firstMatch(lower);
       if (match != null) {
-        final value = LocalFinancialNlpEngine.cleanAndParseAmount(match.group(1));
-        if (value != null && value > 0) return value;
+        final value = LocalFinancialNlpEngine.parseBoundedAmount(match.group(1), before: lower.substring(0, match.start));
+        if (value != null) return value;
       }
     }
     return null;

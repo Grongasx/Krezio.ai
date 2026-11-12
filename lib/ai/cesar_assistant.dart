@@ -23,6 +23,8 @@ import 'transaction_command_parser.dart';
 import 'record_lookup.dart';
 import 'transaction_code.dart';
 import 'transaction_reference_resolver.dart';
+import 'cesar_working_memory.dart';
+import 'debt_payment_parser.dart';
 
 /// What César says back for a message the assistant handled.
 class AssistantReply {
@@ -92,9 +94,14 @@ class CesarAssistant {
 
   CesarAssistant({required this.repository, required this.engine, DateTime Function()? now}) : _clock = now ?? DateTime.now;
 
+  /// Structured working memory across multi-turn interactions.
+  final CesarWorkingMemory memory = CesarWorkingMemory();
+  CesarWorkingMemory get workingMemory => memory;
+
   int _turn = 0;
   int _lastMutationTurn = -10;
   int _lastQaTurn = -10;
+  bool _turnHasPendingDraft = false;
   QaQuery? _lastQuery;
   _Pending? _pending;
   String? _notice;
@@ -135,6 +142,13 @@ class CesarAssistant {
         return true;
       }, r.undoNote ?? 'Desfiz o que eu tinha criado.'));
       _lastMutationTurn = _turn;
+    }
+    if (r.route == 'planner:charge') {
+      final active = repository.getActiveDebtors();
+      final names = active.map((d) => d.personName).whereType<String>().toSet();
+      if (names.length == 1) {
+        memory.updateFrame(personName: names.first, topic: WorkingMemoryTopic.debt);
+      }
     }
     return AssistantReply(r.text, spokenText: r.spokenText, route: r.route);
   }
@@ -204,6 +218,8 @@ class CesarAssistant {
 
   void beginTurn() {
     _turn++;
+    _turnHasPendingDraft = false;
+    memory.beginTurn();
     // "Limpar Histórico" or a cloud snapshot replaced everything: what this
     // conversation remembers (undo stack, "o último", pending questions) is
     // about records that are gone. Before, "desfaz" after a clear brought a
@@ -214,6 +230,7 @@ class CesarAssistant {
       _focus = const [];
       _focusDeleted = false;
       _pending = null;
+      memory.clear();
     }
     _seenGeneration = generation;
   }
@@ -239,6 +256,16 @@ class CesarAssistant {
     _focus = List.unmodifiable(ids);
     _focusDeleted = false;
     _lastMutationTurn = _turn;
+    if (records.isNotEmpty) {
+      final last = records.first;
+      memory.updateFrame(
+        transactionId: last.id,
+        transactionAmount: last.amount,
+        transactionTitle: last.title,
+        category: last.category,
+        topic: WorkingMemoryTopic.expense,
+      );
+    }
   }
 
   /// The chat changed records through another path (e.g. a recurring due-day
@@ -274,6 +301,10 @@ class CesarAssistant {
   /// questions. [hasPendingDraft]: the chat is still asking about a new
   /// entry — then only answers to César's pending question are taken here.
   AssistantReply? handleCommand(String text, {bool hasPendingDraft = false}) {
+    if (hasPendingDraft) _turnHasPendingDraft = true;
+    if (memory.checkAndApplyDisruption(text)) {
+      // Disruption cleared the working memory frame
+    }
     // An answer inside a planning flow ("40 mil", "sim", "internet 100").
     if (_planner.hasFlow && !TransactionCommandParser.isUndo(text)) {
       final r = _planner.continueFlow(text);
@@ -315,6 +346,9 @@ class CesarAssistant {
     // read it as "the last one was 77" (CHAOS-C-004). A delete still runs
     // ("apaga o 7 belo, nem cheguei a pagar").
     final nonEvent = RegExp(r'\d').hasMatch(text) && PendingReplyCheck.isNonEvent(text);
+
+    final splitSettle = nonEvent ? null : _settleGroupSplit(text);
+    if (splitSettle != null) return splitSettle;
 
     final followUp = nonEvent ? null : _followUpEntry(text);
     if (followUp != null) return followUp;
@@ -364,9 +398,82 @@ class CesarAssistant {
     }
 
     final cmd = TransactionCommandParser.parse(text, now: _clock(), budgets: repository.budgets);
-    if (cmd == null) return null;
-    if (nonEvent && cmd.kind != ChatCommandKind.delete) return null;
-    return _runCommand(cmd, text);
+    if (cmd != null && (!nonEvent || cmd.kind == ChatCommandKind.delete)) {
+      final res = _runCommand(cmd, text);
+      if (res != null) return res;
+    }
+
+    // ───────────────────────── Pass 2: Working Memory Anaphora Resolution ─────────────────────────
+    final resolvedText = memory.resolveAnaphora(text);
+    if (resolvedText != null && resolvedText != text) {
+      // 1. Debt payment (e.g. "ele me pagou 50" -> "o João me pagou 50")
+      final debtRes = DebtPaymentParser.resolveForRepository(resolvedText, repository);
+      if (debtRes?.match != null) {
+        final matches = debtRes!.matches;
+        if (matches.length == 1) {
+          final result = repository.applyDebtPayment(matches.first.id, debtRes.match.amountPaid);
+          final responseText = DebtPaymentParser.paymentReply(
+            debtRes.match.personName,
+            paid: result.amountPaid,
+            remaining: result.remainingBalance,
+            fullyPaid: result.isFullyPaid,
+            excess: result.excess,
+          );
+          _lastMutationTurn = _turn;
+          memory.updateFrame(personName: debtRes.match.personName, topic: WorkingMemoryTopic.debt);
+          return AssistantReply(responseText, route: 'debt_payment_resolved');
+        } else if (matches.length > 1) {
+          var remainingToPay = debtRes.match.amountPaid;
+          double remainingTotal = 0.0;
+          for (final rem in matches) {
+            final due = rem.amount ?? 0.0;
+            if (due <= 0) continue;
+            final pay = remainingToPay >= due ? due : remainingToPay;
+            if (pay > 0) {
+              final res = repository.applyDebtPayment(rem.id, pay);
+              remainingToPay -= pay;
+              remainingTotal += res.remainingBalance;
+            } else {
+              remainingTotal += due;
+            }
+          }
+          final responseText = DebtPaymentParser.paymentReply(
+            debtRes.match.personName,
+            paid: debtRes.match.amountPaid,
+            remaining: remainingTotal,
+            fullyPaid: remainingTotal <= 0.001,
+            excess: remainingToPay,
+          );
+          _lastMutationTurn = _turn;
+          memory.updateFrame(personName: debtRes.match.personName, topic: WorkingMemoryTopic.debt);
+          return AssistantReply(responseText, route: 'debt_payment_resolved');
+        }
+      }
+
+      // 2. Synthesized split (e.g. "divide em 3" referencing the last meal)
+      final split = BillSplitParser.parse(resolvedText);
+      if (split != null) {
+        return _recordSplit(split, resolvedText);
+      }
+
+      // 3. Goal contribution ("guardei 100 nela" -> "guardei 100 na meta viagem")
+      final goalCmd = GoalCommandParser.parse(resolvedText);
+      if (goalCmd != null) {
+        final reply = _runGoalCommand(goalCmd);
+        if (reply != null) return reply;
+      }
+
+      // 4. Reference edit or command on resolved text
+      final cmdResolved = TransactionCommandParser.parse(resolvedText, now: _clock(), budgets: repository.budgets);
+      if (cmdResolved != null) {
+        final res = _runCommand(cmdResolved, resolvedText);
+        if (res != null) return res;
+      }
+
+      return AssistantReply('', route: 'working_memory:resolved', rewrittenInput: resolvedText);
+    }
+
+    return null;
   }
 
   static final _splitAnswer = RegExp(r'^(?:(?:foi|era|e|eh|mas\s+foi|na\s+verdade)\s+)?(?:(?:em|de)\s+)?(\d{1,2})\s*(?:x|vezes|parcelas)$|'
@@ -1063,6 +1170,7 @@ class CesarAssistant {
           route: 'goal_choose');
     }
     final goal = matches.first;
+    memory.updateFrame(goalTitle: goal.title, topic: WorkingMemoryTopic.goal);
     switch (c.kind) {
       case GoalCommandKind.contribute:
         final updated = repository.contributeToGoal(goal.id, c.amount!);
@@ -1354,14 +1462,23 @@ class CesarAssistant {
   static bool _goalExists(FinancialRepository r, String id) => r.goals.any((g) => g.id == id);
 
   /// "o jantar deu 240, dividi com mais 3": my part is an expense and the
-  /// rest is money to receive (one entry per person named, or one for the
-  /// group). One "desfaz" removes all of it.
+  /// Splits a bill: records the user's own share as an expense (respecting date,
+  /// payment method, category memory, and optional "cada um pagou sua parte")
+  /// and creates cent-balanced receivables for the rest. One "desfaz" removes all.
   AssistantReply _recordSplit(BillSplit split, String text) {
     final now = _clock();
-    final draft = engine.parse(text);
-    final category = draft.category.isNotEmpty && draft.category != 'unknown' ? draft.category : 'leisure';
-    final payment = draft.paymentMethod.isNotEmpty && draft.paymentMethod != 'unknown' ? draft.paymentMethod : 'pix';
+    final focus = _lastTargets();
+    if (focus.length == 1 && focus.first.type == TransactionType.expense && (focus.first.amount - split.total).abs() < 0.05) {
+      repository.deleteTransaction(focus.first.id);
+    }
+    final parsed = repository.applyCategoryMemory(engine.parse(text));
+    final txDate = now.add(Duration(days: parsed.dateOffsetDays));
+    final category = parsed.category.isNotEmpty && parsed.category != 'unknown' ? parsed.category : 'leisure';
+    final payment = parsed.paymentMethod.isNotEmpty && parsed.paymentMethod != 'unknown' ? parsed.paymentMethod : 'pix';
     final id = 'split-${now.microsecondsSinceEpoch}';
+    final noteSuffix = split.onlyMyShare
+        ? ' (cada um pagou sua parte)'
+        : (split.toReceive > 0 ? ' · a receber ${CesarText.money(split.toReceive)}' : '');
     final mine = FinancialTransaction(
       id: id,
       title: split.description,
@@ -1369,23 +1486,58 @@ class CesarAssistant {
       type: TransactionType.expense,
       category: category,
       paymentMethod: payment,
-      date: now,
-      notes: 'Dividido em ${split.people}: total ${CesarText.money(split.total)}',
+      date: txDate,
+      notes: 'Dividido em ${split.people}: total ${CesarText.money(split.total)}$noteSuffix',
     );
     repository.addTransaction(mine);
-    final due = CesarText.dayOnly(now).add(const Duration(days: 7));
+    memory.updateFrame(
+      transactionId: id,
+      transactionAmount: split.myShare,
+      transactionTitle: split.description,
+      category: category,
+      personName: split.others.isNotEmpty ? split.others.first : null,
+      topic: WorkingMemoryTopic.split,
+    );
+
+    if (split.onlyMyShare) {
+      history.push(ChatAction.custom((r) {
+        r.deleteTransaction(id);
+        return true;
+      }, 'Tirei a divisão de ${split.description}.', [mine]));
+      _lastMutationTurn = _turn;
+      return AssistantReply(
+        'Pronto! **${split.description}**: ${CesarText.money(split.total)} dividido em ${split.people} '
+        '(${CesarText.money(split.perPerson)} cada).\n'
+        '- Seu gasto: **${CesarText.money(split.myShare)}**\n\n'
+        'Como cada um já pagou a sua parte, registrei apenas o seu gasto — sem cobrança a receber. Se errei, diga "desfaz".',
+        spokenText: 'Pronto! Registrei apenas a sua parte de ${CesarText.money(split.myShare)} em ${split.description}.',
+        route: 'split',
+        changedIds: {id},
+      );
+    }
+
+    final due = CesarText.dayOnly(txDate).add(const Duration(days: 7));
     final reminders = <FinancialReminder>[];
     if (split.others.isNotEmpty) {
-      final each = split.toReceive / split.others.length;
       for (var i = 0; i < split.others.length; i++) {
         reminders.add(FinancialReminder(
-            id: '$id-r$i', title: '${split.description} (${split.others[i]})', personName: split.others[i],
-            amount: (each * 100).round() / 100, targetDate: due, type: ReminderType.loanReceivable));
+          id: '$id-r$i',
+          title: '${split.description} (${split.others[i]})',
+          personName: split.others[i],
+          amount: split.shareForOther(i),
+          targetDate: due,
+          type: ReminderType.loanReceivable,
+        ));
       }
     } else {
       reminders.add(FinancialReminder(
-          id: '$id-r', title: '${split.description} — parte dos outros ${split.people - 1}', personName: 'Divisão: ${split.description}',
-          amount: split.toReceive, targetDate: due, type: ReminderType.loanReceivable));
+        id: '$id-r',
+        title: '${split.description} — parte dos outros ${split.people - 1}',
+        personName: 'Divisão: ${split.description}',
+        amount: split.toReceive,
+        targetDate: due,
+        type: ReminderType.loanReceivable,
+      ));
     }
     reminders.forEach(repository.addReminder);
     history.push(ChatAction.custom((r) {
@@ -1396,16 +1548,82 @@ class CesarAssistant {
       return true;
     }, 'Tirei a divisão de ${split.description}.', [mine]));
     _lastMutationTurn = _turn;
-    final who = split.others.isEmpty ? 'dos outros ${split.people - 1}' : 'de ${split.others.join(' e ')}';
+
+    final who = split.others.isEmpty
+        ? 'dos outros ${split.people - 1}'
+        : 'de ${split.others.join(' e ')}';
+    final hintExample = split.others.isNotEmpty
+        ? 'diga "o ${split.others.first} me pagou ${split.shareForOther(0).toStringAsFixed(2).replaceAll('.', ',')}"'
+        : 'diga "me pagaram ${split.myShare.toStringAsFixed(2).replaceAll('.', ',')} do ${split.description.toLowerCase()}"';
+
     return AssistantReply(
-      'Pronto! ${split.description}: ${CesarText.money(split.total)} dividido em ${split.people} '
-      '(${CesarText.money(split.perPerson)} cada).\n'
+      'Pronto! **${split.description}**: ${CesarText.money(split.total)} dividido em ${split.people} '
+      '(${CesarText.money(split.perPerson)} por pessoa).\n'
       '- Seu gasto: **${CesarText.money(split.myShare)}**\n'
       '- A receber $who: **${CesarText.money(split.toReceive)}** (lembrete para ${CesarText.ddmm(due)})\n\n'
-      'Quando te pagarem, diga "o João me pagou 60". Se errei, "desfaz".',
-      spokenText: 'Registrei ${CesarText.money(split.myShare)} de gasto seu e ${CesarText.money(split.toReceive)} a receber.',
+      'Quando te pagarem, $hintExample. Se cada um já pagou sua parte, diga "desfaz" e lance com "cada um pagou sua parte".',
+      spokenText: 'Pronto! ${split.description}: ${CesarText.money(split.myShare)} de gasto seu e ${CesarText.money(split.toReceive)} a receber.',
       route: 'split',
       changedIds: {id},
+    );
+  }
+
+  /// Settles an open unnamed group split ("Divisão: Jantar") when the user says
+  /// e.g. "me pagaram 106,67 do jantar" or "recebi 213,33 do jantar".
+  AssistantReply? _settleGroupSplit(String text) {
+    final s = CesarText.simplify(text);
+    if (!RegExp(r'\b(?:me\s+pagaram|me\s+devolveram|pagaram|devolveram|quitaram|recebi)\b').hasMatch(s)) {
+      return null;
+    }
+    final openSplits = repository
+        .getActiveDebtors()
+        .where((r) => (r.personName ?? '').startsWith('Divisão:'))
+        .toList();
+    if (openSplits.isEmpty) return null;
+
+    FinancialReminder? matched;
+    for (final rem in openSplits) {
+      final eventName = CesarText.simplify(rem.personName!.replaceFirst('Divisão:', '').trim());
+      final words = eventName.split(' ').where((w) => w.length >= 3).toList();
+      if (words.any((w) => RegExp('\\b${RegExp.escape(w)}\\b').hasMatch(s))) {
+        matched = rem;
+        break;
+      }
+    }
+    if (matched == null && openSplits.length == 1 && RegExp(r'\b(?:divisao|racha|rachado|conta\s+dividida)\b').hasMatch(s)) {
+      matched = openSplits.first;
+    }
+    if (matched == null) return null;
+
+    final m = RegExp(r'(?:r\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)').firstMatch(s);
+    if (m == null) return null;
+    final amount = LocalFinancialNlpEngine.parseBoundedAmount(m.group(1), before: s.substring(0, m.start));
+    if (amount == null || amount <= 0) return null;
+
+    final prevReminder = matched;
+    final res = repository.applyDebtPayment(matched.id, amount);
+    final label = matched.personName!.replaceFirst('Divisão:', '').trim();
+
+    history.push(ChatAction.custom((r) {
+      r.deleteTransaction(res.transaction.id);
+      r.removeReminder(prevReminder.id);
+      r.addReminder(prevReminder);
+      return true;
+    }, 'Desfiz o recebimento de ${CesarText.money(amount)} da divisão de $label.', [res.transaction]));
+    _lastMutationTurn = _turn;
+
+    if (!res.isFullyPaid) {
+      return AssistantReply(
+        'Anotado! Entrou **${CesarText.money(res.amountPaid)}** da divisão de **$label** no seu saldo. '
+        'Ainda faltam **${CesarText.money(res.remainingBalance)}** a receber. 👍',
+        route: 'split_settled_partial',
+        changedIds: {res.transaction.id},
+      );
+    }
+    return AssistantReply(
+      'Quitado! Entraram **${CesarText.money(res.amountPaid)}** da divisão de **$label** no seu saldo e encerrei a cobrança. 🎉',
+      route: 'split_settled',
+      changedIds: {res.transaction.id},
     );
   }
 
@@ -1531,7 +1749,8 @@ class CesarAssistant {
 
   /// Questions about the data, with follow-ups that reuse the last one ("e
   /// ontem?", "e com mercado?"). Null when [text] isn't a question.
-  AssistantReply? handleQuestion(String text) {
+  AssistantReply? handleQuestion(String text, {bool? hasPendingDraft}) {
+    final pendingDraft = hasPendingDraft ?? _turnHasPendingDraft;
     final pref = _preferenceCommand(text);
     if (pref != null) return pref;
 
@@ -1542,8 +1761,12 @@ class CesarAssistant {
     final plan = _planner.start(text);
     if (plan != null) return _fromPlanner(plan);
 
-    final talk = CesarSmallTalk.reply(text, now: _clock());
-    if (talk != null) return AssistantReply(talk.text, spokenText: talk.spokenText, route: talk.kind == 'help' || talk.kind == 'howto' ? 'help' : 'smalltalk');
+    final talk = CesarSmallTalk.reply(text, now: _clock(), hasPendingDraft: pendingDraft);
+    if (talk != null) {
+      final isHelp = talk.kind == 'help' || talk.kind == 'howto';
+      final route = isHelp ? 'help' : (talk.kind == 'feedback_error' || talk.kind == 'confused' ? 'feedback' : 'smalltalk');
+      return AssistantReply(talk.text, spokenText: talk.spokenText, route: route);
+    }
 
     final why = _explainCategory(text);
     if (why != null) return why;
@@ -1564,7 +1787,17 @@ class CesarAssistant {
     final a = _qa.answer(text);
     if (a != null) return _fromQa(a);
     if (isUnansweredQuestion(text)) {
+      final resolved = memory.resolveAnaphora(text);
+      if (resolved != null && resolved != text) {
+        final retry = handleQuestion(resolved, hasPendingDraft: pendingDraft);
+        if (retry != null && retry.route != 'unanswered') return retry;
+      }
       return const AssistantReply(LocalFinancialNlpEngine.unansweredQuestionReply, route: 'unanswered');
+    }
+    final resolved = memory.resolveAnaphora(text);
+    if (resolved != null && resolved != text) {
+      final retry = handleQuestion(resolved, hasPendingDraft: pendingDraft);
+      if (retry != null && retry.route != 'unanswered') return retry;
     }
     return null;
   }
@@ -1708,9 +1941,15 @@ class CesarAssistant {
     final asks = text.trim().endsWith('?') ||
         RegExp(r'\b(?:quanto|quantos|quantas|qual|quais|quando|onde|quem|cade|por\s*que|sera\s+que)\b').hasMatch(s) ||
         RegExp(r'^(?:como|o\s+que)\b').hasMatch(s);
-    // "gastei 50 no mercado?" still tells an entry (with a doubt), and "uns
-    // 50?" answers César's own question about a draft.
-    return asks && !RegExp(r'\d').hasMatch(s);
+    if (!asks) return false;
+    // Only skip unanswered fallback when numbers likely represent a real entry
+    // or draft answer ("uns 50?", "gastei 50 no mercado?"), not conceptual
+    // rules/percentages ("regra dos 50 30 20 funciona?", "selic a 11%?").
+    if (RegExp(r'\b(?:regra|metodo|lei|por\s*cento|%)\b|\d+\s+\d+\s+\d+').hasMatch(s) &&
+        !RegExp(r'\b(?:gastei|paguei|comprei|recebi|ganhei|transferi|mandei|pix|reais|r\$)\b').hasMatch(s)) {
+      return true;
+    }
+    return !RegExp(r'\d').hasMatch(s);
   }
 
   /// "por que você colocou isso em lazer?" — says what decided the category
@@ -1739,6 +1978,11 @@ class CesarAssistant {
   AssistantReply _fromQa(QaAnswer a) {
     _lastQuery = a.query;
     _lastQaTurn = _turn;
+    if (a.query.kind == QaKind.goals) {
+      memory.updateFrame(goalTitle: a.query.term, topic: WorkingMemoryTopic.goal);
+    } else if (a.query.term.isNotEmpty) {
+      memory.updateFrame(category: a.query.term, topic: WorkingMemoryTopic.report);
+    }
     return AssistantReply(a.text, spokenText: a.spokenText, route: a.route, chart: a.chart);
   }
 }

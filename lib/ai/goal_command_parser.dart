@@ -46,16 +46,16 @@ class GoalCommandParser {
             '\\s+(?:mais\\s+)?$_num\\s+(?:(?:na|no|pra|para|pro|em)\\s+)(.+)\$')
         .firstMatch(s);
     if (add != null) {
-      final v = LocalFinancialNlpEngine.cleanAndParseAmount(add.group(1));
-      if (v == null || v <= 0) return null;
+      final v = LocalFinancialNlpEngine.parseBoundedAmount(add.group(1), before: s.substring(0, add.start));
+      if (v == null) return null;
       return GoalCommand(GoalCommandKind.contribute, clean(add.group(2)), saidMeta: saidMeta, amount: v);
     }
 
     final take = RegExp('^(?:tira|tire|tirei|retira|retire|retirei|saquei|saca|resgatei|resgata|resgate|peguei|usei)\\s+$_num\\s+(?:da|do|de)\\s+(.+)\$')
         .firstMatch(s);
     if (take != null) {
-      final v = LocalFinancialNlpEngine.cleanAndParseAmount(take.group(1));
-      if (v == null || v <= 0) return null;
+      final v = LocalFinancialNlpEngine.parseBoundedAmount(take.group(1), before: s.substring(0, take.start));
+      if (v == null) return null;
       return GoalCommand(GoalCommandKind.withdraw, clean(take.group(2)), saidMeta: saidMeta, amount: v);
     }
 

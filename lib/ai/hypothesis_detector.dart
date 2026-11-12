@@ -213,11 +213,19 @@ class HypothesisDetector {
   /// A clause about something still to happen: "assim que cair 4500 de
   /// salário eu pago o aluguel", "quando o salário cair…" (CHAOS-B-001). A
   /// loan reminder ("ele me paga quando receber") is not a hypothesis.
-  static final _whenFuture = RegExp(r'\b(?:assim\s+que|logo\s+que|depois\s+que|quando)\b');
   static final _loanOrReminder = RegExp(r'\b(?:me\s+deve|devendo|emprest\w*|me\s+paga|me\s+pagar|vai\s+me|lembr\w*|avis\w*|cobrar)\b');
+  static final _thirdPartyRepayment = RegExp(
+    r'\b(?:ele|ela|(?:o|a)\s+[a-z]{2,}|[a-z]{2,}\s+(?:disse|falou)\s+que)\s+(?:(?:disse|falou)\s+que\s+)?(?:vai|ia|iria|prometeu|combinou\s+de)\s+(?:me\s+)?(?:pagar|acertar|devolver)\b',
+  );
+  static final _selfObligationContext = RegExp(
+    r'\b(?:eu\s+(?:ia|iria|vou|pago)|aluguel|boleto|fatura|parcela|ipva|iptu)\b',
+  );
 
   static bool _futureClause(String s) {
     if (_loanOrReminder.hasMatch(s)) return false;
+    if (_thirdPartyRepayment.hasMatch(s) && !_selfObligationContext.hasMatch(s)) {
+      return false;
+    }
     for (final clause in s.split(RegExp(r'[,;:.!?]'))) {
       final words = clause.split(RegExp(r'[^a-z0-9$]+')).where((w) => w.isNotEmpty).toList();
       for (var i = 0; i < words.length; i++) {

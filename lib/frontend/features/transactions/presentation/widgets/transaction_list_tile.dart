@@ -32,7 +32,9 @@ class TransactionListTile extends StatelessWidget {
     final isTransfer = transaction.type == TransactionType.transfer;
     final amountColor = isIncome
         ? KrezioColors.emeraldGreen
-        : (isTransfer ? KrezioColors.aiPurple : (isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText));
+        : (isTransfer
+            ? KrezioColors.aiPurple
+            : (isDark ? const Color(0xFFF87171) : KrezioColors.budgetOver));
 
     final amountFormatted = hideAmount
         ? '••••'
@@ -56,12 +58,31 @@ class TransactionListTile extends StatelessWidget {
         ),
         child: const Icon(Icons.delete_outline, color: KrezioColors.friendlyOrange),
       ),
+      // Swiping asks first: an accidental swipe used to delete silently.
+      confirmDismiss: (_) async =>
+          await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Apagar lançamento?'),
+              content: Text('"${transaction.title}" será apagado.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Apagar')),
+              ],
+            ),
+          ) ==
+          true,
       onDismissed: (_) {
         onDelete?.call();
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: KrezioSpace.sm),
-        padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
+        padding: EdgeInsets.fromLTRB(
+          KrezioSpace.lg,
+          KrezioSpace.md,
+          onTap != null || onDelete != null ? KrezioSpace.xs : KrezioSpace.lg,
+          KrezioSpace.md,
+        ),
         decoration: BoxDecoration(
           color: bgSurface,
           borderRadius: KrezioTheme.borderRadius,
@@ -104,9 +125,10 @@ class TransactionListTile extends StatelessWidget {
                       children: [
                         Flexible(
                           child: Text(
-                            '${isTransfer ? 'Transferência • ' : ''}$dateStr • ${transaction.paymentMethodLabel} • ${TransactionCode.label(transaction.id)}'
+                            '${transaction.categoryLabel} • $dateStr • ${transaction.paymentMethodLabel}'
                             '${!hideAmount && transaction.originalCurrency != null && transaction.originalAmount != null ? ' • ${Currencies.format(transaction.originalCurrency!, transaction.originalAmount!)}' : ''}'
-                            '${transaction.bankSource == null ? '' : ' • ${transaction.bankSource}'}',
+                            '${transaction.bankSource == null ? '' : ' • ${transaction.bankSource}'}'
+                            ' • ${TransactionCode.label(transaction.id)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -125,10 +147,15 @@ class TransactionListTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: KrezioSpace.sm),
-              Flexible(
+              // Not Flexible: a loose Flexible next to the Expanded column
+              // left a gap after the value and pushed the "⋮" to the middle.
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
                 child: Text(
                   amountFormatted,
                   textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   semanticsLabel: hideAmount ? 'Valor oculto' : null,
                   style: TextStyle(
                     fontSize: KrezioFont.body,
@@ -141,6 +168,14 @@ class TransactionListTile extends StatelessWidget {
               if (onTap != null || onDelete != null)
                 PopupMenuButton<VoidCallback>(
                   tooltip: 'Mais ações',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(32, 40),
+                    padding: const EdgeInsets.only(left: KrezioSpace.xs),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
                   onSelected: (action) => action(),
                   itemBuilder: (context) => [
                     if (onTap != null) PopupMenuItem(value: onTap, child: const Text('Editar')),

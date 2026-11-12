@@ -13,6 +13,17 @@ void deleteLedgerTransaction(
   );
   if (index < 0) return;
   final transaction = repository.transactions[index];
+  // A Cofrinho application/withdrawal mirrors the goal balance: deleting it
+  // here would leave the Cofrinho out of sync, so point to the right place.
+  if (id.startsWith('cofrinho-')) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(id.startsWith('cofrinho-resgate-')
+          ? '"${transaction.title}" é um resgate de cofrinho. Para mudar, guarde o valor de volta na aba Cofrinhos.'
+          : '"${transaction.title}" é uma aplicação no cofrinho. Para devolver ao saldo, use "Resgatar" na aba Cofrinhos.'),
+      duration: const Duration(seconds: 6),
+    ));
+    return;
+  }
   repository.deleteTransaction(id);
   showLedgerUndo(
     context,

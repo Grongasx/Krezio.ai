@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 import '../backend/services/calendar_service.dart';
 import 'financial_report_rag_engine.dart';
 import 'category_name_matcher.dart';
@@ -326,18 +327,46 @@ class ClassifierProbabilityTrace {
   });
 }
 
+/// Exact linear contribution (`weight * tfidf`) of one active n-gram toward the
+/// winning class logit in a logistic-regression / linear Softmax classifier.
+class FeatureContribution {
+  final String token;
+  final int index;
+  final double tfidf;
+  final double weight;
+  final double contribution;
+
+  const FeatureContribution({
+    required this.token,
+    required this.index,
+    required this.tfidf,
+    required this.weight,
+    required this.contribution,
+  });
+}
+
 /// Detailed inference trace for one classification model (Intent, Category, or Payment).
 class ModelInferenceTrace {
   final String modelName;
   final String predictedLabel;
   final double confidence;
   final List<ClassifierProbabilityTrace> probabilities;
+  final double bias;
+  final double margin;
+  final double normalizedEntropy;
+  final bool isZeroVectorFallback;
+  final List<FeatureContribution> topContributions;
 
   const ModelInferenceTrace({
     required this.modelName,
     required this.predictedLabel,
     required this.confidence,
     required this.probabilities,
+    this.bias = 0.0,
+    this.margin = 0.0,
+    this.normalizedEntropy = 0.0,
+    this.isZeroVectorFallback = false,
+    this.topContributions = const [],
   });
 }
 
@@ -360,7 +389,7 @@ class InstallmentDecisionTrace {
   });
 }
 
-/// Full transparent trace of the neural network / ML pipeline execution.
+/// Full transparent trace of the on-device ML + Rule pipeline execution.
 class NeuralThoughtTrace {
   final String rawText;
   final String normalizedText;
@@ -369,6 +398,11 @@ class NeuralThoughtTrace {
   final Map<String, String> typoFixes;
   final List<String> ngrams;
   final List<ActiveFeatureTrace> activeFeatures;
+  final List<String> oovNgrams;
+  final double vocabHitRate;
+  final int vocabSize;
+  final double confidenceThreshold;
+  final String? matchedCustomCategory;
   final ModelInferenceTrace intentModel;
   final ModelInferenceTrace categoryModel;
   final ModelInferenceTrace paymentModel;
@@ -395,6 +429,11 @@ class NeuralThoughtTrace {
     required this.typoFixes,
     required this.ngrams,
     required this.activeFeatures,
+    this.oovNgrams = const [],
+    this.vocabHitRate = 0.0,
+    this.vocabSize = 0,
+    this.confidenceThreshold = 0.45,
+    this.matchedCustomCategory,
     required this.intentModel,
     required this.categoryModel,
     required this.paymentModel,
@@ -415,13 +454,145 @@ class NeuralThoughtTrace {
   });
 }
 
+/// Numerically-stable Softmax summary produced by [_CompiledLinearModel.evaluateSparse].
+class _SoftmaxSummary {
+  final Float64List scores;
+  final Float64List probs;
+  final int bestIndex;
+  final double maxProb;
+  final double margin;
+  final double normalizedEntropy;
+
+  const _SoftmaxSummary({
+    required this.scores,
+    required this.probs,
+    required this.bestIndex,
+    required this.maxProb,
+    required this.margin,
+    required this.normalizedEntropy,
+  });
+}
+
+/// Pre-compiled linear classifier weights backed by packed [Float64List] rows.
+/// Supports both dense (`List`) and sparse (`Map<idx, weight>`) JSON representations.
+class _CompiledLinearModel {
+  final List<String> classes;
+  final Float64List intercepts;
+  final List<Float64List> coefRows;
+
+  _CompiledLinearModel({
+    required this.classes,
+    required this.intercepts,
+    required this.coefRows,
+  });
+
+  factory _CompiledLinearModel.fromJson(Map<String, dynamic> model, int vocabSize) {
+    final classes = (model['classes'] as List).cast<String>();
+    final interceptRaw = model['intercept'] as List;
+    final intercepts = Float64List(classes.length);
+    for (int i = 0; i < classes.length && i < interceptRaw.length; i++) {
+      intercepts[i] = (interceptRaw[i] as num).toDouble();
+    }
+
+    final coefMatrix = model['coef'] as List;
+    final coefRows = List<Float64List>.generate(classes.length, (cIdx) {
+      final row = Float64List(vocabSize);
+      if (cIdx >= coefMatrix.length) return row;
+      final rawRow = coefMatrix[cIdx];
+      if (rawRow is List) {
+        final limit = rawRow.length < vocabSize ? rawRow.length : vocabSize;
+        for (int fIdx = 0; fIdx < limit; fIdx++) {
+          row[fIdx] = (rawRow[fIdx] as num).toDouble();
+        }
+      } else if (rawRow is Map) {
+        rawRow.forEach((key, value) {
+          final fIdx = key is int ? key : int.tryParse(key.toString());
+          if (fIdx != null && fIdx >= 0 && fIdx < vocabSize && value is num) {
+            row[fIdx] = value.toDouble();
+          }
+        });
+      }
+      return row;
+    });
+
+    return _CompiledLinearModel(
+      classes: classes,
+      intercepts: intercepts,
+      coefRows: coefRows,
+    );
+  }
+
+  /// Evaluates sparse dot products (`w · x + b`), Softmax probabilities, margin Δp,
+  /// and normalized Shannon entropy H_norm in a single pass.
+  _SoftmaxSummary evaluateSparse(Map<int, double> sparseVector) {
+    final k = classes.length;
+    final scores = Float64List(k);
+
+    for (int cIdx = 0; cIdx < k; cIdx++) {
+      double score = intercepts[cIdx];
+      final weights = coefRows[cIdx];
+      for (final entry in sparseVector.entries) {
+        score += weights[entry.key] * entry.value;
+      }
+      scores[cIdx] = score;
+    }
+
+    double maxScore = scores[0];
+    for (int i = 1; i < k; i++) {
+      if (scores[i] > maxScore) maxScore = scores[i];
+    }
+
+    final expScores = Float64List(k);
+    double sumExp = 0.0;
+    for (int i = 0; i < k; i++) {
+      final e = exp(scores[i] - maxScore);
+      expScores[i] = e;
+      sumExp += e;
+    }
+
+    final probs = Float64List(k);
+    int bestIndex = 0;
+    double maxProb = 0.0;
+    double secondMaxProb = 0.0;
+    double entropySum = 0.0;
+
+    for (int i = 0; i < k; i++) {
+      final p = expScores[i] / sumExp;
+      probs[i] = p;
+      if (p > maxProb) {
+        secondMaxProb = maxProb;
+        maxProb = p;
+        bestIndex = i;
+      } else if (p > secondMaxProb) {
+        secondMaxProb = p;
+      }
+      if (p > 1e-12) {
+        entropySum -= p * log(p);
+      }
+    }
+
+    final double margin = k >= 2 ? (maxProb - secondMaxProb).clamp(0.0, 1.0) : 1.0;
+    final double maxEntropy = k > 1 ? log(k.toDouble()) : 1.0;
+    final double normalizedEntropy = (entropySum / maxEntropy).clamp(0.0, 1.0);
+
+    return _SoftmaxSummary(
+      scores: scores,
+      probs: probs,
+      bestIndex: bestIndex,
+      maxProb: maxProb,
+      margin: margin,
+      normalizedEntropy: normalizedEntropy,
+    );
+  }
+}
+
 /// Pure Dart, 100% On-Device Financial NLP Engine for Krezio.ai with Anti-Hallucination & Slot Completion.
 class LocalFinancialNlpEngine {
   final Map<String, int> _vocabulary;
-  final List<double> _idf;
-  final Map<String, dynamic> _intentModel;
-  final Map<String, dynamic> _categoryModel;
-  final Map<String, dynamic> _paymentModel;
+  final Float64List _idf;
+  final _CompiledLinearModel _intentModel;
+  final _CompiledLinearModel _categoryModel;
+  final _CompiledLinearModel _paymentModel;
   final int _vocabSize;
   final double _confidenceThreshold;
   final RealtimeCalendarService calendarService;
@@ -626,10 +797,10 @@ class LocalFinancialNlpEngine {
 
   LocalFinancialNlpEngine._({
     required Map<String, int> vocabulary,
-    required List<double> idf,
-    required Map<String, dynamic> intentModel,
-    required Map<String, dynamic> categoryModel,
-    required Map<String, dynamic> paymentModel,
+    required Float64List idf,
+    required _CompiledLinearModel intentModel,
+    required _CompiledLinearModel categoryModel,
+    required _CompiledLinearModel paymentModel,
     required double confidenceThreshold,
     RealtimeCalendarService? calendarService,
   })  : _vocabulary = vocabulary,
@@ -647,15 +818,20 @@ class LocalFinancialNlpEngine {
     final Map<String, dynamic> meta = data['meta'] ?? {};
     final Map<String, dynamic> vocabRaw = data['vocabulary'];
     final Map<String, int> vocabulary = vocabRaw.map((k, v) => MapEntry(k, (v as num).toInt()));
-    final List<double> idf = (data['idf'] as List).map((e) => (e as num).toDouble()).toList();
+    final int vocabSize = vocabulary.length;
+    final List<dynamic> idfRaw = data['idf'] as List;
+    final Float64List idf = Float64List(idfRaw.length);
+    for (int i = 0; i < idfRaw.length; i++) {
+      idf[i] = (idfRaw[i] as num).toDouble();
+    }
     final models = data['models'] as Map<String, dynamic>;
 
     return LocalFinancialNlpEngine._(
       vocabulary: vocabulary,
       idf: idf,
-      intentModel: models['intent'],
-      categoryModel: models['category'],
-      paymentModel: models['payment_method'],
+      intentModel: _CompiledLinearModel.fromJson(models['intent'] as Map<String, dynamic>, vocabSize),
+      categoryModel: _CompiledLinearModel.fromJson(models['category'] as Map<String, dynamic>, vocabSize),
+      paymentModel: _CompiledLinearModel.fromJson(models['payment_method'] as Map<String, dynamic>, vocabSize),
       confidenceThreshold: (meta['confidence_threshold'] as num?)?.toDouble() ?? 0.55,
       calendarService: calendarService,
     );
@@ -717,9 +893,13 @@ class LocalFinancialNlpEngine {
       r'^\s*(?:(?:caso|se)\s+(?:voce|você|vc|tu|ce)\s+(?:nao|não)\s+(?:saiba|sabe|lembre|lembra)|(?:so\s+|só\s+)?(?:pra|para)\s+(?:voce|você|vc)\s+saber)\s*,\s*',
       caseSensitive: false);
 
+  static final RegExp _excessiveLetterRuns = RegExp(r'([a-zA-ZÀ-ÿ])\1{11,}');
+  static String _collapseGarbageRuns(String text) =>
+      text.replaceAllMapped(_excessiveLetterRuns, (m) => m.group(1)! * 3);
+
   FinancialTransactionDraft _parseRaw(String phrase) {
     final stopwatch = Stopwatch()..start();
-    final cleanText = phrase.trim().replaceFirst(_leadingAside, '');
+    final cleanText = _collapseGarbageRuns(phrase.trim()).replaceFirst(_leadingAside, '');
     final normText = _normalizeText(cleanText);
     final lower = normText.toLowerCase();
 
@@ -805,10 +985,10 @@ class LocalFinancialNlpEngine {
       );
     }
 
-    final vector = _extractTfIdfVector(normText);
-    final intentResult = _predictWithConfidence(_intentModel, vector);
-    final categoryResult = _predictWithConfidence(_categoryModel, vector);
-    final paymentResult = _predictWithConfidence(_paymentModel, vector);
+    final sparseVector = _extractTfIdfSparseFromNormalized(normText);
+    final intentResult = _predictWithConfidence(_intentModel, sparseVector);
+    final categoryResult = _predictWithConfidence(_categoryModel, sparseVector);
+    final paymentResult = _predictWithConfidence(_paymentModel, sparseVector);
     // Spoken numbers as digits ("dois boletos de cento e cinquenta").
     final numLower = PtNumberWords.normalize(lower);
     final quantityPricing = _parseQuantityTimesPrice(numLower);
@@ -915,7 +1095,7 @@ class LocalFinancialNlpEngine {
       'claude code', 'claude', 'chatgpt', 'chat gpt', 'openai', 'anthropic', 'gemini', 'copilot', 'perplexity',
       'deepseek', 'midjourney', 'cursor', 'duolingo', 'cambly', 'open english', 'descomplica', 'rocketseat',
       'violão', 'violao', 'guitarra', 'bateria', 'piano',
-      'emprestei', 'emprestar', 'deve', 'me paga', 'cobrar', 'dividendo', 'dividendos', 'proventos'
+      'emprestei', 'emprestar', 'deve', 'devendo', 'me paga', 'cobrar', 'receber', 'a receber', 'falta receber', 'dividendo', 'dividendos', 'proventos'
     ];
 
     bool hasFinKw = financialKeywords.any((k) => lower.contains(k));
@@ -928,7 +1108,7 @@ class LocalFinancialNlpEngine {
     String? reportType;
     if (isReport) {
       resolvedIntent = 'query';
-      if (lower.contains('devendo') || lower.contains('deve') || lower.contains('cobrar') || lower.contains('pagar')) {
+      if (lower.contains('devendo') || lower.contains('deve') || lower.contains('cobrar') || lower.contains('pagar') || lower.contains('receber')) {
         reportType = 'debtors';
       } else if (lower.contains('gastei') || lower.contains('gasto') || lower.contains('despesa')) {
         reportType = 'spending';
@@ -956,6 +1136,20 @@ class LocalFinancialNlpEngine {
     }
 
     // ── LEMBRETES INTELIGENTES, EMPRÉSTIMOS A RECEBER & DIVIDENDOS ──
+    final foldedForLoan = CategoryNameMatcher.foldAccents(lower);
+    final hasSelfObligationContext = foldedForLoan.startsWith('vou ') ||
+        foldedForLoan.contains('eu vou ') ||
+        foldedForLoan.contains('tenho que pagar') ||
+        foldedForLoan.contains('preciso pagar') ||
+        RegExp(r'\b(?:conta|boleto|fatura|aluguel|parcela|cartao|ipva|iptu)\b').hasMatch(foldedForLoan);
+
+    final isThirdPartyPromise = !hasSelfObligationContext &&
+        (RegExp(
+              r'\b(?:vai|ia|iria|prometeu|combinou\s+de|(?:disse|falou|falo|falei)\s+que(?:\s+o|\s+a|\s+ele|\s+ela|\s+vai|\s+ia|\s+iria|\s+[a-z]+)*)\s+(?:me\s+)?(?:pagar|acertar|devolver)\b',
+            ).hasMatch(foldedForLoan) ||
+            RegExp(r'\b(?:me\s+)?(?:paga|pagar|pagava|devolve|devolver|acerta|acertar)\s+(?:quando|qdo|qndo|assim\s+que)\b')
+                .hasMatch(foldedForLoan));
+
     final isLoan = !isReport &&
         (lower.contains('emprestei') ||
             lower.contains('emprestar') ||
@@ -973,7 +1167,8 @@ class LocalFinancialNlpEngine {
             lower.contains('prometeu pagar') ||
             lower.contains('prometeu me pagar') ||
             lower.contains('prometeu acertar') ||
-            lower.contains('prometeu devolver'));
+            lower.contains('prometeu devolver') ||
+            isThirdPartyPromise);
 
     final mentionsSalaryOrPayment = lower.contains('salário') ||
         lower.contains('salario') ||
@@ -982,6 +1177,11 @@ class LocalFinancialNlpEngine {
         lower.contains('pro-labore') ||
         lower.contains('pró-labore');
 
+    final mentionsImplicitPaydayAnalogy = RegExp(
+      r'\b(?:quando|qdo|qndo|assim\s+que)\s+(?:(?:o|a)\s+[a-z]+\s+)?(?:(?:ele|ela)\s+)?(?:receber|recebesse|tiver|cair)\b|'
+      r'\b(?:quinto|5[ºo°]?)\s+dia\s+util\b',
+    ).hasMatch(foldedForLoan);
+
     final mentionsDebtorPaydayTrigger = (mentionsSalaryOrPayment &&
             (lower.contains('cair') ||
                 lower.contains('cai') ||
@@ -989,6 +1189,7 @@ class LocalFinancialNlpEngine {
                 lower.contains('sai') ||
                 lower.contains('receber') ||
                 lower.contains('recebe') ||
+                lower.contains('recebesse') ||
                 lower.contains('dele') ||
                 lower.contains('dela') ||
                 lower.contains('dia do') ||
@@ -1000,7 +1201,8 @@ class LocalFinancialNlpEngine {
         lower.contains('quando ele tiver') ||
         lower.contains('quando ela tiver') ||
         lower.contains('qdo receber') ||
-        lower.contains('qndo receber');
+        lower.contains('qndo receber') ||
+        mentionsImplicitPaydayAnalogy;
 
     final isSalaryPaydayHeuristic = isLoan && mentionsDebtorPaydayTrigger;
 
@@ -1036,7 +1238,7 @@ class LocalFinancialNlpEngine {
         targetReminderDate = payday;
         resolvedDueDay = payday.day;
         final dateLabel = RealtimeCalendarService.formatDateLabel(payday);
-        calendarConsultationNote = '5º dia útil (sábado conta) consultado no calendário em tempo real: $dateLabel';
+        calendarConsultationNote = 'Salário (5º dia útil, sábado conta) consultado no calendário em tempo real: $dateLabel';
       } else {
         // "ele me paga dia 10 / mês que vem / sexta": when to charge.
         targetReminderDate = repaymentDate(CategoryNameMatcher.foldAccents(lower), DateTime.now());
@@ -1175,6 +1377,22 @@ class LocalFinancialNlpEngine {
           resolvedIntent = 'expense';
           if (amount != null && amount > 0) askType = true;
       }
+    }
+
+    // Step 3: Conceptual / verbless questions without an amount ("pix cai na hora?",
+    // "cartão de crédito vale a pena?", "uber ou ônibus?", "pix do joao?",
+    // "salario dia 5?") shouldn't open a fake pending transaction draft solely
+    // because a keyword or preposition fired the linear Softmax classifier.
+    if (!isReminder &&
+        !isReport &&
+        resolvedIntent != 'query' &&
+        (amount == null || amount <= 0) &&
+        cleanText.trim().endsWith('?') &&
+        !_isOwnAccountTransfer(lower) &&
+        !_isPayingOut(lower) &&
+        PendingReplyCheck.ownMoneyVerb(CategoryNameMatcher.foldAccents(lower)) == null) {
+      resolvedIntent = 'unknown';
+      askType = false;
     }
 
     // Paying an employee ("paguei o salário do funcionário", "contratei uma
@@ -1467,14 +1685,15 @@ class LocalFinancialNlpEngine {
     var chosenSeen = false;
     for (final m in _amountCandidatePattern.allMatches(lower)) {
       final raw = m.group(1)!;
+      final before = lower.substring(0, m.start);
+      final after = lower.substring(m.end);
+      if (isExplicitNegative(before)) continue;
       final value = cleanAndParseAmount(raw);
-      if (value == null || value <= 0) continue;
+      if (value == null || value <= 0 || value >= maxPlausibleAmount) continue;
       if (!chosenSeen && (value - chosen).abs() < 0.005) {
         chosenSeen = true;
         continue;
       }
-      final before = lower.substring(0, m.start);
-      final after = lower.substring(m.end);
       // "2k"/"1,5k" is one value; "s23" is part of a name; the "08" of "31/08" is a month.
       if (RegExp(r'[a-z]$|\d\s*/\s*$').hasMatch(before) || RegExp(r'^\s*k\b').hasMatch(after) || _isNonValueNumber(raw, before, after)) {
         continue;
@@ -1606,10 +1825,17 @@ class LocalFinancialNlpEngine {
   /// was actually looked up ([targetDate]); before, a sentence without a date
   /// read "o 5º dia útil bancário cai no dia no 5º dia útil bancário"
   /// (R2-CONV-014).
-  static String loanReminderText({String? personName, DateTime? targetDate, double? amount}) {
+  static String loanReminderText({
+    String? personName,
+    DateTime? targetDate,
+    double? amount,
+    bool fromSalaryAnalogy = true,
+  }) {
     final person = (personName != null && personName.isNotEmpty) ? 'o $personName' : 'essa pessoa';
     final when = targetDate != null
-        ? 'Consultei o calendário em tempo real: o 5º dia útil cai em ${RealtimeCalendarService.formatDateLabel(targetDate)}. '
+        ? (fromSalaryAnalogy
+            ? 'Assumi que o pagamento acompanha o salário dele (5º dia útil). Consultei o calendário em tempo real: o próximo 5º dia útil cai em ${RealtimeCalendarService.formatDateLabel(targetDate)}. '
+            : 'Agendei a cobrança para ${RealtimeCalendarService.formatDateLabel(targetDate)}. ')
         : '';
     if (amount == null || amount <= 0) {
       return 'Entendido! ${when}Vou agendar um lembrete para você cobrar $person${targetDate != null ? ' nessa data' : ''}. Qual foi o valor que você emprestou para ele?';
@@ -2546,6 +2772,8 @@ class LocalFinancialNlpEngine {
   /// "tenho 30 anos", "nasci em 1995" or "o ônibus 474 atrasou" (CHAOS-026).
   static bool _looksLikeAmountCorrection(String lower) {
     final f = CategoryNameMatcher.foldAccents(lower).replaceAll(RegExp(r'[!?.,;:]+(?!\d)'), ' ').trim();
+    // Isolated malformed fragments like "R$ ,50" must not mutate a saved record.
+    if (RegExp(r'^r\$\s*[.,]\d+$').hasMatch(f)) return false;
     if (RegExp(r'^(?:r\$\s*)?\d+(?:[.,]\d{1,2})?\s*(?:reais|real|conto|contos|pila)?$').hasMatch(f)) return true;
     if (RegExp(r'\b(?:reais|real|conto|contos|pila|pilas)\b|r\$').hasMatch(f)) return true;
     return RegExp(r'^(?:nao|ops|opa|epa|na verdade|na real|foi|era|e|eh|sao|muda|mude|mudar|troca|troque|corrige|corrija|'
@@ -3467,9 +3695,10 @@ class LocalFinancialNlpEngine {
     final lower = CategoryNameMatcher.foldAccents(PtNumberWords.normalize(text.toLowerCase()));
     final out = <double>[];
     for (final m in _amountCandidatePattern.allMatches(lower)) {
-      final value = cleanAndParseAmount(m.group(1));
-      if (value == null || value <= 0) continue;
       final before = lower.substring(0, m.start), after = lower.substring(m.end);
+      if (isExplicitNegative(before)) continue;
+      final value = cleanAndParseAmount(m.group(1));
+      if (value == null || value <= 0 || value >= maxPlausibleAmount) continue;
       if (RegExp(r'[a-z]$').hasMatch(before)) continue;
       // "120 130 por aí": two bare values side by side in an answer are two
       // guesses — read each without its neighbour (ACC-B-020).
@@ -3492,9 +3721,10 @@ class LocalFinancialNlpEngine {
     final lower = CategoryNameMatcher.foldAccents(PtNumberWords.normalize(text.toLowerCase().trim()));
     final m = RegExp(r'^(?:e\s+)?(?:mais|\+)\s*(?:r\$\s*)?(\d+(?:[.,]\d{1,2})?)').firstMatch(lower);
     if (m == null) return null;
+    if (isExplicitNegative(lower.substring(0, m.start))) return null;
     if (_isNonValueNumber(m.group(1)!, '', lower.substring(m.end))) return null;
     final value = cleanAndParseAmount(m.group(1));
-    return (value != null && value > 0) ? value : null;
+    return (value != null && value > 0 && value < maxPlausibleAmount) ? value : null;
   }
 
   double? _extractAmountFromFollowUp(String text) {
@@ -3571,11 +3801,15 @@ class LocalFinancialNlpEngine {
   }
 
   // Eating out, in its verb forms too ("acabei almoçando fora", "jantei"), and
-  // coffee ("2 cafés"), trips and hotels — leisure & food. "almofada" is not
+  // trips and hotels — leisure & food. "almofada" is not
   // food. (`\b` is ASCII-only in Dart, so word ends use a lookahead.)
   static final RegExp _eatingOutOrTrip = RegExp(
     r'\b(?:almo[cç](?:o|os|ando|ei|amos|ar)|jant(?:ar|ei|ando|amos)|lanch(?:ei|ando|onete)|'
-    r'caf[eé]s?|viage(?:m|ns)|hotel|hot[eé]is|pousada|airbnb|hospedagem)(?![a-zà-úç])',
+    r'viage(?:m|ns)|hotel|hot[eé]is|pousada|airbnb|hospedagem)(?![a-zà-úç])',
+  );
+
+  static final RegExp _coffeeDining = RegExp(
+    r'\b(?:caf[eé]s?\s+da\s+manh[aã]|tom(?:ar|ei|ando)\s+(?:um\s+)?caf[eé]|\d+\s+caf[eé]s?|(?:(?<!pacote\s+|p[oó]\s+)de|do|no|na|pro|pra)\s+caf[eé]|cafeterias?)(?![a-zà-úç])',
   );
 
   // Bakery = everyday groceries (was asked "onde foi o gasto?" every time).
@@ -3598,8 +3832,36 @@ class LocalFinancialNlpEngine {
   // without asking the category again.
   static final RegExp _giftsAndToys = RegExp(r'\b(?:presentes?|brinquedos?)(?![a-zà-úç])');
 
+  static final RegExp _supermarketVenues = RegExp(
+    r'\b(?:mercados?|supermercados?|mercadinho|hipermercado|feiras?|hortifruti|sacol[aã]o|a[cç]ougue|peixaria|mercearia|'
+    r'carrefour|p[aã]o\s+de\s+a[cç][uú]car|extra|assa[ií]|atacad[aã]o|atacarejo|varej[aã]o|sams\s+club|sam\x27s\s+club|'
+    r'hirota|mambo|st\s+marche|sonda|zaffari|oxxo|padarias?|panificadora|padoca|compras?\s+d[oe]\s+m[eê]s)(?![a-zà-úç])',
+  );
+
+  static final RegExp _petContext = RegExp(
+    r'\b(?:pet\s*shop|petz|cobasi|zee\s*dog|veterin[aá]ri[oa]|veterinaria|ra[cç][aã]o|antipulgas|banho\s+e\s+tosa|'
+    r'pro\s+cachorro|pro\s+gato|pra\s+cadela|pro\s+pet|pros?\s+bichinhos?)(?![a-zà-úç])',
+  );
+
+  static final RegExp _supermarketFoodItems = RegExp(
+    r'\b(?:refrigerantes?|refris?|chocolates?|biscoitos?|bolachas?|salgadinhos?|pipocas?|sorvetes?|'
+    r'p[aã]o\s+de\s+queijo|docinhos?|doces?|balas?|bombons?|pirulitos?|chicletes?|guloseimas?|pa[cç]ocas?|'
+    r'p[eé][\s-]de[\s-]moleque|marshmallows?|pudim|leite|queijos?|iogurtes?|manteiga|margarina|'
+    r'pacote\s+de\s+caf[eé]|p[oó]\s+de\s+caf[eé]|caf[eé]\s+(?:mo[ií]do|sol[uú]vel|em\s+p[oó]|em\s+gr[aã]os?)|'
+    r'por[cç](?:[aã]o|[oõ]es)\s+de\s+(?:carne|frango|peixe|queijo|frios|presunto|calabresa))(?![a-zà-úç])',
+  );
+
   static String _resolveContextualCategory(String lower, String modelPredicted) {
     if (_fuelPurchase.hasMatch(lower)) return 'transport';
+
+    final inSupermarket = _supermarketVenues.hasMatch(lower);
+    final inPet = _petContext.hasMatch(lower);
+
+    if (inPet) return 'expense_other';
+    if ((inSupermarket && _supermarketFoodItems.hasMatch(lower)) ||
+        RegExp(r'\b(?:pacote\s+de\s+caf[eé]|p[oó]\s+de\s+caf[eé]|caf[eé]\s+(?:mo[ií]do|sol[uú]vel|em\s+p[oó]|em\s+gr[aã]os?))\b').hasMatch(lower)) {
+      return 'supermarket';
+    }
 
     // 1. EDUCAÇÃO, PLATAFORMAS & INTELIGÊNCIAS ARTIFICIAIS
     if (_hasTermOrDiminutive(lower, 'faculdade') || _hasTermOrDiminutive(lower, 'matrícula') || _hasTermOrDiminutive(lower, 'matricula') || _hasTermOrDiminutive(lower, 'mensalidade escolar') || _hasTermOrDiminutive(lower, 'escola') || _hasTermOrDiminutive(lower, 'escolar') || _hasTermOrDiminutive(lower, 'creche') ||
@@ -3610,7 +3872,8 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'claude') || _hasTermOrDiminutive(lower, 'chatgpt') || _hasTermOrDiminutive(lower, 'chat gpt') || _hasTermOrDiminutive(lower, 'openai') ||
         _hasTermOrDiminutive(lower, 'anthropic') || _hasTermOrDiminutive(lower, 'gemini') || _hasTermOrDiminutive(lower, 'copilot') || _hasTermOrDiminutive(lower, 'perplexity') ||
         _hasTermOrDiminutive(lower, 'deepseek') || _hasTermOrDiminutive(lower, 'midjourney') || _hasTermOrDiminutive(lower, 'cursor') || _hasTermOrDiminutive(lower, 'duolingo') ||
-        _hasTermOrDiminutive(lower, 'cambly') || _hasTermOrDiminutive(lower, 'open english') || _hasTermOrDiminutive(lower, 'descomplica') || _hasTermOrDiminutive(lower, 'rocketseat')) {
+        _hasTermOrDiminutive(lower, 'cambly') || _hasTermOrDiminutive(lower, 'open english') || _hasTermOrDiminutive(lower, 'descomplica') || _hasTermOrDiminutive(lower, 'rocketseat') ||
+        _hasTermOrDiminutive(lower, 'caderno') || _hasTermOrDiminutive(lower, 'caneta') || _hasTermOrDiminutive(lower, 'estojo') || _hasTermOrDiminutive(lower, 'sulfite') || _hasTermOrDiminutive(lower, 'mochila escolar') || _hasTermOrDiminutive(lower, 'calculadora')) {
       return 'education';
     }
 
@@ -3649,6 +3912,7 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'unimed') || _hasTermOrDiminutive(lower, 'amil') || _hasTermOrDiminutive(lower, 'bradesco saúde') || _hasTermOrDiminutive(lower, 'sulamerica') ||
         _hasTermOrDiminutive(lower, 'notredame') || _hasTermOrDiminutive(lower, 'hapvida') ||
         _hasTermOrDiminutive(lower, 'gympass') || _hasTermOrDiminutive(lower, 'wellhub') || _hasTermOrDiminutive(lower, 'totalpass') ||
+        _hasTermOrDiminutive(lower, 'protetor solar') || _hasTermOrDiminutive(lower, 'hidratante') || _hasTermOrDiminutive(lower, 'shampoo') || _hasTermOrDiminutive(lower, 'desodorante') ||
         _supplements.hasMatch(lower)) {
       return 'health';
     }
@@ -3691,12 +3955,15 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'sushi') || _hasTermOrDiminutive(lower, 'sashimi') || _hasTermOrDiminutive(lower, 'temaki') || _hasTermOrDiminutive(lower, 'yakisoba') ||
         _hasTermOrDiminutive(lower, 'poke') || _hasTermOrDiminutive(lower, 'churrasco') || _hasTermOrDiminutive(lower, 'picanha') || _hasTermOrDiminutive(lower, 'parmegiana') ||
         _hasTermOrDiminutive(lower, 'feijoada') || _hasTermOrDiminutive(lower, 'marmita') || _hasTermOrDiminutive(lower, 'marmitex') || _hasTermOrDiminutive(lower, 'almoço') ||
-        _hasTermOrDiminutive(lower, 'almoco') || _hasTermOrDiminutive(lower, 'jantar') || _hasTermOrDiminutive(lower, 'cafezinho') || _hasTermOrDiminutive(lower, 'cappuccino') ||
+        _hasTermOrDiminutive(lower, 'almoco') || _hasTermOrDiminutive(lower, 'jantar') ||
+        (!RegExp(r'\b(?:pacote|p[oó]|kilo|kg)\s+de\s+caf[eé]').hasMatch(lower) && (_hasTermOrDiminutive(lower, 'cafe') || _hasTermOrDiminutive(lower, 'café'))) ||
+        _hasTermOrDiminutive(lower, 'cafezinho') || _hasTermOrDiminutive(lower, 'cappuccino') ||
         _hasTermOrDiminutive(lower, 'cerveja') || _hasTermOrDiminutive(lower, 'chope') || _hasTermOrDiminutive(lower, 'chopp') || _hasTermOrDiminutive(lower, 'drink') ||
         _hasTermOrDiminutive(lower, 'caipirinha') || _hasTermOrDiminutive(lower, 'gin') || _hasTermOrDiminutive(lower, 'vodka') || _hasTermOrDiminutive(lower, 'whisky') ||
         _hasTermOrDiminutive(lower, 'refrigerante') || _hasTermOrDiminutive(lower, 'refri') || _hasTermOrDiminutive(lower, 'milkshake') || _hasTermOrDiminutive(lower, 'sorvete') || _hasTermOrDiminutive(lower, 'sorveteria') ||
         _hasTermOrDiminutive(lower, 'brigadeiro') || _hasTermOrDiminutive(lower, 'trufa') || _hasTermOrDiminutive(lower, 'chocolate') ||
-        _hasTermOrDiminutive(lower, 'docinho') || _hasTermOrDiminutive(lower, 'docinhos') || _hasTermOrDiminutive(lower, 'doce') || _hasTermOrDiminutive(lower, 'doces') ||
+        _hasTermOrDiminutive(lower, 'docinho') || _hasTermOrDiminutive(lower, 'docinhos') ||
+        (!RegExp(r'\b(?:batata|piment[aã]o|milho)\s+doce\b').hasMatch(lower) && (_hasTermOrDiminutive(lower, 'doce') || _hasTermOrDiminutive(lower, 'doces'))) ||
         _hasTermOrDiminutive(lower, 'bala') || _hasTermOrDiminutive(lower, 'balas') || _hasTermOrDiminutive(lower, 'bombom') || _hasTermOrDiminutive(lower, 'bombons') ||
         _hasTermOrDiminutive(lower, 'pirulito') || _hasTermOrDiminutive(lower, 'chiclete') || _hasTermOrDiminutive(lower, 'chicletes') || _hasTermOrDiminutive(lower, 'guloseima') ||
         _hasTermOrDiminutive(lower, 'paçoca') || _hasTermOrDiminutive(lower, 'pacoca') || _hasTermOrDiminutive(lower, 'pé-de-moleque') || _hasTermOrDiminutive(lower, 'pe-de-moleque') ||
@@ -3706,22 +3973,26 @@ class LocalFinancialNlpEngine {
         RegExp(r'\bbar\b').hasMatch(lower) || _hasTermOrDiminutive(lower, 'barzinho') || _hasTermOrDiminutive(lower, 'boteco') || _hasTermOrDiminutive(lower, 'pub') ||
         _hasTermOrDiminutive(lower, 'pizzaria') || _hasTermOrDiminutive(lower, 'hamburgueria') || _hasTermOrDiminutive(lower, 'churrascaria') || _hasTermOrDiminutive(lower, 'cafeteria') ||
         _hasTermOrDiminutive(lower, 'cinema') || _hasTermOrDiminutive(lower, 'cinemark') || _hasTermOrDiminutive(lower, 'cinepolis') || _hasTermOrDiminutive(lower, 'cinépolis') ||
-        _hasTermOrDiminutive(lower, 'uci') || _hasTermOrDiminutive(lower, 'teatro') || _hasTermOrDiminutive(lower, 'show') || _hasTermOrDiminutive(lower, 'ingresso') ||
+        _hasTermOrDiminutive(lower, 'uci') || _hasTermOrDiminutive(lower, 'teatro') ||
+        ((_hasTerm(lower, 'show') || _hasTerm(lower, 'shows')) && !lower.contains('show de bola')) ||
+        _hasTermOrDiminutive(lower, 'ingresso') ||
         _hasTermOrDiminutive(lower, 'sympla') || _hasTermOrDiminutive(lower, 'eventim') || _hasTermOrDiminutive(lower, 'parque') || _hasTermOrDiminutive(lower, 'hopi hari') ||
         _hasTermOrDiminutive(lower, 'beto carrero') || _hasTermOrDiminutive(lower, 'museu') || _hasTermOrDiminutive(lower, 'balada') || _hasTermOrDiminutive(lower, 'netflix') ||
         _hasTermOrDiminutive(lower, 'spotify') || _hasTermOrDiminutive(lower, 'amazon prime') || _hasTermOrDiminutive(lower, 'prime video') || _hasTermOrDiminutive(lower, 'disney') ||
-        _hasTermOrDiminutive(lower, 'hbo') || _hasTermOrDiminutive(lower, 'max') || _hasTermOrDiminutive(lower, 'globoplay') || _hasTermOrDiminutive(lower, 'apple tv') ||
+        _hasTermOrDiminutive(lower, 'hbo') || RegExp(r'\b(?:hbo\s+max|assin(?:ei|atura)\s+(?:a\s+)?max|streaming\s+max)\b').hasMatch(lower) || _hasTermOrDiminutive(lower, 'globoplay') || _hasTermOrDiminutive(lower, 'apple tv') ||
         _hasTermOrDiminutive(lower, 'deezer') || _hasTermOrDiminutive(lower, 'youtube premium') || _hasTermOrDiminutive(lower, 'crunchyroll') || _hasTermOrDiminutive(lower, 'twitch') ||
         _hasTermOrDiminutive(lower, 'paramount') || _hasTermOrDiminutive(lower, 'star+') || _hasTermOrDiminutive(lower, 'star plus') || _hasTermOrDiminutive(lower, 'audible') || _hasTermOrDiminutive(lower, 'kindle unlimited') ||
         _hasTermOrDiminutive(lower, 'steam') || _hasTermOrDiminutive(lower, 'playstation') || _hasTermOrDiminutive(lower, 'psn') || _hasTermOrDiminutive(lower, 'ps plus') || _hasTermOrDiminutive(lower, 'xbox') ||
         _hasTermOrDiminutive(lower, 'game pass') || _hasTermOrDiminutive(lower, 'gamepass') || _hasTermOrDiminutive(lower, 'nintendo') || _hasTermOrDiminutive(lower, 'epic games') || _hasTermOrDiminutive(lower, 'roblox') ||
         _hasTermOrDiminutive(lower, 'videogame') || _hasTermOrDiminutive(lower, 'console') || RegExp(r'\bps[2-5]\b|\bpley\s*[2-5]\b|\bplay\s*[2-5]\b').hasMatch(lower) ||
-        _hasTermOrDiminutive(lower, 'violão') || _hasTermOrDiminutive(lower, 'violao') || _hasTermOrDiminutive(lower, 'guitarra') || _hasTermOrDiminutive(lower, 'baixo') ||
+        _hasTermOrDiminutive(lower, 'violão') || _hasTermOrDiminutive(lower, 'violao') || _hasTermOrDiminutive(lower, 'guitarra') ||
+        RegExp(r'\b(?:contrabaixo|baixo\s+el[eé]trico|baixo\s+ac[uú]stico|(?:tocar|comprei|paguei|toquei)\s+(?:um\s+)?baixo|aula\s+de\s+baixo)\b').hasMatch(lower) ||
         _hasTermOrDiminutive(lower, 'cavaquinho') || _hasTermOrDiminutive(lower, 'ukulele') || _hasTermOrDiminutive(lower, 'bateria') || _hasTermOrDiminutive(lower, 'teclado musical') ||
         _hasTermOrDiminutive(lower, 'piano') || _hasTermOrDiminutive(lower, 'flauta') || _hasTermOrDiminutive(lower, 'saxofone') || _hasTermOrDiminutive(lower, 'trompete') ||
         _hasTermOrDiminutive(lower, 'sanfona') || _hasTermOrDiminutive(lower, 'acordeon') || _hasTermOrDiminutive(lower, 'gaita') || _hasTermOrDiminutive(lower, 'violino') ||
-        _hasTermOrDiminutive(lower, 'instrumento musical') || _hasTermOrDiminutive(lower, 'amplificador') || _hasTermOrDiminutive(lower, 'pedal de guitarra') || _hasTermOrDiminutive(lower, 'microfone') ||
-        _eatingOutOrTrip.hasMatch(lower)) {
+        _hasTermOrDiminutive(lower, 'instrumento musical') ||
+        _coffeeDining.hasMatch(lower) ||
+        (!inSupermarket && _eatingOutOrTrip.hasMatch(lower))) {
       return 'leisure';
     }
 
@@ -3735,6 +4006,9 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'st marche') || _hasTermOrDiminutive(lower, 'sonda') || _hasTermOrDiminutive(lower, 'zaffari') || _hasTermOrDiminutive(lower, 'oxxo') ||
         _hasTermOrDiminutive(lower, 'arroz') || _hasTermOrDiminutive(lower, 'feijao') || _hasTermOrDiminutive(lower, 'feijão') || _hasTermOrDiminutive(lower, 'óleo de cozinha') ||
         _hasTermOrDiminutive(lower, 'azeite') || _hasTermOrDiminutive(lower, 'leite') || _hasTermOrDiminutive(lower, 'ovos') || _hasTermOrDiminutive(lower, 'manteiga') ||
+        _hasTermOrDiminutive(lower, 'macarrão') || _hasTermOrDiminutive(lower, 'macarrao') || _hasTermOrDiminutive(lower, 'farinha') || _hasTermOrDiminutive(lower, 'açúcar') || _hasTermOrDiminutive(lower, 'acucar') ||
+        _hasTermOrDiminutive(lower, 'queijo') || _hasTermOrDiminutive(lower, 'iogurte') ||
+        RegExp(r'\b(?:pacote|p[oó]|gr[aã]os?|c[aá]psulas?)\s+(?:de\s+)?caf[eé](?![a-zà-úç])|\bcaf[eé]\s+(?:em\s+p[oó]|sol[uú]vel|mo[ií]do|em\s+gr[aã]os?)(?![a-zà-úç])|\bbatata\s+doce(?![a-zà-úç])').hasMatch(lower) ||
         _hasTermOrDiminutive(lower, 'detergente') || _hasTermOrDiminutive(lower, 'sabão em pó') || _hasTermOrDiminutive(lower, 'amaciante') || _hasTermOrDiminutive(lower, 'papel higiênico') ||
         _hasTermOrDiminutive(lower, 'frango congelado') || _hasTermOrDiminutive(lower, 'carne moída') || _hasTermOrDiminutive(lower, 'peito de frango') ||
         _bakery.hasMatch(lower)) {
@@ -3807,6 +4081,10 @@ class LocalFinancialNlpEngine {
         _hasTermOrDiminutive(lower, 'roupas') || _hasTermOrDiminutive(lower, 'camisa') || _hasTermOrDiminutive(lower, 'camiseta') || _hasTermOrDiminutive(lower, 'calça') ||
         _hasTermOrDiminutive(lower, 'calca') || _hasTermOrDiminutive(lower, 'vestido') || _hasTermOrDiminutive(lower, 'casaco') || _hasTermOrDiminutive(lower, 'tênis') ||
         _hasTermOrDiminutive(lower, 'tenis') || _hasTermOrDiminutive(lower, 'sapato') || _hasTermOrDiminutive(lower, 'perfume') || _hasTermOrDiminutive(lower, 'maquiagem') ||
+        _hasTermOrDiminutive(lower, 'eletrônico') || _hasTermOrDiminutive(lower, 'eletronico') ||
+        _hasTermOrDiminutive(lower, 'ferramenta') || _hasTermOrDiminutive(lower, 'ferramentas') ||
+        _hasTermOrDiminutive(lower, 'papelaria') || _hasTermOrDiminutive(lower, 'livraria') ||
+        RegExp(r'\b(?:shopping(?:\s+center)?|lojas?\s+de|outlet)\b').hasMatch(lower) ||
         _giftsAndToys.hasMatch(lower)) {
       return 'expense_other';
     }
@@ -3815,7 +4093,7 @@ class LocalFinancialNlpEngine {
     // (R2-CONV-023). Checked last, so a bill named in the same sentence
     // ("paguei a luz na lotérica") keeps its own category.
     if (_everydayHousing.hasMatch(lower)) return 'housing';
-    if (_everydayLeisure.hasMatch(lower)) return 'leisure';
+    if (!inSupermarket && _everydayLeisure.hasMatch(lower)) return 'leisure';
     if (_everydayTransport.hasMatch(lower)) return 'transport';
     if (_everydayHealth.hasMatch(lower)) return 'health';
     if (_everydayServices.hasMatch(lower)) return 'expense_other';
@@ -3832,7 +4110,7 @@ class LocalFinancialNlpEngine {
       r'(?:conserto|reparo|manuten[cç][aã]o|instala[cç][aã]o)\s+d[aoe]s?\s+(?:chuveiro|torneira|pia|geladeira|fog[aã]o|telhado|port[aã]o|janela|'
       r'vaso|descarga|m[aá]quina\s+de\s+lavar|ar[\s-]condicionado|interfone|tomada|fia[cç][aã]o|encanamento))(?![a-zà-úç])');
   static final RegExp _everydayLeisure = RegExp(
-      r"\b(?:rol[eê]s?|rolezinho|espetinhos?|churrasquinho|combos?|bob'?s|caldo\s+de\s+cana|quiosque|lanchonete|boteco|petiscos?|porç[aã]o|porcao)(?![a-zà-úç])");
+      r"\b(?:rol[eê]s?|rolezinho|espetinhos?|churrasquinho|combo\s+(?:de\s+)?(?:lanche|pipoca|hamb[uú]rguer|burger|sushi|pizza|pastel|refeição|refeicao)|combo\s+(?:whopper|big\s*mac|mclanche)|bob'?s|caldo\s+de\s+cana|quiosque|lanchonete|boteco|petiscos?|porç[aã]o|porcao)(?![a-zà-úç])");
   static final RegExp _everydayTransport =
       RegExp(r'\b(?:lava[\s-]?(?:jato|r[aá]pido)|lavagem\s+d[oe]\s+carro|borracharia|funilaria|guincho|vistoria|mototaxi|moto[\s-]t[aá]xi)(?![a-zà-úç])');
   /// Food supplements ("albumina", "whey", "colágeno", "vitamina D") are
@@ -3889,13 +4167,16 @@ class LocalFinancialNlpEngine {
       RegExp(r'(?:para\s+a\s+amiga|para\s+a\s+colega|para\s+a\s+prima|pra\s+amiga|pra\s+colega|pra\s+prima|p/\s*a\s+amiga)\s+([a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+)', caseSensitive: false),
       RegExp(r'(?:para\s+o|pra\s+o|p/\s*o|pro|ao)\s+([a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+)', caseSensitive: false),
       RegExp(r'(?:para\s+a|pra\s+a|p/\s*a|pra|à)\s+([a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+)', caseSensitive: false),
-      RegExp(r'(?:o|a)\s+([a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+)\s+(?:me\s+deve|prometeu|disse|falo|vai\s+me)', caseSensitive: false),
+      RegExp(
+          r'(?:o|a)\s+([a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+)\s+(?:me\s+deve|prometeu|disse|falo|falou|combinou|(?:vai|ia|iria)\s+(?:me\s+)?(?:pagar|devolver|acertar)|(?:me\s+)?(?:paga|devolve|acerta))',
+          caseSensitive: false),
       RegExp(r'(?:cobrar|cobre|avise|avisar)\s+(?:o|a)?\s*([a-zA-ZáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]+)', caseSensitive: false),
     ];
     final stopWords = [
       'mim', 'ele', 'ela', 'eles', 'elas', 'dinheiro', 'conta', 'casa', 'meu', 'minha',
       'alguem', 'alguém', 'um', 'uma', 'amigo', 'amiga', 'colega', 'primo', 'prima',
       'quando', 'qdo', 'qndo', 'se', 'salario', 'salário', 'pagamento',
+      'iria', 'ia', 'vai', 'disse', 'falei', 'falou', 'receber', 'recebesse', 'pagar',
       'cesar', 'césar', 'cezar', 'cézar'
     ];
     for (final p in patterns) {
@@ -3991,6 +4272,16 @@ class LocalFinancialNlpEngine {
     String? assumptionNote,
   }) {
     if (intent == 'unknown') {
+      final hasMoneyOrTxCue = (amount != null && amount > 0) ||
+          category != 'unknown' ||
+          paymentMethod != 'unknown' ||
+          isReminder ||
+          RegExp(r'\b(?:gast|pag|compr|receb|ganh|transfer|mand|pix|cred|deb|bolet|dinheir|reais|real|cont[ao]|salari|fatur)\w*|r\$|\d')
+              .hasMatch(rawText.toLowerCase());
+      if (!hasMoneyOrTxCue) {
+        return 'Não tenho certeza do que você precisa agora. Posso registrar gastos/receitas (ex.: "gastei 50 no mercado no pix"), '
+            'responder perguntas ("como estão minhas finanças?", "onde gastei mais?") ou mostrar "o que você sabe fazer?".';
+      }
       return 'Não consegui identificar essa transação. Você pode me dizer se foi um gasto ou uma receita, e qual o valor?';
     }
 
@@ -4009,7 +4300,14 @@ class LocalFinancialNlpEngine {
     // ── 0. CENÁRIOS DE LEMBRETES & EMPRÉSTIMOS A RECEBER ──
     if (isReminder) {
       if (reminderType == 'loan_receivable') {
-        if (missingSlots.contains('amount')) return loanReminderText(personName: personName, targetDate: targetDate, amount: null);
+        if (missingSlots.contains('amount')) {
+          return loanReminderText(
+            personName: personName,
+            targetDate: targetDate,
+            amount: null,
+            fromSalaryAnalogy: calendarConsultationNote?.contains('5º dia útil') ?? false,
+          );
+        }
       } else if (reminderType == 'dividend') {
         if (missingSlots.contains('amount')) {
           return 'Qual a previsão do valor dos dividendos que você espera receber?';
@@ -4616,9 +4914,22 @@ class LocalFinancialNlpEngine {
     return KeywordTypoCorrector.correctText(normalizedTokens.join(' '), isKnownWord: _vocabulary.containsKey);
   }
 
-  List<double> _extractTfIdfVector(String text) {
-    final normText = _normalizeText(text);
-    final tokens = normText.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+  static final RegExp _edgePunct = RegExp(r'''^[,!?;:.()\[\]"']+|[,!?;:.()\[\]"']+$''');
+
+  /// Splits normalized text into tokens for TF-IDF lookup, stripping edge
+  /// punctuation (`"mercado?"` -> `"mercado"`, `"?"` -> empty) while keeping
+  /// internal separators like decimals (`"50,90"`) and hyphens (`"segunda-feira"`).
+  static List<String> _tokenizeForTfIdf(String normText) {
+    final result = <String>[];
+    for (final raw in normText.split(RegExp(r'\s+'))) {
+      final cleaned = raw.replaceAll(_edgePunct, '');
+      if (cleaned.isNotEmpty) result.add(cleaned);
+    }
+    return result;
+  }
+
+  Map<int, double> _extractTfIdfSparseFromNormalized(String normText) {
+    final tokens = _tokenizeForTfIdf(normText);
     final ngrams = <String>[];
 
     ngrams.addAll(tokens);
@@ -4628,68 +4939,46 @@ class LocalFinancialNlpEngine {
 
     final Map<int, int> counts = {};
     for (final ng in ngrams) {
-      if (_vocabulary.containsKey(ng)) {
-        final idx = _vocabulary[ng]!;
+      final idx = _vocabulary[ng];
+      if (idx != null) {
         counts[idx] = (counts[idx] ?? 0) + 1;
       }
     }
 
-    final vector = List<double>.filled(_vocabSize, 0.0);
+    final Map<int, double> sparseVector = {};
     final double totalTokens = tokens.isEmpty ? 1.0 : tokens.length.toDouble();
 
     counts.forEach((idx, count) {
       final tf = count / totalTokens;
-      vector[idx] = tf * _idf[idx];
+      final val = tf * _idf[idx];
+      if (val != 0.0) {
+        sparseVector[idx] = val;
+      }
     });
 
-    return vector;
+    return sparseVector;
   }
 
-  PredictionResult _predictWithConfidence(Map<String, dynamic> model, List<double> vector) {
+  static const double _uncertainMaxProbCeiling = 0.72;
+  static const double _minDecisionMargin = 0.15;
+  static const double _maxNormalizedEntropy = 0.72;
+
+  PredictionResult _predictWithConfidence(_CompiledLinearModel model, Map<int, double> sparseVector) {
     // Check if zero features matched vocabulary
-    final sumVec = vector.fold<double>(0.0, (a, b) => a + b);
-    if (sumVec == 0.0) {
+    if (sparseVector.isEmpty) {
       return PredictionResult('unknown', 1.0);
     }
 
-    final List<String> classes = (model['classes'] as List).cast<String>();
-    final List<double> intercepts = (model['intercept'] as List).map((e) => (e as num).toDouble()).toList();
-    final List<dynamic> coefMatrix = model['coef'];
+    final summary = model.evaluateSparse(sparseVector);
+    final bool uncertainByMargin =
+        model.classes.length >= 2 && summary.maxProb < _uncertainMaxProbCeiling && summary.margin < _minDecisionMargin;
+    final bool uncertainByEntropy = model.classes.length >= 2 && summary.normalizedEntropy > _maxNormalizedEntropy;
 
-    final scores = List<double>.filled(classes.length, 0.0);
-
-    for (int cIdx = 0; cIdx < classes.length; cIdx++) {
-      double score = intercepts[cIdx];
-      final List<double> weights = (coefMatrix[cIdx] as List).map((e) => (e as num).toDouble()).toList();
-
-      for (int fIdx = 0; fIdx < vector.length; fIdx++) {
-        final val = vector[fIdx];
-        if (val != 0.0) {
-          score += weights[fIdx] * val;
-        }
-      }
-      scores[cIdx] = score;
+    if (summary.maxProb < _confidenceThreshold || uncertainByMargin || uncertainByEntropy) {
+      return PredictionResult('unknown', summary.maxProb);
     }
 
-    final maxScore = scores.reduce(max);
-    final expScores = scores.map((s) => exp(s - maxScore)).toList();
-    final sumExp = expScores.reduce((a, b) => a + b);
-    final probs = expScores.map((e) => e / sumExp).toList();
-
-    int bestIndex = 0;
-    double maxProb = 0.0;
-    for (int i = 0; i < probs.length; i++) {
-      if (probs[i] > maxProb) {
-        maxProb = probs[i];
-        bestIndex = i;
-      }
-    }
-
-    if (maxProb < _confidenceThreshold) {
-      return PredictionResult('unknown', maxProb);
-    }
-
-    return PredictionResult(classes[bestIndex], maxProb);
+    return PredictionResult(model.classes[summary.bestIndex], summary.maxProb);
   }
 
   /// "Entrada de 500", "entrou 200 no pix", "teve uma entrada de 300" — money
@@ -4885,9 +5174,10 @@ class LocalFinancialNlpEngine {
       final quantity = _quantityWords[qtyRaw] ?? int.tryParse(qtyRaw);
       final unitPrice = cleanAndParseAmount(match.group(2));
       if (quantity == null || quantity < 2 || unitPrice == null || unitPrice <= 0) continue;
+      if (isExplicitNegative(lower.substring(0, match.start))) continue;
 
       final total = double.parse((quantity * unitPrice).toStringAsFixed(2));
-      if (total >= 1000000000) continue;
+      if (total >= maxPlausibleAmount) continue;
       return QuantityPricing(quantity: quantity, unitPrice: unitPrice, total: total, matchedText: match.group(0)!);
     }
     return null;
@@ -4932,11 +5222,11 @@ class LocalFinancialNlpEngine {
     // Check "1,5k" or "2k"
     final kRegExp = RegExp(r'(\d+(?:[.,]\d+)?)\s*k\b', caseSensitive: false);
     final kMatch = kRegExp.firstMatch(lower);
-    if (kMatch != null) {
+    if (kMatch != null && !isExplicitNegative(lower.substring(0, kMatch.start))) {
       final strVal = kMatch.group(1)?.replaceAll(',', '.');
       if (strVal != null) {
         final val = double.tryParse(strVal);
-        if (val != null) return val * 1000.0;
+        if (val != null && val > 0 && val * 1000.0 < maxPlausibleAmount) return val * 1000.0;
       }
     }
 
@@ -5215,6 +5505,26 @@ class LocalFinancialNlpEngine {
     return cue - (nounAfter ? 1 : 0);
   }
 
+  /// Parses [raw] into a finite positive transaction/goal amount strictly below [maxPlausibleAmount],
+  /// rejecting values preceded by an explicit minus sign in [before].
+  static double? parseBoundedAmount(String? raw, {String before = ''}) {
+    if (isExplicitNegative(before)) return null;
+    final v = cleanAndParseAmount(raw);
+    if (v == null || v <= 0 || !v.isFinite || v >= maxPlausibleAmount) return null;
+    return v;
+  }
+
+  /// Maximum plausible single transaction value accepted directly by the chat parser.
+  static const double maxPlausibleAmount = 10000000.0;
+
+  /// Whether [before] ends with an explicit minus sign meant for the number
+  /// itself (e.g. "-50", "gastei -50", "r$ -20", "muda pra -30", "gastei - 50"),
+  /// while still allowing separators like "Uber - 32" or hyphenated dates.
+  static bool isExplicitNegative(String before) =>
+      RegExp(r'(?:^|[\s(\[]|r\$\s*)-$').hasMatch(before) ||
+      RegExp(r'(?:^|[,;]|\b(?:gastei|paguei|comprei|recebi|ganhei|transferi|mandei|custou|deu|saiu|ficou|de|por|pra|para|foi|era|e|r\$))\s*-\s+$')
+          .hasMatch(before);
+
   /// The money value in [text] (spoken numbers already turned into digits),
   /// or null. With [requireMoneyContext], a number with no cue at all is only
   /// taken when the sentence talks about money somewhere ("uber 28").
@@ -5224,9 +5534,10 @@ class LocalFinancialNlpEngine {
     for (final m in _amountCandidatePattern.allMatches(lower)) {
       final raw = m.group(1)!;
       final value = cleanAndParseAmount(raw);
-      if (value == null || value <= 0 || value >= 1000000000) continue;
+      if (value == null || value <= 0 || value >= maxPlausibleAmount) continue;
       final before = lower.substring(0, m.start);
       final after = lower.substring(m.end);
+      if (isExplicitNegative(before)) continue;
       if (_isNonValueNumber(raw, before, after)) continue;
       // "a conta deu 350, o plano cobriu 200 e eu paguei 150": the value is
       // the one after the user's own verb; numbers after a descriptive verb
@@ -5861,76 +6172,82 @@ class LocalFinancialNlpEngine {
     return null;
   }
 
-  ModelInferenceTrace _predictDetailed(String modelName, Map<String, dynamic> model, List<double> vector) {
-    final List<String> classes = (model['classes'] as List).cast<String>();
-    final List<double> intercepts = (model['intercept'] as List).map((e) => (e as num).toDouble()).toList();
-    final List<dynamic> coefMatrix = model['coef'];
+  ModelInferenceTrace _predictDetailed(
+    String modelName,
+    _CompiledLinearModel model,
+    Map<int, double> sparseVector, {
+    Map<int, String> indexToToken = const {},
+  }) {
+    final classes = model.classes;
+    final bool zeroVec = sparseVector.isEmpty;
+    final summary = model.evaluateSparse(sparseVector);
 
-    final scores = List<double>.filled(classes.length, 0.0);
-
-    for (int cIdx = 0; cIdx < classes.length; cIdx++) {
-      double score = intercepts[cIdx];
-      final List<double> weights = (coefMatrix[cIdx] as List).map((e) => (e as num).toDouble()).toList();
-
-      for (int fIdx = 0; fIdx < vector.length; fIdx++) {
-        final val = vector[fIdx];
-        if (val != 0.0) {
-          score += weights[fIdx] * val;
-        }
-      }
-      scores[cIdx] = score;
-    }
-
-    final maxScore = scores.reduce(max);
-    final expScores = scores.map((s) => exp(s - maxScore)).toList();
-    final sumExp = expScores.reduce((a, b) => a + b);
-    final probs = expScores.map((e) => e / sumExp).toList();
-
-    int bestIndex = 0;
-    double maxProb = 0.0;
     final List<ClassifierProbabilityTrace> probTraces = [];
-
     for (int i = 0; i < classes.length; i++) {
       probTraces.add(ClassifierProbabilityTrace(
         label: classes[i],
-        score: scores[i],
-        probability: probs[i],
+        score: summary.scores[i],
+        probability: summary.probs[i],
       ));
-      if (probs[i] > maxProb) {
-        maxProb = probs[i];
-        bestIndex = i;
-      }
     }
-
     probTraces.sort((a, b) => b.probability.compareTo(a.probability));
+
+    final List<FeatureContribution> topContributions = [];
+    if (!zeroVec) {
+      final bestWeights = model.coefRows[summary.bestIndex];
+      for (final entry in sparseVector.entries) {
+        final fIdx = entry.key;
+        final val = entry.value;
+        final w = bestWeights[fIdx];
+        topContributions.add(FeatureContribution(
+          token: indexToToken[fIdx] ?? 'feat_$fIdx',
+          index: fIdx,
+          tfidf: val,
+          weight: w,
+          contribution: w * val,
+        ));
+      }
+      topContributions.sort((a, b) => b.contribution.abs().compareTo(a.contribution.abs()));
+    }
 
     return ModelInferenceTrace(
       modelName: modelName,
-      predictedLabel: classes[bestIndex],
-      confidence: maxProb,
+      predictedLabel: zeroVec ? 'unknown' : classes[summary.bestIndex],
+      confidence: zeroVec ? 1.0 : summary.maxProb,
       probabilities: probTraces,
+      bias: model.intercepts[summary.bestIndex],
+      margin: zeroVec ? 0.0 : summary.margin,
+      normalizedEntropy: summary.normalizedEntropy,
+      isZeroVectorFallback: zeroVec,
+      topContributions: topContributions,
     );
   }
 
-  /// Inspects and traces the complete neural/ML inference pipeline on-device.
+  /// Inspects and traces the complete on-device ML + rule inference pipeline.
   NeuralThoughtTrace inspect(String phrase) {
     final stopwatch = Stopwatch()..start();
-    final cleanText = phrase.trim();
+    final cleanText = _collapseGarbageRuns(phrase.trim());
     final normText = _normalizeText(cleanText);
     final lower = normText.toLowerCase();
 
-    // 1. Raw tokens & Typo tracing
+    // 1. Raw tokens & Typo tracing (explicit map + KeywordTypoCorrector diff)
     final rawTokens = cleanText.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-    final normalizedTokens = normText.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+    final normalizedTokens = _tokenizeForTfIdf(normText);
     final Map<String, String> typoFixes = {};
-    for (final t in rawTokens) {
-      final clean = t.toLowerCase().replaceAll(RegExp(r'[^\wáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]'), '');
+    for (int i = 0; i < rawTokens.length; i++) {
+      final clean = rawTokens[i].toLowerCase().replaceAll(RegExp(r'[^\wáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]'), '');
+      if (clean.isEmpty) continue;
       if (_commonTypoCorrections.containsKey(clean)) {
         typoFixes[clean] = _commonTypoCorrections[clean]!;
+      } else if (rawTokens.length == normalizedTokens.length) {
+        final normClean = normalizedTokens[i].toLowerCase().replaceAll(RegExp(r'[^\wáéíóúâêîôûãõçÁÉÍÓÚÂÊÎÔÛÃÕÇ]'), '');
+        if (normClean.isNotEmpty && normClean != clean) {
+          typoFixes[clean] = normClean;
+        }
       }
     }
 
-    // 2. N-grams & TF-IDF feature extraction
+    // 2. N-grams, OOV tracking & TF-IDF feature extraction
     final ngrams = <String>[];
     ngrams.addAll(normalizedTokens);
     for (int i = 0; i < normalizedTokens.length - 1; i++) {
@@ -5939,22 +6256,30 @@ class LocalFinancialNlpEngine {
 
     final Map<int, int> counts = {};
     final Map<int, String> indexToToken = {};
+    final List<String> oovNgrams = [];
+    int matchedNgramCount = 0;
     for (final ng in ngrams) {
       if (_vocabulary.containsKey(ng)) {
         final idx = _vocabulary[ng]!;
         counts[idx] = (counts[idx] ?? 0) + 1;
         indexToToken[idx] = ng;
+        matchedNgramCount++;
+      } else if (!oovNgrams.contains(ng)) {
+        oovNgrams.add(ng);
       }
     }
+    final double vocabHitRate = ngrams.isEmpty ? 0.0 : matchedNgramCount / ngrams.length;
 
-    final vector = List<double>.filled(_vocabSize, 0.0);
+    final Map<int, double> sparseVector = {};
     final double totalTokens = normalizedTokens.isEmpty ? 1.0 : normalizedTokens.length.toDouble();
     final List<ActiveFeatureTrace> activeFeatures = [];
 
     counts.forEach((idx, count) {
       final tf = count / totalTokens;
       final val = tf * _idf[idx];
-      vector[idx] = val;
+      if (val != 0.0) {
+        sparseVector[idx] = val;
+      }
       activeFeatures.add(ActiveFeatureTrace(
         token: indexToToken[idx] ?? 'feat_$idx',
         index: idx,
@@ -5966,13 +6291,14 @@ class LocalFinancialNlpEngine {
 
     activeFeatures.sort((a, b) => b.value.compareTo(a.value));
 
-    // 3. Dense Classifier Inferences
-    final intentTrace = _predictDetailed('intent', _intentModel, vector);
-    final categoryTrace = _predictDetailed('category', _categoryModel, vector);
-    final paymentTrace = _predictDetailed('payment_method', _paymentModel, vector);
+    // 3. Linear Classifier Inferences (TF-IDF · W + b -> Softmax)
+    final intentTrace = _predictDetailed('intent', _intentModel, sparseVector, indexToToken: indexToToken);
+    final categoryTrace = _predictDetailed('category', _categoryModel, sparseVector, indexToToken: indexToToken);
+    final paymentTrace = _predictDetailed('payment_method', _paymentModel, sparseVector, indexToToken: indexToToken);
 
-    // 4. Slots & Draft Parse
+    // 4. Slots & Rule-based Draft Parse
     final draft = parse(phrase);
+    final customCat = matchCustomCategory(phrase);
 
     final isSubscription = draft.isRecurrent;
     final isAnnual = isSubscription &&
@@ -6024,6 +6350,11 @@ class LocalFinancialNlpEngine {
       typoFixes: typoFixes,
       ngrams: ngrams,
       activeFeatures: activeFeatures,
+      oovNgrams: oovNgrams,
+      vocabHitRate: vocabHitRate,
+      vocabSize: _vocabSize,
+      confidenceThreshold: _confidenceThreshold,
+      matchedCustomCategory: customCat,
       intentModel: intentTrace,
       categoryModel: categoryTrace,
       paymentModel: paymentTrace,

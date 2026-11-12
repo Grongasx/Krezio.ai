@@ -121,10 +121,61 @@ class _ChatScreenState extends State<ChatScreen> {
     assistant: _assistant,
   );
 
-  static const _quickSuggestions = [
-    ('Registrar gasto', 'Gastei 45,90 no mercado no Pix'),
-    ('Ver contas da semana', 'Quais boletos vencem essa semana?'),
-    ('Consultar gastos', 'Quanto eu gastei com mercado este mês?'),
+  static const _suggestionCategories = [
+    (
+      'Lançamentos',
+      Icons.flash_on,
+      [
+        ('Gasto no mercado', 'Gastei 45,90 no mercado no Pix'),
+        ('Almoço / restaurante', 'Paguei 58 no almoço no débito'),
+        ('Abastecer combustível', 'Abasteci 150 no posto via Pix'),
+        ('Compra parcelada', 'Comprei um tênis de 299 no crédito em 3x'),
+        ('Receber salário', 'Recebi 3.500 de salário no Pix'),
+        ('Conta recorrente', 'Todo mês pago 120 de internet dia 10 no Pix'),
+      ],
+    ),
+    (
+      'Dividir & Empréstimos',
+      Icons.group_outlined,
+      [
+        ('Dividir conta do jantar', 'Fui em um jantar, o total deu 320, dividimos em 3'),
+        ('Dividir transporte / Uber', 'Rachei o Uber de 45 com um amigo'),
+        ('Empréstimo (5º dia útil)', 'Emprestei 150 pro João, ele disse que ia pagar quando recebesse'),
+        ('Receber dívida total', 'O João me pagou tudo'),
+        ('Receber parte da dívida', 'A Maria me acertou 50 reais'),
+      ],
+    ),
+    (
+      'Consultas & Boletos',
+      Icons.analytics_outlined,
+      [
+        ('Gastos com mercado', 'Quanto eu gastei com mercado este mês?'),
+        ('Boletos da semana', 'Quais boletos vencem essa semana?'),
+        ('Maior gasto do mês', 'Qual foi meu maior gasto este mês?'),
+        ('Saldo disponível', 'Quanto ainda posso gastar este mês?'),
+        ('Quem está me devendo', 'Quem está me devendo e quanto falta receber?'),
+      ],
+    ),
+    (
+      'Planejar & Economizar',
+      Icons.lightbulb_outline,
+      [
+        ('Simular compra', 'Posso gastar 200 no restaurante hoje?'),
+        ('Cortar delivery', 'Se eu cortar delivery quanto economizo?'),
+        ('Resumo da semana', 'Como foram meus gastos nesta semana?'),
+        ('Status dos orçamentos', 'Como estão meus orçamentos este mês?'),
+      ],
+    ),
+    (
+      'Ajustes & Correções',
+      Icons.edit_outlined,
+      [
+        ('Desfazer último', 'Desfaz o último lançamento'),
+        ('Corrigir valor', 'Na verdade foi 52'),
+        ('Trocar pagamento', 'Muda a forma de pagamento do último para Pix'),
+        ('Excluir lançamento', 'Apaga o último lançamento'),
+      ],
+    ),
   ];
 
   @override
@@ -613,8 +664,9 @@ class _ChatScreenState extends State<ChatScreen> {
     // entry instead of ending the conversation with nothing recorded.
     String? preface;
     if (widget.repository != null) {
-      final debtPayment = DebtPaymentParser.parse(text);
-      final List<FinancialReminder> matches = debtPayment == null ? const [] : widget.repository!.findDebtorsByName(debtPayment.personName);
+      final resolved = DebtPaymentParser.resolveForRepository(text, widget.repository!);
+      final debtPayment = resolved?.match;
+      final List<FinancialReminder> matches = resolved?.matches ?? const [];
       if (debtPayment != null && matches.isEmpty) {
         preface = DebtPaymentParser.noOpenDebtNote(debtPayment.personName);
       } else if (debtPayment != null) {
@@ -752,7 +804,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // 5. Questions about the data ("qual meu maior gasto?", "tô no
     // vermelho?", "quanto gastei com mercado?" ⏎ "e no mês passado?").
     if (assistant != null) {
-      final answer = assistant.handleQuestion(text);
+      final answer = assistant.handleQuestion(text, hasPendingDraft: _activeDraft != null && !_activeDraft!.isComplete);
       if (answer != null) {
         _showAssistantReply(answer, speak: true);
         return;
@@ -882,7 +934,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (draft.billingDay != null && draft.paymentMarginDays != null) {
         responseText = 'Pronto! Boleto de ${draft.description} registrado: cai todo dia ${draft.billingDay} e vence no dia ${draft.dueDay ?? 5} (margem de ${draft.paymentMarginDays} dias para pagar). 📄';
       } else if (draft.isReminder && draft.reminderType == 'loan_receivable') {
-        responseText = LocalFinancialNlpEngine.loanReminderText(personName: draft.personName, targetDate: draft.targetDate, amount: draft.amount);
+        responseText = LocalFinancialNlpEngine.loanReminderText(
+          personName: draft.personName,
+          targetDate: draft.targetDate,
+          amount: draft.amount,
+          fromSalaryAnalogy: draft.calendarConsultationNote?.contains('5º dia útil') ?? false,
+        );
       } else if (draft.isReminder && draft.reminderType == 'dividend') {
         final dateLabel = draft.targetDate != null
             ? RealtimeCalendarService.formatDateLabel(draft.targetDate!)
@@ -975,6 +1032,35 @@ class _ChatScreenState extends State<ChatScreen> {
     final notice = _assistant?.takeNotice();
     final text = notice == null ? reply.text : '$notice\n\n${reply.text}';
     if (speak) _voiceSynthesis.speak(text);
+    FinancialTransactionDraft? cardDraft;
+    List<String> cardIds = const [];
+    if (reply.route == 'split' && reply.changedIds.isNotEmpty && widget.repository != null) {
+      final txId = reply.changedIds.first;
+      final tx = widget.repository!.transactions.cast<FinancialTransaction?>().firstWhere(
+        (t) => t?.id == txId,
+        orElse: () => null,
+      );
+      if (tx != null) {
+        final today = DateTime.now();
+        final todayOnly = DateTime(today.year, today.month, today.day);
+        final txOnly = DateTime(tx.date.year, tx.date.month, tx.date.day);
+        cardIds = [txId];
+        cardDraft = FinancialTransactionDraft(
+          intent: 'expense',
+          intentConfidence: 1.0,
+          category: tx.category,
+          paymentMethod: tx.paymentMethod,
+          amount: tx.amount,
+          dateOffsetDays: txOnly.difference(todayOnly).inDays,
+          description: tx.title,
+          rawText: tx.notes ?? tx.title,
+          latencyMs: 0.0,
+          isComplete: true,
+          missingSlots: const [],
+        );
+      }
+    }
+
     final assistantMsg = ChatMessage(
       id: (DateTime.now().millisecondsSinceEpoch + 1).toString(),
       sender: MessageSender.assistant,
@@ -982,6 +1068,8 @@ class _ChatScreenState extends State<ChatScreen> {
       timestamp: DateTime.now(),
       spokenText: reply.spokenText,
       chart: reply.chart,
+      draft: cardDraft,
+      transactionIds: cardIds,
     );
     Future.delayed(const Duration(milliseconds: 150), () {
       if (!mounted) return;
@@ -1030,11 +1118,12 @@ class _ChatScreenState extends State<ChatScreen> {
     final allIds = <String>[];
     final idsPerDraft = <List<String>>[];
     for (final d in drafts) {
-      _lastSavedTransactionIds = _saveDraft(d);
-      _assistant?.recordCreated(_lastSavedTransactionIds);
-      idsPerDraft.add(_lastSavedTransactionIds);
-      allIds.addAll(_lastSavedTransactionIds);
+      final createdIds = _saveDraft(d);
+      idsPerDraft.add(createdIds);
+      allIds.addAll(createdIds);
     }
+    _lastSavedTransactionIds = allIds;
+    _assistant?.recordCreated(allIds);
 
     buffer.writeln('Identifiquei ${drafts.length} lançamentos:');
     for (int i = 0; i < drafts.length; i++) {
@@ -1200,7 +1289,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         Icon(Icons.hub, color: Colors.white, size: 14),
                         SizedBox(width: KrezioSpace.xs),
                         Text(
-                          'NEURAL',
+                          'XAI / NLP',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: KrezioFont.micro,
@@ -1344,33 +1433,118 @@ class _ChatScreenState extends State<ChatScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Quick Suggestions Bar
+            // Quick Suggestions Bar (Quick Action + Categorized Dropdowns)
             Container(
-              height: 48,
+              height: 50,
               padding: const EdgeInsets.symmetric(vertical: KrezioSpace.sm),
-              child: ListView.separated(
+              child: ListView(
                 padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg),
                 scrollDirection: Axis.horizontal,
-                itemCount: _quickSuggestions.length,
-                separatorBuilder: (_, __) => const SizedBox(width: KrezioSpace.sm),
-                itemBuilder: (context, index) {
-                  final (label, text) = _quickSuggestions[index];
-                  return ActionChip(
-                    label: Text(label, style: const TextStyle(fontSize: KrezioFont.small)),
+                children: [
+                  ActionChip(
                     avatar: const Icon(Icons.flash_on, size: 14, color: KrezioColors.aiPurple),
+                    label: const Text('Registrar gasto', style: TextStyle(fontSize: KrezioFont.small)),
                     backgroundColor: bgSurface,
                     side: BorderSide(
                       color: isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder,
                     ),
                     onPressed: () {
-                      _textController.value = TextEditingValue(
+                      const text = 'Gastei 45,90 no mercado no Pix';
+                      _textController.value = const TextEditingValue(
                         text: text,
                         selection: TextSelection.collapsed(offset: text.length),
                       );
                       _messageFocus.requestFocus();
                     },
-                  );
-                },
+                  ),
+                  const SizedBox(width: KrezioSpace.sm),
+                  for (final (catTitle, catIcon, items) in _suggestionCategories) ...[
+                    PopupMenuButton<String>(
+                      tooltip: 'Sugestões: $catTitle',
+                      offset: const Offset(0, 38),
+                      color: bgSurface,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(
+                          color: isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder,
+                        ),
+                      ),
+                      onSelected: (text) {
+                        _textController.value = TextEditingValue(
+                          text: text,
+                          selection: TextSelection.collapsed(offset: text.length),
+                        );
+                        _messageFocus.requestFocus();
+                      },
+                      itemBuilder: (_) => [
+                        for (final (label, text) in items)
+                          PopupMenuItem<String>(
+                            value: text,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 270),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    label,
+                                    style: TextStyle(
+                                      fontSize: KrezioFont.small,
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '"$text"',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: KrezioFont.caption,
+                                      color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: bgSurface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(catIcon, size: 14, color: KrezioColors.aiPurple),
+                            const SizedBox(width: 6),
+                            Text(
+                              catTitle,
+                              style: TextStyle(
+                                fontSize: KrezioFont.small,
+                                fontWeight: FontWeight.w500,
+                                color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
+                              ),
+                            ),
+                            const SizedBox(width: 2),
+                            Icon(
+                              Icons.arrow_drop_down,
+                              size: 16,
+                              color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: KrezioSpace.sm),
+                  ],
+                ],
               ),
             ),
             const Divider(height: 1, thickness: 1),
@@ -1641,6 +1815,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final isUser = msg.sender == MessageSender.user;
     final isGreeting = !isUser && _messages.isNotEmpty && identical(msg, _messages.first);
     final assistantSurface = isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
+    // Aligns secondary elements (feedback, chips, receipt card) with the
+    // left edge of César's bubble: 32 px avatar + 8 px gap = 40 px.
+    const assistantIndent = KrezioSpace.xxxl + KrezioSpace.sm;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: KrezioSpace.lg),
@@ -1655,57 +1832,79 @@ class _ChatScreenState extends State<ChatScreen> {
                 Container(
                   padding: const EdgeInsets.all(KrezioSpace.sm),
                   decoration: BoxDecoration(
-                    color: KrezioColors.aiPurple.withOpacity(0.15),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        KrezioColors.aiPurple.withValues(alpha: 0.24),
+                        KrezioColors.aiPurpleDark.withValues(alpha: 0.14),
+                      ],
+                    ),
                     shape: BoxShape.circle,
+                    border: Border.all(
+                      color: KrezioColors.aiPurple.withValues(alpha: 0.28),
+                    ),
                   ),
-                  child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurple, size: 16),
+                  child: const Icon(Icons.auto_awesome, color: KrezioColors.aiPurpleLight, size: 16),
                 ),
                 const SizedBox(width: KrezioSpace.sm),
               ],
               Flexible(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
-                  decoration: BoxDecoration(
-                    color: isUser
-                        ? KrezioColors.aiPurple
-                        : isGreeting
-                            ? Color.alphaBlend(KrezioColors.aiPurple.withValues(alpha: 0.10), assistantSurface)
-                            : assistantSurface,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(16),
-                      topRight: const Radius.circular(16),
-                      bottomLeft: Radius.circular(isUser ? 16 : 4),
-                      bottomRight: Radius.circular(isUser ? 4 : 16),
-                    ),
-                    border: !isUser
-                        ? Border.all(
-                            color: isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder,
-                          )
-                        : null,
-                  ),
-                  child: isUser
-                      ? Text(
-                          msg.text,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: KrezioFont.body,
-                            height: 1.4,
-                          ),
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildFormattedMessage(
-                              msg.text,
-                              isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
-                            ),
-                            if (msg.chart != null) ...[
-                              const SizedBox(height: KrezioSpace.md),
-                              _buildReportChart(msg.chart!, isDark),
-                            ],
-                          ],
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 640),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.md),
+                    decoration: BoxDecoration(
+                      color: isUser
+                          ? KrezioColors.aiPurple
+                          : isGreeting
+                              ? Color.alphaBlend(KrezioColors.aiPurple.withValues(alpha: 0.10), assistantSurface)
+                              : assistantSurface,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isUser ? 16 : 4),
+                        bottomRight: Radius.circular(isUser ? 4 : 16),
+                      ),
+                      border: !isUser
+                          ? Border.all(
+                              color: isDark
+                                  ? KrezioColors.darkBorder.withValues(alpha: 0.75)
+                                  : KrezioColors.lightBorder,
+                            )
+                          : null,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.18 : 0.04),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
                         ),
+                      ],
+                    ),
+                    child: isUser
+                        ? Text(
+                            msg.text,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: KrezioFont.body,
+                              height: 1.4,
+                            ),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildFormattedMessage(
+                                msg.text,
+                                isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
+                              ),
+                              if (msg.chart != null) ...[
+                                const SizedBox(height: KrezioSpace.md),
+                                _buildReportChart(msg.chart!, isDark),
+                              ],
+                            ],
+                          ),
+                  ),
                 ),
               ),
               if (!isUser) ...[
@@ -1744,7 +1943,7 @@ class _ChatScreenState extends State<ChatScreen> {
           // "Isso ajudou?" on César's answers (not on entry cards or the greeting).
           if (!isUser && msg.draft == null && msg.id != 'welcome' && widget.repository != null)
             Padding(
-              padding: const EdgeInsets.only(left: KrezioSpace.xxxl, top: KrezioSpace.xs),
+              padding: const EdgeInsets.only(left: assistantIndent, top: KrezioSpace.xs),
               child: _rated.containsKey(msg.id)
                   ? Text('Obrigado pelo retorno!',
                       style: TextStyle(fontSize: KrezioFont.caption, color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText))
@@ -1772,7 +1971,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!isUser && msg.draft != null && !msg.draft!.isComplete) ...[
             const SizedBox(height: KrezioSpace.sm),
             Padding(
-              padding: const EdgeInsets.only(left: KrezioSpace.xxxl),
+              padding: const EdgeInsets.only(left: assistantIndent),
               child: _buildMissingSlotsQuickChips(msg, isDark),
             ),
           ],
@@ -1781,7 +1980,7 @@ class _ChatScreenState extends State<ChatScreen> {
           if (msg.draft != null) ...[
             const SizedBox(height: KrezioSpace.sm),
             Padding(
-              padding: const EdgeInsets.only(left: KrezioSpace.xxxl),
+              padding: const EdgeInsets.only(left: assistantIndent),
               child: ListenableBuilder(
                 listenable: Listenable.merge([
                   EnvironmentConfig.environmentNotifier,
@@ -2016,304 +2215,544 @@ class _ChatScreenState extends State<ChatScreen> {
     final missing = draft.missingSlots.isEmpty ? null : draft.missingSlots.first;
     final status = switch ((saved, ids.isNotEmpty, missing)) {
       (true, _, _) => 'Registrado',
-      (_, true, _) => 'Registro alterado ou removido',
+      (_, true, _) => 'Alterado ou removido',
       (_, _, 'confirm') => 'Aguardando confirmação',
-      (_, _, 'payment_method') => 'Falta informar o pagamento',
-      (_, _, 'amount') => 'Falta informar o valor',
-      (_, _, 'category') => 'Falta informar a categoria',
-      (_, _, 'date') => 'Falta informar a data',
+      (_, _, 'payment_method') => 'Falta pagamento',
+      (_, _, 'amount') => 'Falta valor',
+      (_, _, 'category') => 'Falta categoria',
+      (_, _, 'date') => 'Falta data',
       (_, _, null) => 'Não registrado',
       _ => 'Aguardando detalhes',
     };
     final statusColor = saved ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange;
+    final intentColor = _getIntentColor(draft.intent);
+    final baseSurface = isDark ? KrezioColors.darkSurface : KrezioColors.lightSurface;
+    final cardSurface = Color.alphaBlend(
+      intentColor.withValues(alpha: isDark ? 0.05 : 0.025),
+      baseSurface,
+    );
+    final primaryText = isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText;
+    final secondaryText = isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
+    final borderColor = isDark
+        ? statusColor.withValues(alpha: saved ? 0.28 : 0.42)
+        : statusColor.withValues(alpha: saved ? 0.30 : 0.45);
+    final dividerColor = (isDark ? KrezioColors.darkBorder : KrezioColors.lightBorder).withValues(alpha: 0.65);
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(KrezioSpace.md),
-      decoration: BoxDecoration(
-        color: isDark ? KrezioColors.darkSurfaceVariant : const Color(0xFFF3F4F6),
-        borderRadius: KrezioTheme.borderRadius,
-        border: Border.all(
-          color: statusColor.withOpacity(0.5),
-          width: 1.5,
+    final title = _draftDisplayTitle(draft);
+    final dateLabel = _formatDraftDate(draft.dateOffsetDays);
+    final categoryName = _formatCategory(draft.category);
+    final paymentName = _formatPayment(draft.paymentMethod, draft.installments);
+    final amountText = draft.amount != null ? Money.brl(draft.amount!) : 'Valor pendente';
+    final amountColor = draft.amount == null
+        ? KrezioColors.friendlyOrange
+        : (draft.intent == 'income'
+            ? KrezioColors.emeraldGreen
+            : (draft.intent == 'transfer' ? KrezioColors.aiPurpleLight : primaryText));
+    final installmentLine = (draft.paymentMethod == 'credit_card' &&
+            draft.installments != null &&
+            draft.installments! > 1 &&
+            draft.amount != null)
+        ? '${draft.installments}x de ${Money.brl(draft.installmentValue ?? draft.amount! / draft.installments!)}'
+        : null;
+
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 420),
+      child: Container(
+        key: const ValueKey('chat-transaction-card'),
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: cardSurface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: 1.1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.26 : 0.06),
+              blurRadius: 14,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(15),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
-                    decoration: BoxDecoration(
-                      color: _getIntentColor(draft.intent).withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _formatIntentName(draft.intent),
-                      style: TextStyle(
-                        color: _getIntentColor(draft.intent),
-                        fontSize: KrezioFont.caption,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+              // Subtle top semantic accent bar
+              Container(
+                height: 3,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      intentColor.withValues(alpha: 0.9),
+                      statusColor.withValues(alpha: 0.65),
+                    ],
                   ),
-                  if (ids.isNotEmpty) ...[
-                    const SizedBox(width: KrezioSpace.sm),
-                    // The card code: "apaga o #4821", "o #4821 foi 50".
-                    Tooltip(
-                      message: 'Use este código para falar deste lançamento, ex.: "apaga o ${TransactionCode.label(ids.first)}"',
-                      child: Text(
-                        ids.length == 1 ? TransactionCode.label(ids.first) : '${TransactionCode.label(ids.first)} +${ids.length - 1}',
-                        style: TextStyle(
-                          color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
-                          fontSize: KrezioFont.caption,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (isMerged) ...[
-                    const SizedBox(width: KrezioSpace.sm),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
-                      decoration: BoxDecoration(
-                        color: KrezioColors.aiPurple.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text(
-                        '🔄 Atualizado',
-                        style: TextStyle(
-                          color: KrezioColors.aiPurple,
-                          fontSize: KrezioFont.micro,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: KrezioSpace.sm),
-          Text(
-            status,
-            style: TextStyle(
-              color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
-              fontSize: KrezioFont.caption,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: KrezioSpace.sm),
-
-          // Detail Grid
-          Row(
-            children: [
-              Expanded(
-                child: _buildDetailTile(
-                  'Valor',
-                  draft.amount != null
-                      ? Money.brl(draft.amount!)
-                      : 'Não informado',
-                  Icons.attach_money,
-                  isDark,
                 ),
               ),
-              Expanded(
-                child: _buildDetailTile(
-                  'Categoria',
-                  _formatCategory(draft.category),
-                  Icons.category_outlined,
-                  isDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: KrezioSpace.sm),
-          Row(
-            children: [
-              Expanded(
-                child: _buildDetailTile(
-                  'Pagamento',
-                  _formatPayment(draft.paymentMethod, draft.installments),
-                  Icons.payment_outlined,
-                  isDark,
-                ),
-              ),
-              if (EnvironmentConfig.isHomologation) Expanded(
-                child: _buildDetailTile(
-                  'Latência Local',
-                  '⚡ ${draft.latencyMs.toStringAsFixed(1)} ms',
-                  Icons.speed_outlined,
-                  isDark,
-                ),
-              ),
-            ],
-          ),
-
-          if (draft.bankSource != null || draft.isRecurrent) ...[
-            const SizedBox(height: KrezioSpace.sm),
-            Wrap(
-              spacing: 6,
-              children: [
-                if (draft.bankSource != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
-                    decoration: BoxDecoration(
-                      color: KrezioColors.aiPurple.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      '🏦 ${draft.bankSource}',
-                      style: const TextStyle(fontSize: KrezioFont.micro, fontWeight: FontWeight.w600, color: KrezioColors.aiPurple),
-                    ),
-                  ),
-                if (draft.isRecurrent)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
-                    decoration: BoxDecoration(
-                      color: KrezioColors.emeraldGreen.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      draft.dueDay != null || draft.dueBusinessDay != null
-                          ? '🔁 Recorrente (${draft.dueBusinessDay != null ? "${draft.dueBusinessDay}º dia útil" : "Dia ${draft.dueDay}"}${draft.recurrenceDuration != null ? " • ${draft.recurrenceDuration}" : ""})'
-                          : '🔁 Assinatura Mensal${draft.recurrenceDuration != null ? " (${draft.recurrenceDuration})" : ""}',
-                      style: const TextStyle(fontSize: KrezioFont.micro, fontWeight: FontWeight.w600, color: KrezioColors.emeraldGreen),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-
-          if (draft.isReminder) ...[
-            const SizedBox(height: KrezioSpace.sm),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
-              decoration: BoxDecoration(
-                color: KrezioColors.friendlyOrange.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: KrezioColors.friendlyOrange.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.event_available, size: 14, color: KrezioColors.friendlyOrange),
-                  const SizedBox(width: KrezioSpace.sm),
-                  Expanded(
-                    child: Text(
-                      draft.calendarConsultationNote ?? '🔔 Lembrete agendado via Calendário em Tempo Real',
-                      style: const TextStyle(fontSize: KrezioFont.caption, fontWeight: FontWeight.w600, color: KrezioColors.friendlyOrange),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-
-          if (draft.missingSlots.isNotEmpty) ...[
-            const SizedBox(height: KrezioSpace.sm),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
-              decoration: BoxDecoration(
-                color: KrezioColors.friendlyOrange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Text(
-                'Slots ausentes: ${draft.missingSlots.map(_formatMissingSlotName).join(", ")}',
-                style: const TextStyle(
-                  color: KrezioColors.friendlyOrange,
-                  fontSize: KrezioFont.caption,
-                ),
-              ),
-            ),
-          ],
-
-          ValueListenableBuilder<AppEnvironment>(
-            valueListenable: EnvironmentConfig.environmentNotifier,
-            builder: (context, env, _) {
-              if (env != AppEnvironment.homologation) return const SizedBox.shrink();
-              return Padding(
-                padding: const EdgeInsets.only(top: KrezioSpace.sm),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(6),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => NeuralInspectorScreen(
-                          engine: widget.engine,
-                          initialQuery: draft.rawText,
-                          isDark: widget.isDarkMode,
-                        ),
-                      ),
-                    );
-                  },
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.xs),
-                    decoration: BoxDecoration(
-                      color: KrezioColors.aiPurple.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: KrezioColors.aiPurple.withOpacity(0.35)),
-                    ),
-                    child: const Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(KrezioSpace.lg, KrezioSpace.md, KrezioSpace.lg, KrezioSpace.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. Header row: intent + #code + updated badge + status pill
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Icon(Icons.hub_outlined, color: KrezioColors.aiPurple, size: 13),
-                        SizedBox(width: KrezioSpace.sm),
-                        Text(
-                          'Inspecionar Pensamento Neural (Homologação)',
-                          style: TextStyle(
-                            fontSize: KrezioFont.caption,
-                            fontWeight: FontWeight.bold,
-                            color: KrezioColors.aiPurple,
+                        Expanded(
+                          child: Wrap(
+                            spacing: KrezioSpace.sm,
+                            runSpacing: KrezioSpace.xs,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: intentColor.withValues(alpha: isDark ? 0.16 : 0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(_intentIcon(draft.intent), size: 12, color: intentColor),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _formatIntentName(draft.intent),
+                                      style: TextStyle(
+                                        color: intentColor,
+                                        fontSize: KrezioFont.micro,
+                                        letterSpacing: 0.4,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (ids.isNotEmpty)
+                                Tooltip(
+                                  message: 'Use este código para falar deste lançamento, ex.: "apaga o ${TransactionCode.label(ids.first)}"',
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.05),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: dividerColor),
+                                    ),
+                                    child: Text(
+                                      ids.length == 1 ? TransactionCode.label(ids.first) : '${TransactionCode.label(ids.first)} +${ids.length - 1}',
+                                      style: TextStyle(
+                                        color: secondaryText,
+                                        fontSize: KrezioFont.micro,
+                                        fontWeight: FontWeight.w600,
+                                        fontFeatures: const [FontFeature.tabularFigures()],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (isMerged)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: KrezioColors.aiPurple.withValues(alpha: 0.14),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.sync_rounded, size: 11, color: KrezioColors.aiPurpleLight),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        'Atualizado',
+                                        style: TextStyle(
+                                          color: KrezioColors.aiPurpleLight,
+                                          fontSize: KrezioFont.micro,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: KrezioSpace.sm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: isDark ? 0.14 : 0.10),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                saved ? Icons.check_circle_rounded : Icons.schedule_rounded,
+                                size: 12,
+                                color: statusColor,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                status,
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontSize: KrezioFont.micro,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
+
+                    const SizedBox(height: KrezioSpace.md),
+
+                    // 2. Hero section: description + date on left, hero amount on right
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: primaryText,
+                                  fontSize: KrezioFont.bodyLarge,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                dateLabel,
+                                style: TextStyle(
+                                  color: secondaryText,
+                                  fontSize: KrezioFont.caption,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: KrezioSpace.md),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              amountText,
+                              style: TextStyle(
+                                color: amountColor,
+                                fontSize: draft.amount != null ? 20 : KrezioFont.body,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                            if (installmentLine != null) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                installmentLine,
+                                style: TextStyle(
+                                  color: secondaryText,
+                                  fontSize: KrezioFont.micro,
+                                  fontWeight: FontWeight.w600,
+                                  fontFeatures: const [FontFeature.tabularFigures()],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: KrezioSpace.md),
+                    Divider(height: 1, thickness: 1, color: dividerColor),
+                    const SizedBox(height: KrezioSpace.md),
+
+                    // 3. Structured metadata pills (clean wrap on both 360px phone & wide web)
+                    Wrap(
+                      spacing: KrezioSpace.sm,
+                      runSpacing: KrezioSpace.sm,
+                      children: [
+                        _buildCardMetaPill(
+                          icon: _categoryIcon(draft.category),
+                          label: 'Categoria',
+                          value: categoryName,
+                          isMissing: draft.category == 'unknown',
+                          accentColor: intentColor,
+                          isDark: isDark,
+                        ),
+                        _buildCardMetaPill(
+                          icon: _paymentIcon(draft.paymentMethod),
+                          label: 'Pagamento',
+                          value: paymentName,
+                          isMissing: draft.paymentMethod == 'unknown',
+                          accentColor: KrezioColors.aiPurple,
+                          isDark: isDark,
+                        ),
+                        if (draft.bankSource != null)
+                          _buildCardMetaPill(
+                            icon: Icons.account_balance_outlined,
+                            label: 'Conta',
+                            value: draft.bankSource!,
+                            accentColor: KrezioColors.aiPurple,
+                            isDark: isDark,
+                          ),
+                        if (draft.isRecurrent)
+                          _buildCardMetaPill(
+                            icon: Icons.repeat_rounded,
+                            label: 'Recorrente',
+                            value: draft.dueDay != null || draft.dueBusinessDay != null
+                                ? '${draft.dueBusinessDay != null ? "${draft.dueBusinessDay}º dia útil" : "Dia ${draft.dueDay}"}${draft.recurrenceDuration != null ? " · ${draft.recurrenceDuration}" : ""}'
+                                : 'Mensal${draft.recurrenceDuration != null ? " (${draft.recurrenceDuration})" : ""}',
+                            accentColor: KrezioColors.emeraldGreen,
+                            isDark: isDark,
+                          ),
+                        if (EnvironmentConfig.isHomologation)
+                          _buildCardMetaPill(
+                            icon: Icons.bolt_rounded,
+                            label: 'Latência',
+                            value: '${draft.latencyMs.toStringAsFixed(1)} ms',
+                            accentColor: KrezioColors.emeraldGreen,
+                            isDark: isDark,
+                          ),
+                      ],
+                    ),
+
+                    if (draft.isReminder) ...[
+                      const SizedBox(height: KrezioSpace.md),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.sm),
+                        decoration: BoxDecoration(
+                          color: KrezioColors.friendlyOrange.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: KrezioColors.friendlyOrange.withValues(alpha: 0.28)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.event_available_rounded, size: 15, color: KrezioColors.friendlyOrange),
+                            const SizedBox(width: KrezioSpace.sm),
+                            Expanded(
+                              child: Text(
+                                draft.calendarConsultationNote ?? 'Lembrete agendado no seu calendário',
+                                style: const TextStyle(
+                                  fontSize: KrezioFont.caption,
+                                  fontWeight: FontWeight.w600,
+                                  color: KrezioColors.friendlyOrange,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    if (draft.missingSlots.isNotEmpty) ...[
+                      const SizedBox(height: KrezioSpace.sm),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: KrezioColors.friendlyOrange.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.edit_note_rounded, size: 14, color: KrezioColors.friendlyOrange),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                'Slots ausentes: ${draft.missingSlots.map(_formatMissingSlotName).join(", ")}',
+                                style: const TextStyle(
+                                  color: KrezioColors.friendlyOrange,
+                                  fontSize: KrezioFont.caption,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    ValueListenableBuilder<AppEnvironment>(
+                      valueListenable: EnvironmentConfig.environmentNotifier,
+                      builder: (context, env, _) {
+                        if (env != AppEnvironment.homologation) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: KrezioSpace.md),
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => NeuralInspectorScreen(
+                                    engine: widget.engine,
+                                    initialQuery: draft.rawText,
+                                    isDark: widget.isDarkMode,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: KrezioSpace.sm),
+                              decoration: BoxDecoration(
+                                color: KrezioColors.aiPurple.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: KrezioColors.aiPurple.withValues(alpha: 0.30)),
+                              ),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.hub_outlined, color: KrezioColors.aiPurple, size: 14),
+                                  SizedBox(width: KrezioSpace.sm),
+                                  Text(
+                                    'Inspecionar Pipeline NLP & XAI (Homologação)',
+                                    style: TextStyle(
+                                      fontSize: KrezioFont.caption,
+                                      fontWeight: FontWeight.bold,
+                                      color: KrezioColors.aiPurple,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardMetaPill({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color accentColor,
+    required bool isDark,
+    bool isMissing = false,
+  }) {
+    final pillColor = isMissing ? KrezioColors.friendlyOrange : accentColor;
+    final pillBg = isMissing
+        ? KrezioColors.friendlyOrange.withValues(alpha: isDark ? 0.12 : 0.08)
+        : (isDark ? KrezioColors.darkSurfaceVariant.withValues(alpha: 0.85) : const Color(0xFFF3F4F6));
+    final border = isMissing
+        ? KrezioColors.friendlyOrange.withValues(alpha: 0.30)
+        : (isDark ? KrezioColors.darkBorder.withValues(alpha: 0.6) : KrezioColors.lightBorder);
+    final labelColor = isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText;
+    final valueColor = isMissing
+        ? KrezioColors.friendlyOrange
+        : (isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.md, vertical: 7),
+      decoration: BoxDecoration(
+        color: pillBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: pillColor.withValues(alpha: isDark ? 0.16 : 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(icon, size: 13, color: pillColor),
+          ),
+          const SizedBox(width: KrezioSpace.sm),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(fontSize: KrezioFont.micro, color: labelColor, height: 1.1),
+                ),
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: KrezioFont.small,
+                    fontWeight: FontWeight.w600,
+                    color: valueColor,
+                    height: 1.25,
                   ),
                 ),
-              );
-            },
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDetailTile(String label, String value, IconData icon, bool isDark) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText),
-        const SizedBox(width: KrezioSpace.xs),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: KrezioFont.micro,
-                  color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
-                ),
-              ),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: KrezioFont.small,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? KrezioColors.darkPrimaryText : KrezioColors.lightPrimaryText,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+  String _draftDisplayTitle(FinancialTransactionDraft draft) {
+    final desc = draft.description.trim();
+    if (desc.isNotEmpty && desc != 'unknown' && desc != 'expense_other' && desc != 'income_other') {
+      return '${desc[0].toUpperCase()}${desc.substring(1)}';
+    }
+    if (draft.category != 'unknown') return _formatCategory(draft.category);
+    return _formatIntentName(draft.intent);
+  }
+
+  String _formatDraftDate(int offsetDays) {
+    if (offsetDays == 0) return 'Hoje';
+    if (offsetDays == -1) return 'Ontem';
+    if (offsetDays == -2) return 'Anteontem';
+    if (offsetDays == 1) return 'Amanhã';
+    final d = DateTime.now().add(Duration(days: offsetDays));
+    return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}';
+  }
+
+  IconData _intentIcon(String intent) {
+    return switch (intent) {
+      'income' => Icons.arrow_downward_rounded,
+      'expense' => Icons.arrow_upward_rounded,
+      'transfer' => Icons.swap_horiz_rounded,
+      'query' => Icons.search_rounded,
+      _ => Icons.receipt_long_outlined,
+    };
+  }
+
+  IconData _categoryIcon(String category) {
+    return switch (category) {
+      'supermarket' => Icons.shopping_cart_outlined,
+      'transport' => Icons.directions_car_outlined,
+      'health' => Icons.favorite_border_rounded,
+      'leisure' => Icons.restaurant_outlined,
+      'housing' => Icons.home_outlined,
+      'education' => Icons.school_outlined,
+      'salary' => Icons.work_outline_rounded,
+      'investment' => Icons.trending_up_rounded,
+      _ => Icons.category_outlined,
+    };
+  }
+
+  IconData _paymentIcon(String payment) {
+    return switch (payment) {
+      'pix' => Icons.qr_code_2_rounded,
+      'credit_card' => Icons.credit_card_rounded,
+      'debit_card' => Icons.credit_card_outlined,
+      'cash' => Icons.payments_outlined,
+      'bank_slip' => Icons.receipt_long_outlined,
+      _ => Icons.payment_outlined,
+    };
   }
 
   Color _getIntentColor(String intent) {

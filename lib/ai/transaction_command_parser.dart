@@ -81,7 +81,9 @@ class ChatCommand {
 class TransactionCommandParser {
   TransactionCommandParser._();
 
-  static final _politePrefix = RegExp(r'^(?:cesar\s+)?(?:(?:por\s+favor|pf|pfv|ei|oi)\s+)?(?:(?:voce|vc|tu)\s+)?(?:pode|poderia|podia|consegue|da\s+pra)\s+');
+  static final _politePrefix = RegExp(
+    r'^(?:cesar\s+)?(?:(?:por\s+favor|pf|pfv|ei|oi)\s+)?(?:(?:(?:voce|vc|tu)\s+)?(?:pode|poderia|podia|consegue|da\s+pra)\s+)?',
+  );
   static final _politeSuffix = RegExp(r'\s+(?:por\s+favor|pf|pfv|pra\s+mim|cesar)$');
 
   static String _clean(String text) {
@@ -522,9 +524,12 @@ class TransactionCommandParser {
     if (only == null || only == 'amount') {
       final am = RegExp(r'(?:r\$\s*)?(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(mil|k)?\b').firstMatch(f);
       if (am != null) {
-        var v = LocalFinancialNlpEngine.cleanAndParseAmount(am.group(1));
+        final beforeAm = f.substring(0, am.start);
+        var v = LocalFinancialNlpEngine.isExplicitNegative(beforeAm)
+            ? null
+            : LocalFinancialNlpEngine.cleanAndParseAmount(am.group(1));
         if (v != null && am.group(2) != null) v *= 1000;
-        if (v != null && v > 0 && v.isFinite) amount = v;
+        if (v != null && v > 0 && v < LocalFinancialNlpEngine.maxPlausibleAmount && v.isFinite) amount = v;
         f = f.replaceFirst(am.group(0)!, ' ');
       }
     }

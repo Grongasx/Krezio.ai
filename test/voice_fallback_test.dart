@@ -1,7 +1,11 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/voice/native_tts.dart';
 import 'package:krezio_ai/ai/voice/voice_conversation_controller.dart';
 import 'package:krezio_ai/ai/voice/voice_synthesis_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeNativeTts implements NativeTts {
   final spoken = <String>[];
@@ -212,4 +216,169 @@ void main() {
       );
     });
   });
+
+  group('FlutterNativeTts sem duplicação de voz', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('Web (retorno null de awaitSpeakCompletion): fala 1x na voz certa sem cair no fallback', () async {
+      final backend = _FakeTtsBackend(
+        availableVoices: [
+          {'name': 'Microsoft Antonio Online (Natural) - Portuguese (Brazil)', 'locale': 'pt-BR', 'network_required': '1'},
+          {'name': 'pt-br-x-ptd-local', 'locale': 'pt-BR', 'network_required': '0'},
+        ],
+        onSpeak: (b, text) async {
+          b.spokenLog.add((voice: b.activeVoice, text: text));
+          b.completionHandler?.call();
+          return null; // flutter_tts_web completa Completer() sem valor (null)
+        },
+      );
+      final tts = FlutterNativeTts(
+        backend: backend,
+        isWebOverride: true,
+        platformOverride: TargetPlatform.windows,
+      );
+
+      await tts.speak('Pronto! Anotei 50 reais.');
+
+      expect(backend.spokenLog.length, 2);
+      expect(backend.spokenLog.map((e) => e.text).toList(), ['Pronto!', 'Anotei 50 reais.']);
+      expect(
+        backend.spokenLog.every((e) => e.voice == 'Microsoft Antonio Online (Natural) - Portuguese (Brazil)'),
+        isTrue,
+      );
+    });
+
+    test('Android (retorno 1 + completionHandler): fala 1x sem fallback', () async {
+      final backend = _FakeTtsBackend(
+        availableVoices: [
+          {'name': 'pt-br-x-ptd-local', 'locale': 'pt-BR', 'network_required': '0'},
+          {'name': 'pt-br-x-ptd-network', 'locale': 'pt-BR', 'network_required': '1'},
+        ],
+        onSpeak: (b, text) async {
+          b.spokenLog.add((voice: b.activeVoice, text: text));
+          b.completionHandler?.call();
+          return 1;
+        },
+      );
+      final tts = FlutterNativeTts(
+        backend: backend,
+        isWebOverride: false,
+        platformOverride: TargetPlatform.android,
+      );
+
+      await tts.speak('Saldo de 200 reais.');
+
+      expect(backend.spokenLog.length, 1);
+      expect(backend.spokenLog.single.voice, 'pt-br-x-ptd-local');
+    });
+
+    test('rejeição antes de falar (retorno 0): faz fallback para voz local uma única vez', () async {
+      final backend = _FakeTtsBackend(
+        availableVoices: [
+          {'name': 'Microsoft Antonio Online (Natural) - Portuguese (Brazil)', 'locale': 'pt-BR', 'network_required': '1'},
+          {'name': 'pt-br-x-ptd-local', 'locale': 'pt-BR', 'network_required': '0'},
+        ],
+        onSpeak: (b, text) async {
+          b.spokenLog.add((voice: b.activeVoice, text: text));
+          if (b.activeVoice!.contains('Antonio')) {
+            return 0; // falhou antes de tocar na voz online
+          }
+          b.completionHandler?.call();
+          return 1;
+        },
+      );
+      final tts = FlutterNativeTts(
+        backend: backend,
+        isWebOverride: true,
+        platformOverride: TargetPlatform.windows,
+      );
+
+      await tts.speak('Teste de fallback.');
+
+      expect(backend.spokenLog.length, 2);
+      expect(backend.spokenLog[0].voice, contains('Antonio'));
+      expect(backend.spokenLog[1].voice, 'pt-br-x-ptd-local');
+    });
+
+    test('erro no Web após já ter falado >= 400ms não repete a mensagem em outra voz', () async {
+      final neverCompletesSpeak = Completer<dynamic>();
+      final backend = _FakeTtsBackend(
+        availableVoices: [
+          {'name': 'Microsoft Antonio Online (Natural) - Portuguese (Brazil)', 'locale': 'pt-BR', 'network_required': '1'},
+          {'name': 'pt-br-x-ptd-local', 'locale': 'pt-BR', 'network_required': '0'},
+        ],
+        onSpeak: (b, text) async {
+          b.spokenLog.add((voice: b.activeVoice, text: text));
+          if (b.activeVoice!.contains('Antonio')) {
+            await Future.delayed(const Duration(milliseconds: 450));
+            b.errorHandler?.call('network-error');
+            return neverCompletesSpeak.future;
+          }
+          b.completionHandler?.call();
+          return null;
+        },
+      );
+      final tts = FlutterNativeTts(
+        backend: backend,
+        isWebOverride: true,
+        platformOverride: TargetPlatform.windows,
+      );
+
+      await expectLater(tts.speak('Não repete.'), throwsStateError);
+      expect(backend.spokenLog.length, 1);
+      expect(backend.spokenLog.single.voice, contains('Antonio'));
+    });
+  });
+}
+
+class _FakeTtsBackend implements TtsBackend {
+  final List<Map<String, String>> availableVoices;
+  final Future<dynamic> Function(_FakeTtsBackend backend, String text) onSpeak;
+  final spokenLog = <({String? voice, String text})>[];
+  String? activeVoice;
+  VoidCallback? completionHandler;
+  void Function(dynamic)? errorHandler;
+
+  _FakeTtsBackend({required this.availableVoices, required this.onSpeak});
+
+  @override
+  Future<void> awaitSpeakCompletion(bool value) async {}
+
+  @override
+  Future<List<String>> getEngines() async => const ['com.google.android.tts'];
+
+  @override
+  Future<List<Map<String, String>>> getVoices() async => availableVoices;
+
+  @override
+  void setCompletionHandler(VoidCallback handler) => completionHandler = handler;
+
+  @override
+  Future<void> setEngine(String engine) async {}
+
+  @override
+  void setErrorHandler(void Function(dynamic message) handler) => errorHandler = handler;
+
+  @override
+  Future<void> setLanguage(String language) async {}
+
+  @override
+  Future<void> setPitch(double pitch) async {}
+
+  @override
+  Future<void> setSpeechRate(double rate) async {}
+
+  @override
+  Future<void> setVoice(Map<String, String> voice) async => activeVoice = voice['name'];
+
+  @override
+  Future<void> setVolume(double volume) async {}
+
+  @override
+  Future<dynamic> speak(String text) => onSpeak(this, text);
+
+  @override
+  Future<void> stop() async {}
 }

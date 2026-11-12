@@ -241,6 +241,8 @@ class FinancialTransaction {
         return 'Salário';
       case 'investment':
         return 'Investimentos';
+      case 'income_other':
+        return 'Outras receitas';
       default:
         return 'Outros';
     }

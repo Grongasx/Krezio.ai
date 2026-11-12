@@ -14,13 +14,35 @@ class CesarText {
   /// Lowercase, accent-free, trimmed — what every regex in the features runs on.
   static String fold(String text) => CategoryNameMatcher.foldAccents(text.toLowerCase().trim());
 
-  /// [fold] plus punctuation turned into spaces and whitespace collapsed
-  /// ("Ops, era 45!" → "ops era 45"). Decimal commas/dots between digits are kept.
+  static final List<(RegExp, String)> _chatShorthand = [
+    (RegExp(r'^cm\b|\bcm(?=\s+(?:ta|tao|esta|estao|vai|vao|faco|faz|funciona|eu)\b)'), 'como'),
+    (RegExp(r'\bvcs\b'), 'voces'),
+    (RegExp(r'\bvc\b'), 'voce'),
+    (RegExp(r'\boqe?\b'), 'o que'),
+    (RegExp(r'\b(?:qto|qnto|qt)\b'), 'quanto'),
+    (RegExp(r'\bqtos\b'), 'quantos'),
+    (RegExp(r'\bqtas\b'), 'quantas'),
+    (RegExp(r'\bhj\b'), 'hoje'),
+    (RegExp(r'\bpq\b'), 'por que'),
+    (RegExp(r'\btd\b'), 'tudo'),
+    (RegExp(r'\btbm?\b'), 'tambem'),
+    (RegExp(r'\bkd\b'), 'cade'),
+    (RegExp(r'\bpfv\b'), 'por favor'),
+  ];
+
+  /// [fold] plus punctuation turned into spaces, chat shorthand normalized
+  /// safely (without touching the linear ML tokenizer), and whitespace
+  /// collapsed ("Ops, era 45!" → "ops era 45"). Decimal separators are kept.
   static String simplify(String text) {
-    final folded = fold(text)
+    var normalized = fold(text)
         .replaceAll(RegExp(r'(?<!\d)[.,]|[.,](?!\d)'), ' ')
-        .replaceAll(RegExp(r'[!?;:"“”()\[\]]'), ' ');
-    return folded.replaceAll(RegExp(r'\s+'), ' ').trim();
+        .replaceAll(RegExp(r'[!?;:"“”()\[\]]'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    for (final (pattern, replacement) in _chatShorthand) {
+      normalized = normalized.replaceAll(pattern, replacement);
+    }
+    return normalized.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   /// "R$ 1.400,00".

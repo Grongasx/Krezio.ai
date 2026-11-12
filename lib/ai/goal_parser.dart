@@ -146,8 +146,8 @@ class GoalParser {
     for (final pattern in patterns) {
       final match = pattern.firstMatch(lower);
       if (match != null) {
-        final value = LocalFinancialNlpEngine.cleanAndParseAmount(match.group(1));
-        if (value != null && value > 0) return value;
+        final value = LocalFinancialNlpEngine.parseBoundedAmount(match.group(1), before: lower.substring(0, match.start));
+        if (value != null) return value;
       }
     }
     return null;

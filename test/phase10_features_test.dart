@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:krezio_ai/ai/bill_split_parser.dart';
 import 'package:krezio_ai/ai/cesar_assistant.dart';
@@ -110,6 +109,77 @@ void main() {
       expect(repo.transactions, isEmpty);
       expect(repo.reminders, isEmpty);
     });
+
+    test('"fui em um jantar, o total deu 320, dividimos em 3" e variações reais', () {
+      final s1 = BillSplitParser.parse('fui em um jantar, o total deu 320, dividimos em 3')!;
+      expect(s1.description, 'Jantar');
+      expect(s1.total, 320.0);
+      expect(s1.people, 3);
+      expect(s1.myShare, 106.67);
+      expect(s1.toReceive, 213.33);
+      expect(s1.onlyMyShare, isFalse);
+
+      final s2 = BillSplitParser.parse('rachei uma pizza de 120 com mais 2')!;
+      expect(s2.description, 'Pizza');
+      expect([s2.total, s2.people, s2.myShare], [120.0, 3, 40.0]);
+
+      final s3 = BillSplitParser.parse('rachei um uber de 45 com o lucas')!;
+      expect(s3.description, 'Uber');
+      expect(s3.others, ['Lucas']);
+      expect([s3.total, s3.people, s3.myShare], [45.0, 2, 22.5]);
+
+      final s4 = BillSplitParser.parse('a conta do bar deu R\$ 1.200,00, dividimos entre 4 amigos')!;
+      expect(s4.description, 'Bar');
+      expect([s4.total, s4.people, s4.myShare], [1200.0, 4, 300.0]);
+
+      final s5 = BillSplitParser.parse('dividi 180 com 2 amigos')!;
+      expect([s5.total, s5.people, s5.myShare], [180.0, 3, 60.0]);
+
+      final s6 = BillSplitParser.parse('dividimos em 3, o total deu 300')!;
+      expect([s6.total, s6.people, s6.myShare], [300.0, 3, 100.0]);
+
+      final sExact = BillSplitParser.parse('o jantar deu 320, rachei com o joão e a ana')!;
+      expect(sExact.myShare + sExact.shareForOther(0) + sExact.shareForOther(1), closeTo(320.0, 0.001));
+
+      expect(BillSplitParser.parse('jantar deu -320, dividimos em 3'), isNull);
+      expect(BillSplitParser.parse('jantar deu 99999999, dividimos em 3'), isNull);
+    });
+
+    test('"cada um pagou sua parte" grava só a minha despesa sem cobrança, e baixa sem nome funciona', () async {
+      final engine = LocalFinancialNlpEngine.fromJsonString(await File('models/on_device/krezio_nlp_model.json').readAsString());
+
+      final repoOnlyMine = emptyRepo();
+      final a1 = CesarAssistant(repository: repoOnlyMine, engine: engine);
+      a1.beginTurn();
+      final r1 = a1.handleCommand('fui em um jantar, o total deu 320, dividimos em 3 e cada um pagou sua parte')!;
+      expect(r1.route, 'split');
+      expect(repoOnlyMine.transactions.single.title, 'Jantar');
+      expect(repoOnlyMine.transactions.single.amount, 106.67);
+      expect(repoOnlyMine.reminders, isEmpty);
+
+      final repoGroup = emptyRepo();
+      final a2 = CesarAssistant(repository: repoGroup, engine: engine);
+      a2.beginTurn();
+      final r2 = a2.handleCommand('fui em um jantar, o total deu 320, dividimos em 3')!;
+      expect(r2.route, 'split');
+      expect(r2.text, contains('Jantar'));
+      expect(repoGroup.transactions.single.amount, 106.67);
+      expect(repoGroup.reminders.single.amount, 213.33);
+
+      a2.beginTurn();
+      final p1 = a2.handleCommand('me pagaram 106,67 do jantar')!;
+      expect(p1.route, 'split_settled_partial');
+      expect(repoGroup.getActiveDebtors().single.amount, closeTo(106.66, 0.001));
+
+      a2.beginTurn();
+      final p2 = a2.handleCommand('recebi 106,66 do jantar')!;
+      expect(p2.route, 'split_settled');
+      expect(repoGroup.getActiveDebtors(), isEmpty);
+
+      a2.beginTurn();
+      expect(a2.handleCommand('desfaz')!.route, 'undo');
+      expect(repoGroup.getActiveDebtors().single.amount, closeTo(106.66, 0.001));
+    });
   });
 
   group('10.2 moedas e IR', () {
@@ -197,21 +267,27 @@ Período: 01/10/2026 a 31/10/2026
       expect(fromBytes.single.description, 'Pix Mercado');
     });
 
-    test('Máscara de moeda BRL: 4000 vira 4.000,00 e 50,90 mantém centavos', () {
+    test('Máscara de moeda BRL: preenche a partir dos centavos', () {
       const formatter = BrlCurrencyInputFormatter();
-      final res4000 = formatter.formatEditUpdate(
-        TextEditingValue.empty,
-        const TextEditingValue(text: '4000'),
-      );
+      TextEditingValue type(String old, String typed) =>
+          formatter.formatEditUpdate(TextEditingValue(text: old), TextEditingValue(text: typed));
+
+      expect(type('', '4').text, '0,04');
+      expect(type('0,04', '0,045').text, '0,45');
+      expect(type('0,45', '0,450').text, '4,50');
+      expect(type('4,50', '4,500').text, '45,00');
+      final res4000 = type('', '400000');
       expect(res4000.text, '4.000,00');
       expect(Money.parse(res4000.text), 4000.00);
 
-      final res5090 = formatter.formatEditUpdate(
-        TextEditingValue.empty,
-        const TextEditingValue(text: '50,90'),
-      );
+      final res5090 = type('', '50,90');
       expect(res5090.text, '50,90');
       expect(Money.parse(res5090.text), 50.90);
+
+      // Backspace tira o último dígito, inclusive quando cai na vírgula.
+      expect(type('45,00', '45,0').text, '4,50');
+      expect(type('4.000,00', '4.00000').text, '400,00');
+      expect(type('0,04', '0,0').text, '');
     });
 
     test('Cofrinho: aplicar valor retira do saldo líquido total como despesa', () {

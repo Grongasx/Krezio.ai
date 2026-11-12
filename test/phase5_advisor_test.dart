@@ -93,6 +93,24 @@ void main() {
       expect(r.text, contains('por ano'));
     });
 
+    test('cortar gastos com delivery sem ter pedidos de delivery não chuta nem confunde com lazer', () {
+      final noDeliveryHistory = <FinancialTransaction>[
+        for (final m in [7, 8, 9, 10]) ...[
+          exp('Luz', 180, DateTime(2026, m, 10), cat: 'housing'),
+          exp('Netflix', 55, DateTime(2026, m, 12), cat: 'leisure', rec: true),
+          exp('Restaurante Bar', 500, DateTime(2026, m, 15), cat: 'leisure'),
+          exp('Salário', 5000, DateTime(2026, m, 5), cat: 'salary', type: TransactionType.income),
+        ],
+      ];
+      final r1 = advisor(repoWith(noDeliveryHistory)).answer('se eu cortar o delivery, quanto economizo?')!;
+      expect(r1.text, contains('Não achei gastos'));
+      expect(r1.text, isNot(contains('500')));
+
+      final r2 = advisor(repoWith(noDeliveryHistory)).answer('cortar gastos com delivery')!;
+      expect(r2.text, contains('Não achei gastos'));
+      expect(r2.text, isNot(contains('500')));
+    });
+
     test('se eu guardar 200 por mês, quando bato a meta', () {
       final goal = FinancialGoal(id: 'g', title: 'Viagem', targetAmount: 3000, savedAmount: 1200);
       final r = advisor(repoWith(history(), goals: [goal])).answer('se eu guardar 200 por mês, quando bato a meta?')!;

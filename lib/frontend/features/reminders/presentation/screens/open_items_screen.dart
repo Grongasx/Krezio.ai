@@ -372,7 +372,7 @@ class OpenItemsScreen extends StatelessWidget {
   }
 
   Future<void> _receiveDebt(BuildContext context, FinancialReminder r) async {
-    final controller = TextEditingController(text: r.amount == null ? '' : Money.decimal(r.amount!));
+    final controller = TextEditingController(text: r.amount == null ? '' : Money.groupedDecimal(r.amount!));
     final value = await showDialog<double>(
       context: context,
       builder: (ctx) => AlertDialog(

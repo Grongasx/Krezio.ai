@@ -51,7 +51,8 @@ class MainNavigationWrapper extends StatefulWidget {
 class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
   late int _currentIndex = widget.initialIndex;
   String? _focusedBudget;
-  int _budgetJump = 0;
+  bool _transactionsShowBudgets = false;
+  int _transactionsJump = 0;
 
   @override
   void initState() {
@@ -93,16 +94,29 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         repository: widget.repository,
         isDark: widget.isDark,
         onNavigateToChat: () => _goTo(2),
-        onNavigateToTransactions: () => _goTo(1),
+        onNavigateToTransactions: () {
+          setState(() {
+            _transactionsShowBudgets = false;
+            _focusedBudget = null;
+            _transactionsJump++;
+          });
+          _goTo(1);
+        },
         onNavigateToBudgets: (category) {
-          _focusedBudget = category;
-          _budgetJump++;
-          _goTo(3);
+          setState(() {
+            _transactionsShowBudgets = true;
+            _focusedBudget = category;
+            _transactionsJump++;
+          });
+          _goTo(1);
         },
       ),
       TransactionsScreen(
+        key: ValueKey(_transactionsJump),
         repository: widget.repository,
         isDark: widget.isDark,
+        showBudgets: _transactionsShowBudgets,
+        focusedBudget: _focusedBudget,
       ),
       ChatScreen(
         engine: widget.engine,
@@ -111,10 +125,8 @@ class _MainNavigationWrapperState extends State<MainNavigationWrapper> {
         isDarkMode: widget.isDark,
       ),
       BudgetsScreen(
-        key: ValueKey(_budgetJump),
         repository: widget.repository,
         isDark: widget.isDark,
-        focusedCategory: _focusedBudget,
       ),
       SettingsScreen(
         repository: widget.repository,

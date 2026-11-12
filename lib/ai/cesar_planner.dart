@@ -2,6 +2,7 @@ import '../backend/models/financial_goal.dart';
 import '../backend/models/financial_reminder.dart';
 import '../backend/models/financial_transaction.dart';
 import '../backend/repositories/financial_repository.dart';
+import '../backend/services/calendar_service.dart';
 import 'cesar_text.dart';
 import 'local_nlp_engine.dart';
 import 'pt_number_words.dart';
@@ -161,6 +162,7 @@ class CesarPlanner {
         _knowledge(s) ??
         _feelings(s) ??
         _cardBill(s) ??
+        _cardBillStatus(s) ??
         _charge(s) ??
         _paidInFull(s) ??
         _payInstallment(s) ??
@@ -171,6 +173,7 @@ class CesarPlanner {
         _situation(s) ??
         _profit(s) ??
         _canPay(s) ??
+        _paydayCountdown(s) ??
         _agenda(s) ??
         _weekReview(s) ??
         _monthReview(s) ??
@@ -184,15 +187,50 @@ class CesarPlanner {
         _comment(s, text);
   }
 
+  static final _newEntryOrCommandInFlow = RegExp(
+    r'^(?:\w+\s+){0,2}(?:gastei|paguei|comprei|recebi|ganhei|transferi|torrei|abasteci|depositei|emprestei|almocei|jantei|'
+    r'apaga|apagar|apague|exclui|excluir|exclua|deleta|deletar|delete|remove|remover|remova|muda|mudar|mude|corrige|corrigir|corrija|altera|alterar|edita|editar)\b',
+  );
+  static final _debtWord = RegExp(r'\b(?:dividas?|emprestimos?|financiamentos?|devo|devendo|parcelas?|parcelamento|credor|banco|nubank|itau|bradesco|caixa|santander|inter)\b');
+  static final _purchasePayment = RegExp(r'\b(?:no|via|pelo|em)\s+(?:pix|debito|credito|dinheiro|especie)\b');
+
+  static final _everydayExpensePlace = RegExp(
+    r'\b(?:uber|99|ifood|rappi|mercado|supermercado|padaria|farmacia|drogaria|posto|gasolina|'
+    r'almoco|jantar|cafe|cafezinho|lanche|pizza|cerveja|churrasco|hamburguer|acai|sorvete|pastel|'
+    r'restaurante|shopping|onibus|metro|estacionamento|academia|bar|cinema)\b',
+  );
+
+  static bool _mentionsFlowItem(_Flow flow, String s) {
+    final item = switch (flow) {
+      _GoalFlow(:final item) => item,
+      _PurchaseFlow(:final item) => item,
+      _ => null,
+    };
+    if (item == null || item.trim().isEmpty) return false;
+    final folded = CesarText.fold(item);
+    return s.contains(folded);
+  }
+
   /// The next answer inside a flow. Null when [text] is not an answer to it
   /// (the flow is dropped and the message goes on its way).
   PlannerReply? continueFlow(String text) {
     final flow = _flow;
     if (flow == null) return null;
     final s = CesarText.simplify(text);
-    // A new entry ("gastei 50 no mercado") is not an answer: the flow ends
-    // and the entry goes on its way.
-    if (RegExp(r'^(?:\w+\s+){0,2}(?:gastei|paguei|comprei|recebi|ganhei|transferi|torrei|abasteci|depositei|emprestei|almocei|jantei)\b').hasMatch(s)) {
+    final isShortExpenseSwitch = (flow is _GoalFlow || flow is _DebtFlow || flow is _PurchaseFlow) &&
+        RegExp(r'\d').hasMatch(s) &&
+        _everydayExpensePlace.hasMatch(s) &&
+        !_debtWord.hasMatch(s) &&
+        !_mentionsFlowItem(flow, s);
+    final isQuestionExit = text.trim().endsWith('?') &&
+        !RegExp(r'^(?:e\s+se\b|se\s+eu\b)').hasMatch(s) &&
+        !(flow is _GoalFlow && flow.awaitingConfirm && RegExp(r'\b(?:por\s+mes|em\s+\d+\s+(?:mes|ano))\b').hasMatch(s));
+    // A new entry, edit/delete command, explicit question, or ordinary purchase
+    // payment is not an answer to the open flow: drop it and let chat route it.
+    if (_newEntryOrCommandInFlow.hasMatch(s) ||
+        (_purchasePayment.hasMatch(s) && !_debtWord.hasMatch(s)) ||
+        isShortExpenseSwitch ||
+        isQuestionExit) {
       _flow = null;
       return null;
     }
@@ -474,6 +512,46 @@ class CesarPlanner {
 
   // ───────────────────────── agenda ─────────────────────────
 
+  PlannerReply? _paydayCountdown(String s) {
+    final asksWhen = RegExp(r'\b(?:quanto\s+falta|quantos\s+dias(?:\s+faltam)?|falta[m]?\s+(?:quanto|quantos\s+dias)|quando\s+cai|qual\s+dia\s+cai)\b').hasMatch(s) &&
+        RegExp(r'\bsalario\b').hasMatch(s);
+    if (!asksWhen) return null;
+
+    final recSalary = repository.transactions
+        .where((t) => t.type == TransactionType.income && t.category == 'salary' && t.isRecurrent)
+        .toList();
+    final today = _today;
+    DateTime nextDate;
+    String ruleLabel;
+
+    if (recSalary.isNotEmpty && recSalary.first.dueBusinessDay != null) {
+      final n = recSalary.first.dueBusinessDay!;
+      nextDate = RealtimeCalendarService.nextNthBusinessDay(n, referenceDate: today);
+      ruleLabel = '$nº dia útil';
+    } else if (recSalary.isNotEmpty && recSalary.first.dueDay != null) {
+      final day = recSalary.first.dueDay!.clamp(1, 28);
+      final thisMonth = DateTime(today.year, today.month, day);
+      nextDate = thisMonth.isBefore(today) ? DateTime(today.year, today.month + 1, day) : thisMonth;
+      ruleLabel = 'dia $day';
+    } else {
+      nextDate = RealtimeCalendarService().getNextSalaryPayday(referenceDate: today);
+      ruleLabel = '5º dia útil bancário (padrão FEBRABAN)';
+    }
+
+    final diff = CesarText.dayOnly(nextDate).difference(today).inDays;
+    final dateStr = '${nextDate.day.toString().padLeft(2, '0')}/${nextDate.month.toString().padLeft(2, '0')}';
+    final whenText = diff == 0
+        ? 'é **hoje** ($dateStr)!'
+        : diff == 1
+            ? 'é **amanhã** ($dateStr).'
+            : 'faltam **$diff dias** (previsto para **$dateStr**, pela regra de $ruleLabel).';
+    return PlannerReply(
+      '📅 Sobre o próximo salário: $whenText\n\nSe o seu cai em outro dia, basta me contar (ex.: "meu salário cai todo dia 10").',
+      'planner:payday',
+      spoken: 'Sobre o próximo salário, ${diff == 0 ? 'cai hoje' : diff == 1 ? 'cai amanhã' : 'faltam $diff dias, em $dateStr'}.',
+    );
+  }
+
   PlannerReply? _agenda(String s) {
     final asksAgenda = RegExp(r'\b(?:o\s+que|oque|que)\s+(?:eu\s+)?(?:tenho|temos|tem|preciso|precisamos|devo)\b').hasMatch(s) ||
         RegExp(r'\b(?:agenda|compromissos?|pendencias|precisa\s+ser\s+feito|tenho\s+que\s+fazer|a\s+fazer)\b').hasMatch(s) ||
@@ -593,8 +671,33 @@ class CesarPlanner {
   // ───────────────────────── charge / debts ─────────────────────────
 
   PlannerReply? _charge(String s) {
-    if (!RegExp(r'\bquem\s+(?:eu\s+)?(?:preciso|tenho\s+que|devo|vou|posso)\s+cobrar\b|\b(?:alguem|quem)\s+(?:esta|ta)\s+(?:atrasad\w*|me\s+devendo\s+atrasad\w*)|\btem\s+alguem\s+atrasad\w*|\bcobrancas?\s+(?:do|deste|desse)\s+mes\b')
-        .hasMatch(s)) {
+    final specificDebtor = RegExp(r'\b(?:quanto|qto|qnto)\s+(?:o\s+|a\s+)?([a-zA-ZÀ-ÿ]+)\s+(?:ainda\s+)?(?:me\s+)?(?:deve|tem\s+que\s+pagar)\b').firstMatch(s);
+    if (specificDebtor != null) {
+      final name = specificDebtor.group(1)!;
+      final debtorReminders = repository.findDebtorsByName(name);
+      if (debtorReminders.isEmpty) {
+        final t = 'O $name não tem nenhuma dívida ou cobrança em aberto com você. 👍';
+        return PlannerReply('🤝 $t', 'planner:charge', spoken: t);
+      }
+      final sum = debtorReminders.fold(0.0, (a, d) => a + (d.amount ?? 0));
+      final displayName = debtorReminders.first.personName ?? (name.isNotEmpty ? name[0].toUpperCase() + name.substring(1) : name);
+      final t = 'O $displayName ainda deve ${CesarText.money(sum)} no total (${debtorReminders.length} ${debtorReminders.length == 1 ? 'cobrança' : 'cobranças'}).';
+      return PlannerReply('🤝 $t', 'planner:charge', spoken: t);
+    }
+    if (!RegExp(
+      r'\bquem\s+(?:eu\s+)?(?:preciso|tenho\s+que|devo|vou|posso)\s+cobrar\b|'
+      r'\b(?:quem|quais\s+pessoas?|algu[ée]m)\s+(?:(?:est[áa]|t[áa])\s+)?(?:me\s+)?dev(?:e|endo)\b|'
+      r'\b(?:algu[ée]m|quem)\s+(?:ainda\s+)?me\s+deve\b|'
+      r'\btem\s+algu[ée]m\s+(?:que\s+)?(?:me\s+)?dev(?:e|endo)|'
+      r'\b(?:quem|algu[ée]m)\s+tem\s+que\s+me\s+pagar\b|'
+      r'\bquem\s+vai\s+me\s+pagar\b|'
+      r'\b(?:alguem|quem)\s+(?:esta|ta)\s+atrasad\w*|'
+      r'\btem\s+alguem\s+atrasad\w*|'
+      r'\b(?:quanto|qto|qnto)\s+(?:eu\s+)?(?:ainda\s+)?(?:falta|tenho)\s+(?:pra\s+|para\s+|a\s+)?receber\b|'
+      r'\b(?:quanto|qto|qnto)\s+(?:eu\s+)?(?:ainda\s+)?falta\s+(?:me\s+)?pagar(?:em)?\b|'
+      r'\b(?:contas?|valores?|cobran[çc]as?)\s+a\s+receber\b|'
+      r'\bcobrancas?\s+(?:do|deste|desse)\s+mes\b',
+    ).hasMatch(s)) {
       return null;
     }
     final now = _today;
@@ -613,12 +716,12 @@ class CesarPlanner {
           ? 'Ninguém está atrasado com você. 👍'
           : monthOnly && all.isNotEmpty
               ? 'Ninguém precisa ser cobrado este mês. ${all.length == 1 ? 'Há 1 valor' : 'Há ${all.length} valores'} para depois: ${all.map((d) => '${d.personName ?? d.title} (${CesarText.ddmm(d.targetDate)})').join(', ')}.'
-              : 'Ninguém te deve nada no momento. 👍';
+              : 'Ninguém te deve nada no momento e não há cobranças pendentes a receber. 👍';
       return PlannerReply('🤝 $t', 'planner:charge', spoken: t);
     }
     final total = list.fold(0.0, (a, d) => a + (d.amount ?? 0));
     final lines = list.map((d) => '- **${d.personName ?? d.title}** — ${d.amount != null ? CesarText.money(d.amount!) : 'valor não informado'} (${_when(d.targetDate)})').join('\n');
-    final head = lateOnly ? 'Estão atrasados com você' : (monthOnly ? 'Para cobrar este mês' : 'Para cobrar');
+    final head = lateOnly ? 'Estão atrasados com você' : (monthOnly ? 'Para cobrar este mês' : 'Cobranças e valores a receber');
     final spoken = '$head: ${list.length} ${list.length == 1 ? 'pessoa' : 'pessoas'}, ${CesarText.money(total)} no total.';
     return PlannerReply('🤝 $head (${CesarText.money(total)}):\n$lines\n\nQuando alguém pagar, diga "o João me pagou 50".', 'planner:charge', spoken: spoken);
   }
@@ -714,9 +817,13 @@ class CesarPlanner {
         .allMatches(s)
         .map((m) => m.group(1)!)
         .where((w) => !const {
-              'divida', 'emprestimo', 'pagar', 'dias', 'parcelas', 'vezes', 'mes', 'cartao', 'pix', 'boleto', 'agora', 'hoje', 'semana', 'reais', 'mil',
-              'ela', 'ele', 'isso', 'prazo', 'ultima', 'proxima', 'dentro', 'quinze', 'cada', 'todo', 'final', 'fim', 'sexta', 'segunda', 'terca', 'quarta',
-              'quinta', 'sabado', 'domingo', 'amanha', 'depois'
+              'divida', 'emprestimo', 'pagar', 'dias', 'parcela', 'parcelas', 'vezes', 'mes', 'meses', 'ano', 'anos',
+              'cartao', 'pix', 'boleto', 'credito', 'debito', 'dinheiro', 'especie', 'avista', 'vista', 'transferencia',
+              'agora', 'hoje', 'semana', 'reais', 'mil', 'ela', 'ele', 'isso', 'prazo', 'ultima', 'proxima', 'dentro',
+              'quinze', 'cada', 'todo', 'final', 'fim', 'sexta', 'segunda', 'terca', 'quarta', 'quinta', 'sabado', 'domingo',
+              'amanha', 'depois', 'mercado', 'supermercado', 'farmacia', 'posto', 'uber', 'ifood', 'cafe', 'almoco', 'jantar',
+              'lazer', 'compra', 'compras', 'casa', 'luz', 'agua', 'internet', 'gas', 'aluguel', 'conta', 'contas', 'fatura',
+              'janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
             }.contains(w))
         .firstOrNull;
     if (who != null) {
@@ -740,7 +847,7 @@ class CesarPlanner {
 
   PlannerReply? _debtContinue(_DebtFlow f, String s, String text) {
     if (f.offered && _yes(s) && money(s) == null) return _createDebt(f);
-    if (money(s) == null) {
+    if (money(s) == null || (text.trim().endsWith('?') && !_debtWord.hasMatch(s))) {
       _flow = null;
       return null;
     }
@@ -1366,10 +1473,21 @@ class CesarPlanner {
   /// "quero quitar meu cartão o quanto antes", "faz um plano pra eu sair das dívidas".
   PlannerReply? _payoff(String s) {
     final debtWords = RegExp(r'\b(?:dividas?|devo|devendo|cartao|emprestimo|financiamento|rotativo|cheque\s+especial|fatura)\b');
+    final comparesInvestVsDebt = RegExp(r'\b(?:investir|aplicar|guardar|poupar|juntar)\b').hasMatch(s) &&
+        RegExp(r'\b(?:pagar|quitar|abater|amortizar)\b').hasMatch(s) &&
+        debtWords.hasMatch(s);
+    if (comparesInvestVsDebt) {
+      return _investVsPayDebt(s);
+    }
     final howTo = RegExp(r'\bcomo\s+(?:eu\s+)?(?:pago|quito|saio|resolvo|pagar|quitar|sair|resolver|faco\s+pra\s+pagar)\b|\bo\s+que\s+(?:eu\s+)?faco\b|\bme\s+ajuda\s+a\s+(?:pagar|quitar|sair)\b')
             .hasMatch(s) &&
         debtWords.hasMatch(s);
+    final debtDistress = RegExp(
+            r'\b(?:(?:to|tou|estou|ando|fiquei|tamo|estamos)\s+(?:(?:muito|bem|todo|toda|cheio\s+de|cheia\s+de|atolad[oa]\s+em|afundad[oa]\s+em)\s+)?endividad[oa]s?|'
+            r'(?:atolad[oa]|afundad[oa])\s+(?:em|nas)\s+dividas?|chei[oa]\s+de\s+dividas?)\b')
+        .hasMatch(s);
     if (!(howTo ||
+            debtDistress ||
             RegExp(r'\b(?:quitar|pagar|zerar|sair\s+d[ae]s?)\s+(?:minhas\s+|as\s+|meu\s+|o\s+|a\s+)?(?:dividas?|cartao|emprestimo|financiamento|cheque\s+especial|fatura)\b|\bsair\s+do\s+vermelho\b|\bsair\s+das\s+dividas\b')
                 .hasMatch(s)) ||
         RegExp(r'\b(?:paguei|quitei)\b').hasMatch(s)) {
@@ -1404,6 +1522,48 @@ class CesarPlanner {
     return PlannerReply('💪 $t\n$plan\n${tips.join('\n')}\n\nPergunte "quanto eu devo?" para ver a lista.', 'planner:payoff', spoken: t);
   }
 
+  /// "melhor investir 500 ou pagar dívida?": treats the value as available
+  /// capital to allocate (never assumes the amount is a debt balance).
+  PlannerReply _investVsPayDebt(String s) {
+    final said = money(s);
+    final intro = (said != null && said > 0)
+        ? 'Assumindo que você tem **${CesarText.money(said)}** disponíveis para decidir entre investir ou abater dívidas:'
+        : 'Para decidir entre investir ou quitar uma dívida, compare os **juros da dívida** contra o **rendimento líquido** da aplicação:';
+    final estGain = (said != null && said > 0)
+        ? '\n- Em 100% do CDI (~0,8%/mês), ${CesarText.money(said)} renderiam cerca de **${CesarText.money(said * 0.008)}/mês** antes do IR.'
+        : '';
+    final openTotal = repository.openBills.fold(0.0, (a, b) => a + (b.amount ?? 0));
+    final debtNote = openTotal > 0 ? '\n- Você tem **${CesarText.money(openTotal)}** em contas/dívidas registradas.' : '';
+    final body = '⚖️ $intro$estGain$debtNote\n'
+        '- **Pague a dívida primeiro** se ela tiver juros altos (rotativo do cartão, cheque especial, empréstimo comum): quase sempre o juro cobrado é bem maior do que qualquer renda fixa paga.\n'
+        '- **Invista antes** apenas se os juros forem muito baixos (ex.: alguns financiamentos subsidiados) ou se você ainda não tiver nenhuma **reserva de emergência** mínima para não cair no rotativo de novo.';
+    return PlannerReply(
+      body,
+      'planner:invest_vs_debt',
+      spoken: 'Em geral, vale quitar dívidas com juros altos antes de investir, porque os juros custam bem mais que o rendimento da renda fixa.',
+    );
+  }
+
+  ({double total, int count}) _creditCardActivitySince(DateTime since) {
+    var onCard = 0.0;
+    var count = 0;
+    for (final t in repository.transactions) {
+      if (t.type != TransactionType.expense || t.paymentMethod != 'credit_card') continue;
+      final n = t.installments ?? 1;
+      if (n > 1) {
+        final monthsAgo = (_today.year - t.date.year) * 12 + _today.month - t.date.month;
+        if (monthsAgo >= 0 && monthsAgo < n) {
+          onCard += t.amount / n;
+          count++;
+        }
+      } else if (!t.date.isBefore(since)) {
+        onCard += t.amount;
+        count++;
+      }
+    }
+    return (total: onCard, count: count);
+  }
+
   /// "paguei a fatura do cartão, 1540": not a new expense — the purchases on
   /// the card count when each is told; recording the bill too would count the
   /// same money twice. César says so, and points to what may be missing.
@@ -1414,26 +1574,46 @@ class CesarPlanner {
       return null;
     }
     final said = money(s);
-    final since = _today.subtract(const Duration(days: 35));
-    // What the card should have this month: purchases since the last bill,
-    // and one installment of each purchase split in installments.
-    var onCard = 0.0;
-    for (final t in repository.transactions) {
-      if (t.type != TransactionType.expense || t.paymentMethod != 'credit_card') continue;
-      final n = t.installments ?? 1;
-      if (n > 1) {
-        final monthsAgo = (_today.year - t.date.year) * 12 + _today.month - t.date.month;
-        if (monthsAgo >= 0 && monthsAgo < n) onCard += t.amount / n;
-      } else if (!t.date.isBefore(since)) {
-        onCard += t.amount;
-      }
-    }
+    final activity = _creditCardActivitySince(_today.subtract(const Duration(days: 35)));
+    final onCard = activity.total;
     final gap = said != null && onCard > 0 && said > onCard * 1.1
         ? '\n\nNo crédito, você me contou uns ${CesarText.money(onCard)} no último mês. Se a fatura veio ${CesarText.money(said)}, pode ter compra que ficou de fora — '
             'me conta (ex.: "gastei 80 no mercado no crédito") que eu anoto.'
         : '';
     const t = 'Pagamento de fatura eu não registro como gasto novo: as compras do cartão já contam quando você me fala de cada uma — senão o mesmo dinheiro entraria duas vezes.';
     return PlannerReply('💳 $t$gap\n\nSe o cartão estiver cadastrado em **Contas**, a fatura dele aparece lá.', 'planner:card_bill', spoken: t);
+  }
+
+  /// "qual o valor da minha fatura?", "como está minha fatura do cartão?":
+  /// avoids falling into literal record lookup ('fatura') and gives an
+  /// accounting-honest summary of credit-card spending this month.
+  PlannerReply? _cardBillStatus(String s) {
+    if (!RegExp(r'\bfatura\b').hasMatch(s)) return null;
+    if (RegExp(r'\bfatura\s+(?:d[aoe]\s+)?(?:luz|agua|energia|internet|celular|telefone|gas|vivo|claro|tim|oi|net|sky|enel|cemig|cpfl|sabesp|light|copel|condominio|escola|faculdade|academia)\b')
+        .hasMatch(s)) {
+      return null;
+    }
+    if (!RegExp(r'\b(?:qual|quanto|como|ver|vejo|mostra|mostre|cad[eê]|tem|esta|ta|fechou|abre|valor)\b').hasMatch(s)) return null;
+
+    final monthStart = DateTime(_today.year, _today.month, 1);
+    final activity = _creditCardActivitySince(monthStart);
+    final creditCards = repository.activeAccounts.where((a) => a.isCreditCard).toList();
+    final cardInfo = creditCards.isEmpty
+        ? '\n\nℹ️ *Você ainda não cadastrou um cartão com dia de fechamento em **Ajustes → Contas e carteiras**; por isso mostro os lançamentos no crédito do mês (sem separar o ciclo exato da fatura).* '
+        : '\n\n💳 Cartões configurados: ${creditCards.map((c) => '${c.name} (fecha dia ${c.closingDay ?? '?'}, vence dia ${c.dueDay ?? '?'})').join(', ')}.';
+
+    if (activity.count == 0) {
+      return PlannerReply(
+        '💳 Não há compras no cartão de crédito registradas neste mês até agora.$cardInfo',
+        'planner:card_bill_status',
+        spoken: 'Você ainda não tem compras no cartão de crédito registradas neste mês.',
+      );
+    }
+    return PlannerReply(
+      '💳 Você soma **${CesarText.money(activity.total)}** no cartão de crédito neste mês (${activity.count} ${activity.count == 1 ? 'lançamento/parcela' : 'lançamentos/parcelas'}).$cardInfo',
+      'planner:card_bill_status',
+      spoken: 'Seus gastos no cartão de crédito neste mês somam ${CesarText.money(activity.total)}.',
+    );
   }
 
   PlannerReply _payoffFor(double amount, String s, double surplus) {
@@ -1572,25 +1752,33 @@ class CesarPlanner {
         'Na **renda fixa** você sabe a regra do rendimento na hora de investir (ex.: 100% do CDI, IPCA + 6%). Na **renda variável** (ações, fundos imobiliários) o rendimento oscila.',
     r'\binflacao\b|\bipca\b':
         '**Inflação** é a alta geral dos preços; o **IPCA** é o índice oficial. Se seu dinheiro rende menos que a inflação, ele perde poder de compra.',
+    r'\b50[\s/-]+30[\s/-]+20\b|regra\s+d[aeo]s?\s+50':
+        'A **regra 50/30/20** sugere dividir a renda líquida em: **50%** para necessidades essenciais (moradia, mercado, contas), **30%** para estilo de vida/lazer e **20%** para reserva, metas ou quitação de dívidas. É só uma referência: vale ajustar ao seu momento.',
+    r'\bdebito\b.*\bcredito\b|\bcredito\b.*\bdebito\b':
+        'No **débito**, o valor sai na hora do seu saldo e não gera fatura. No **crédito**, você paga depois na fatura (à vista ou parcelado), exigindo cuidado com o vencimento e os juros do rotativo.',
   };
 
   PlannerReply? _knowledge(String s) {
-    if (!RegExp(r'^(?:o\s+que\s+(?:e|sao|significa)|oque\s+e|que\s+e|como\s+funciona[m]?|me\s+explica|explica|vale\s+a\s+pena|e\s+bom|compensa)\b|\bvale\s+a\s+pena\b|\bcompensa\b|'
-            r'\be\s+(?:ruim|bom|boa|perigos[oa]|car[oa]|seguro|segura|confiavel)\b|\bdevo\s+usar\b|\bpor\s+que\s+(?:evitar|fugir)\b|'
-            // "qual a diferença entre cdb e poupança?", "quanto rende a poupança?"
-            r'\bdiferenca\s+entre\b|\bqual\s+(?:e\s+)?(?:a\s+)?diferenca\b|\bquanto\s+rende\b|\bqual\s+(?:e\s+)?(?:o\s+)?melhor\b|\be\s+melhor\b|\brende\s+mais\b')
-        .hasMatch(s)) {
-      return null;
-    }
     final found = [
       for (final e in _glossary.entries)
         if (RegExp(e.key).hasMatch(s)) e.value,
     ];
     if (found.isEmpty) return null;
+    final hasTwoWayComparison = found.length >= 2 && RegExp(r'\bdiferenca\b|\bou\b|\bmelhor\b|\bmais\b|\bvs\b|\bversus\b|\be\b').hasMatch(s);
+    if (!hasTwoWayComparison &&
+        !RegExp(r'^(?:o\s+que\s+(?:e|sao|significa)|oque\s+e|que\s+e|como\s+funciona[m]?|me\s+explica|explica|vale\s+a\s+pena|e\s+bom|compensa)\b|\bvale\s+a\s+pena\b|\bcompensa\b|\bfunciona\b|'
+                r'\be\s+(?:ruim|bom|boa|perigos[oa]|car[oa]|seguro|segura|confiavel)\b|\bdevo\s+usar\b|\bpor\s+que\s+(?:evitar|fugir)\b|'
+                // "qual a diferença entre cdb e poupança?", "quanto rende a poupança?"
+                r'\bdiferenca\s+entre\b|\bqual\s+(?:e\s+)?(?:a\s+)?diferenca\b|\bquanto\s+rende\b|\bqual\s+(?:e\s+)?(?:o\s+)?melhor\b|\be\s+melhor\b|\brende\s+mais\b')
+            .hasMatch(s)) {
+      return null;
+    }
     // Two things asked side by side ("cdb ou poupança?"): both, one after the other.
-    final both = found.length >= 2 && RegExp(r'\bdiferenca\b|\bou\b|\bmelhor\b|\bmais\b|\bvs\b|\bversus\b').hasMatch(s);
+    final both = hasTwoWayComparison;
     final t = both ? '${found[0]}\n\n${found[1]}' : found.first;
-    final close = both ? '\n\nO melhor depende do prazo e de quando você vai precisar do dinheiro: para reserva, vale a liquidez diária; para prazos longos, o rendimento pesa mais.' : '';
+    final close = (both && !RegExp(r'\bdebito\b').hasMatch(s))
+        ? '\n\nO melhor depende do prazo e de quando você vai precisar do dinheiro: para reserva, vale a liquidez diária; para prazos longos, o rendimento pesa mais.'
+        : '';
     return PlannerReply('📚 $t$close\n\n_Isso é informação geral, não recomendação de investimento._', 'planner:knowledge', spoken: found.first.replaceAll('**', ''));
   }
 
@@ -1601,8 +1789,27 @@ class CesarPlanner {
       return const PlannerReply('🏦 Consigo sim! Exporte o extrato no app do banco em OFX ou CSV e use **Ajustes → Ferramentas → Importar extrato do banco**. '
           'Eu mostro tudo antes de importar e não duplico o que já existe. Se quiser o passo a passo, pergunte "como pego meu extrato no banco?".', 'help');
     }
-    if (RegExp(r'\b(?:exportar|baixar|levar|salvar)\s+(?:os\s+)?(?:meus\s+)?dados\b|\bbackup\b').hasMatch(s)) {
-      return const PlannerReply('📦 Em **Ajustes → Privacidade e dados → Exportar meus dados** você baixa tudo em JSON e os lançamentos em CSV (abre no Excel).', 'help');
+    if (RegExp(r'\b(?:exportar|baixar|levar|salvar)\b.*\b(?:dados|excel|csv|planilha)\b|\b(?:para|pro|em)\s+(?:excel|csv|planilha)\b|\bbackup\b').hasMatch(s)) {
+      return const PlannerReply('📦 Em **Ajustes → Privacidade e dados → Exportar meus dados** você baixa tudo em JSON e os lançamentos em **CSV** (que abre direto no Excel).', 'help');
+    }
+    if (RegExp(r'\b(?:privad[oa]s?|privacidade|offline|sem\s+internet|usa\s+internet|nuvem)\b').hasMatch(s)) {
+      return const PlannerReply(
+        '🔒 **100% no seu aparelho (on-device):** minha IA e seus cálculos rodam localmente no dispositivo, inclusive **offline** — você pode lançar gastos e consultar relatórios sem enviar conversas para fora.',
+        'help',
+      );
+    }
+    if (RegExp(r'\b(?:conecto|conectar|vinculo|vincular|integro|integrar|sincroniz\w*)\s+(?:(?:o|meu)\s+)?(?:banco|conta|nubank|itau|inter|bradesco|santander|caixa)\b|\bopen\s+finance\b').hasMatch(s)) {
+      return const PlannerReply(
+        '🏦 Por segurança e privacidade, ainda **não** conecto direto na sua conta bancária nem via Open Finance. '
+            'Mas você pode importar seu extrato em OFX ou CSV em **Ajustes → Ferramentas → Importar extrato do banco** (sem duplicar nada).',
+        'help',
+      );
+    }
+    if (RegExp(r'\b(?:onde|como)\s+(?:eu\s+)?(?:vejo|abro|acesso|encontro|ficam)\s+(?:os\s+|meus\s+)?(?:graficos?|relatorios?|analises?|dashboard)\b').hasMatch(s)) {
+      return const PlannerReply(
+        '📊 Você pode abrir os gráficos completos na aba **Análises / Relatórios** do app — ou pedir direto aqui no chat, ex.: **"me mostra um gráfico dos meus gastos"**!',
+        'help',
+      );
     }
     if (RegExp(r'\bo\s+que\s+(?:voce\s+)?nao\s+(?:sabe|consegue|faz)\b|\bquais\s+(?:sao\s+)?(?:seus|os\s+seus)\s+limites\b').hasMatch(s)) {
       return const PlannerReply('🙂 Ainda não consigo:\n'
@@ -1652,7 +1859,9 @@ class CesarPlanner {
 
   PlannerReply? _cutsAdvice(String s) {
     if (!RegExp(r'\b(?:o\s+que|oque|onde|em\s+que|no\s+que|qual\s+gasto|quais\s+gastos)\s+(?:eu\s+)?(?:devo|posso|deveria|poderia|consigo|preciso|tenho\s+que|da\s+pra)\s+(?:cortar|reduzir|diminuir|economizar|enxugar)\b|'
-            r'\bonde\s+(?:eu\s+)?(?:to|estou)\s+gastando\s+(?:demais|muito)\b|\bem\s+que\s+(?:eu\s+)?gasto\s+demais\b|\bcortar\s+(?:de\s+|meus\s+|os\s+)?gastos\b|\bquais?\s+gastos?\s+(?:eu\s+)?(?:corto|cortar)\b')
+            r'\b(?:da\s+pra|consigo|posso|como)\s+gastar\s+menos\b|'
+            r'\bonde\s+(?:eu\s+)?(?:to|estou)\s+gastando\s+(?:demais|muito)\b|\bem\s+que\s+(?:eu\s+)?gasto\s+demais\b|'
+            r'\bcortar\s+(?:de\s+|meus\s+|os\s+)?gastos(?:\s+(?:no\s+geral|gerais))?\b(?!\s+(?:com|de|em)\b)|\bquais?\s+gastos?\s+(?:eu\s+)?(?:corto|cortar)\b')
         .hasMatch(s)) {
       return null;
     }
@@ -1854,6 +2063,18 @@ class CesarPlanner {
       r'(?:comprar|trocar\s+(?:de|o|a|meu|minha)|pegar|assinar|bancar)\s+(?:(?:um|uma|o|a|meu|minha|esse|essa)\s+)?([a-z]{3,}(?:\s+(?!agora|hoje|logo|ja|esse|este|essa)[a-z]{3,})?)');
 
   PlannerReply? _purchaseAsk(String s, String text) {
+    if (money(s) == null && RegExp(r'\b(?:posso|consigo|da\s+pra|vale\s+a\s+pena)\s+(?:viajar|fazer\s+(?:uma\s+)?viagem)\b').hasMatch(s)) {
+      final tripGoals = repository.findGoalsByTitle('viagem');
+      final goalNote = tripGoals.isNotEmpty
+          ? '\n\n🎯 Você já tem **${CesarText.money(tripGoals.first.savedAmount)}** de **${CesarText.money(tripGoals.first.targetAmount)}** na meta "${tripGoals.first.title}".'
+          : '';
+      _flow = _PurchaseFlow('viagem');
+      return PlannerReply(
+        '✈️ Bora ver se a viagem cabe no bolso!$goalNote Quanto você estima gastar ao todo? (ex.: "3000" ou "2500 em 6x") Que eu simulo no seu caixa.',
+        'planner:purchase_ask',
+        spoken: 'Bora ver se a viagem cabe no bolso! Quanto você estima gastar?',
+      );
+    }
     final weighed = money(s) == null ? _weighing.firstMatch(s)?.group(1) : null;
     if (weighed != null) {
       _flow = _PurchaseFlow(weighed);

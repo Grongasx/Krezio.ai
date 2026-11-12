@@ -109,19 +109,7 @@ class DashboardScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.lg, vertical: KrezioSpace.sm),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    // 1. Total Balance Hero Card
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        tooltip: hideAmounts ? 'Mostrar valores' : 'Ocultar valores',
-                        onPressed: () => repository.setPreference(
-                          _hideAmounts,
-                          (!hideAmounts).toString(),
-                          notify: true,
-                        ),
-                        icon: Icon(hideAmounts ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-                      ),
-                    ),
+                    // 1. Total Balance Hero Card (with embedded privacy toggle)
                     MetricSummaryCard(
                       title: 'Saldo Líquido Geral',
                       amount: totalBalance,
@@ -130,6 +118,11 @@ class DashboardScreen extends StatelessWidget {
                       isDark: isDark,
                       isLarge: true,
                       hideAmount: hideAmounts,
+                      onTogglePrivacy: () => repository.setPreference(
+                        _hideAmounts,
+                        (!hideAmounts).toString(),
+                        notify: true,
+                      ),
                     ),
                     const SizedBox(height: KrezioSpace.md),
 
@@ -284,30 +277,21 @@ class DashboardScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.notifications_active_outlined, size: 16, color: KrezioColors.friendlyOrange),
-                                    const SizedBox(width: KrezioSpace.sm),
-                                    Text(
-                                      'Lembretes & Contas a Receber',
-                                      style: TextStyle(
-                                        fontSize: KrezioFont.bodySmall,
-                                        fontWeight: FontWeight.bold,
-                                        color: primaryTextColor,
-                                      ),
+                                const Icon(Icons.notifications_active_outlined, size: 16, color: KrezioColors.friendlyOrange),
+                                const SizedBox(width: KrezioSpace.sm),
+                                Expanded(
+                                  child: Text(
+                                    'Lembretes & Contas a Receber',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: KrezioFont.bodySmall,
+                                      fontWeight: FontWeight.bold,
+                                      color: primaryTextColor,
                                     ),
-                                  ],
-                                ),
-                                const Spacer(),
-                                TextButton(
-                                  onPressed: () => Navigator.push(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => OpenItemsScreen(repository: repository, isDark: isDark)),
                                   ),
-                                  child: const Text('Ver tudo', style: TextStyle(fontSize: KrezioFont.small)),
                                 ),
+                                const SizedBox(width: KrezioSpace.xs),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm, vertical: KrezioSpace.hair),
                                   decoration: BoxDecoration(
@@ -319,10 +303,21 @@ class DashboardScreen extends StatelessWidget {
                                     style: const TextStyle(fontSize: KrezioFont.micro, fontWeight: FontWeight.bold, color: KrezioColors.friendlyOrange),
                                   ),
                                 ),
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    visualDensity: VisualDensity.compact,
+                                    padding: const EdgeInsets.symmetric(horizontal: KrezioSpace.sm),
+                                  ),
+                                  onPressed: () => Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => OpenItemsScreen(repository: repository, isDark: isDark)),
+                                  ),
+                                  child: const Text('Ver tudo', style: TextStyle(fontSize: KrezioFont.small)),
+                                ),
                               ],
                             ),
                             const SizedBox(height: KrezioSpace.md),
-                            ...repository.reminders.map((r) {
+                            ...repository.reminders.take(4).map((r) {
                               final dayStr = r.targetDate.day.toString().padLeft(2, '0');
                               final monthStr = r.targetDate.month.toString().padLeft(2, '0');
                               final amountStr = r.amount != null

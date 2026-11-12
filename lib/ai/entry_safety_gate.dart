@@ -314,6 +314,24 @@ class EntrySafetyGate {
     // last one can bring a new number.
     final text = turns.last;
     final s = _fold(PtNumberWords.normalize(text.toLowerCase()));
+    for (final m in _number.allMatches(s)) {
+      final raw = m.group(1)!;
+      final before = s.substring(0, m.start);
+      final after = s.substring(m.end);
+      final v = LocalFinancialNlpEngine.cleanAndParseAmount(raw);
+      final isIdentifier = RegExp(r'\b(?:final|finais|termin\w*\s+(?:em|com)|cpf|cnpj|rg|cep|numero|telefone|celular|whats\w*|agencia|chave|apto|sala)\s*(?:e|eh|:)?\s*$').hasMatch(before);
+      if (isIdentifier) continue;
+      if (LocalFinancialNlpEngine.isExplicitNegative(before) && !LocalFinancialNlpEngine.isNonValueNumber(raw, before, after)) {
+        return GateVerdict.ask(GateCheck.numbers, 'split',
+            'Vi um valor negativo junto de ${_brl(amount)} — os lançamentos precisam ter valor positivo. Qual valor certo devo registrar?');
+      }
+      if (v != null && v >= LocalFinancialNlpEngine.maxPlausibleAmount &&
+          (!LocalFinancialNlpEngine.isNonValueNumber(raw, before, after) ||
+              RegExp(r'\b(?:na|no|em|de|por|reais|real|conto|contos)\b').hasMatch('$before ${after.split(' ').take(3).join(' ')}'))) {
+        return GateVerdict.ask(GateCheck.numbers, 'split',
+            'Vi um valor fora do padrão (${_brl(v)}) junto de ${_brl(amount)}. Qual valor certo devo registrar?');
+      }
+    }
     final values = [
       for (final m in _number.allMatches(s))
         if (LocalFinancialNlpEngine.cleanAndParseAmount(m.group(1)) case final v? when v > 0) v,
@@ -508,7 +526,9 @@ class EntrySafetyGate {
   static GateVerdict checkCertainty(FinancialTransactionDraft draft, List<String> turns) {
     if (!draft.isComplete || draft.missingSlots.isNotEmpty || draft.settledChecks.contains('certainty')) return const GateVerdict.ok();
     if (draft.bankSource != null) return const GateVerdict.ok();
-    if (EntryCertainty.read(turns).high) return const GateVerdict.ok();
+    // Large outliers (>= 1M) always pause once for user confirmation before saving.
+    final needsOutlierConfirm = draft.amount != null && draft.amount! >= 1000000;
+    if (!needsOutlierConfirm && EntryCertainty.read(turns).high) return const GateVerdict.ok();
     return GateVerdict.ask(GateCheck.certainty, 'confirm', confirmQuestion(draft));
   }
 

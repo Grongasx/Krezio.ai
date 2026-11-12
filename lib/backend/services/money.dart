@@ -48,72 +48,43 @@ class Money {
   }
 }
 
-/// Automatic Brazilian currency input mask (`4000` -> `4.000,00`, `50,90` -> `50,90`).
+/// Automatic Brazilian currency input mask, filled from the cents like a
+/// bank app: typing `4` → `0,04`, `45` → `0,45`, `4500` → `45,00`,
+/// `400000` → `4.000,00`. Backspace removes the last digit.
 class BrlCurrencyInputFormatter extends TextInputFormatter {
   const BrlCurrencyInputFormatter();
+
+  static String _digits(String s) => s.replaceAll(RegExp(r'\D'), '');
 
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    final raw = newValue.text.trim();
-    if (raw.isEmpty || raw == ',00' || raw == ',') {
-      return const TextEditingValue(
-        text: '',
-        selection: TextSelection.collapsed(offset: 0),
-      );
+    var digits = _digits(newValue.text);
+    final oldDigits = _digits(oldValue.text);
+
+    // Backspace over a separator ("." or ","): drop the last digit instead,
+    // otherwise the deletion would be invisible.
+    if (newValue.text.length < oldValue.text.length && digits == oldDigits && digits.isNotEmpty) {
+      digits = digits.substring(0, digits.length - 1);
     }
 
-    // If user typed ',' or '.' right before ',00' to edit cents:
-    if (raw.contains(',,') || raw.contains('.,')) {
-      final intPart = raw.split(RegExp(r'[,.],')).first;
-      final formattedInt = Money.formatIntDigits(intPart);
-      final text = '$formattedInt,';
-      return TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
-    }
-
-    if (raw.contains(',')) {
-      final parts = raw.split(',');
-      final intDigits = parts.first.replaceAll(RegExp(r'\D'), '');
-      final decDigits = parts.sublist(1).join().replaceAll(RegExp(r'\D'), '');
-      if (intDigits.isEmpty && (decDigits.isEmpty || decDigits == '00')) {
-        return const TextEditingValue(
-          text: '',
-          selection: TextSelection.collapsed(offset: 0),
-        );
-      }
-      final formattedInt = Money.formatIntDigits(intDigits.isEmpty ? '0' : intDigits);
-      final clampedDec = decDigits.length > 2 ? decDigits.substring(0, 2) : decDigits;
-      final text = '$formattedInt,$clampedDec';
-
-      // Keep cursor before comma if user was editing integer part before ',00'
-      final oldComma = oldValue.text.indexOf(',');
-      final wasBeforeComma =
-          oldComma >= 0 && oldValue.selection.baseOffset <= oldComma && clampedDec == '00';
-      final offset = wasBeforeComma ? formattedInt.length : text.length;
-      return TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: offset.clamp(0, text.length)),
-      );
-    }
-
-    // No comma present (e.g. '4000' -> '4.000,00')
-    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    digits = digits.replaceFirst(RegExp(r'^0+'), '');
     if (digits.isEmpty) {
       return const TextEditingValue(
         text: '',
         selection: TextSelection.collapsed(offset: 0),
       );
     }
-    final formattedInt = Money.formatIntDigits(digits);
-    final text = '$formattedInt,00';
+    // Cap at 13 digits (R$ 99.999.999.999,99) to stay inside int precision.
+    if (digits.length > 13) digits = digits.substring(0, 13);
+
+    final cents = int.parse(digits);
+    final text = Money.groupedDecimal(cents / 100);
     return TextEditingValue(
       text: text,
-      selection: TextSelection.collapsed(offset: formattedInt.length),
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }

@@ -73,7 +73,10 @@ class CesarSmallTalk {
   };
 
   /// Reply for [text], or null when it isn't small talk.
-  static SmallTalkReply? reply(String text, {DateTime? now}) {
+  /// When [hasPendingDraft] is true, short confirmations/denials ("sim",
+  /// "não", "ok") belong to the open transaction draft and must not be
+  /// swallowed as small talk.
+  static SmallTalkReply? reply(String text, {DateTime? now, bool hasPendingDraft = false}) {
     final s = CesarText.simplify(text).replaceAll(RegExp(r'\bcesar\b'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
     if (s.isEmpty) {
       return const SmallTalkReply('greeting', 'Oi! Tô aqui. Quer registrar um gasto ou saber como estão suas finanças?');
@@ -108,6 +111,7 @@ class CesarSmallTalk {
 
     if (RegExp(r'^(?:(?:e\s+)?o\s+que\s+(?:(?:voce|vc|tu)\s+)?(?:sabe|consegue|pode|faz|fazes)(?:\s+fazer)?|'
             r'(?:me\s+)?ajuda(?:\s+ai)?|socorro|help|comandos|quais\s+(?:sao\s+)?(?:os\s+|seus\s+)?comandos|'
+            r'(?:(?:voce|vc|tu)\s+)?(?:pode|poderia|consegue)\s+me\s+ajudar|'
             r'como\s+(?:voce|vc|tu)\s+funciona|como\s+funciona(?:\s+isso|\s+o\s+app)?|como\s+(?:te\s+)?us(?:o|ar)(?:\s+voce)?|'
             r'o\s+que\s+(?:eu\s+)?posso\s+(?:te\s+)?(?:falar|pedir|perguntar|dizer)|para\s+que\s+(?:voce|vc)\s+serve|pra\s+que\s+(?:voce|vc)\s+serve)$')
         .hasMatch(s)) {
@@ -129,6 +133,45 @@ class CesarSmallTalk {
         'De nada! Suas finanças agradecem. 💚',
       ];
       return SmallTalkReply('thanks', variants[CesarText.pick(s, variants.length)]);
+    }
+
+    // Short conversational reactions, orphan confirmations and negative feedback
+    // — strictly skipped while a pending transaction draft awaits user confirmation.
+    if (!hasPendingDraft && !RegExp(r'\d').hasMatch(s)) {
+      if (RegExp(r'^(?:show|top|perfeito|maravilha|excelente|otim[oa]|massa|legal|daora|sensacional|maneiro|combinado|entendi|saquei|anotado|ok|okay)$')
+          .hasMatch(s)) {
+        const ackVariants = [
+          'Combinado! Se precisar lançar algo ou consultar seus gastos, é só mandar. 😊',
+          'Tudo certo! Qualquer coisa, tô por aqui. 👍',
+        ];
+        return SmallTalkReply('ack', ackVariants[CesarText.pick(s, ackVariants.length)]);
+      }
+
+      if (RegExp(r'^(?:sim|s|ss|nao|n|nn|isso|exato|correto)$').hasMatch(s)) {
+        return const SmallTalkReply(
+          'ack',
+          'Não tenho nenhuma confirmação ou pergunta pendente agora. Quer registrar um lançamento ou consultar suas finanças?',
+        );
+      }
+
+      if (RegExp(r'^(?:(?:voce|vc|tu|c|ce)\s+)?(?:errou|ta\s+errad[oa]|esta\s+errad[oa]|fez\s+errado|respondeu\s+errado|entendeu\s+errado)$|'
+              r'^(?:nao\s+gostei(?:\s+(?:dessa|da|disso|desse)\s*(?:resposta|coisa)?)?|resposta\s+ruim|nada\s+a\s+ver|isso\s+(?:ta|esta)\s+errado)$')
+          .hasMatch(s)) {
+        return const SmallTalkReply(
+          'feedback_error',
+          'Poxa, desculpa pelo erro! 🙏 Se foi no último lançamento, diga **"desfaz"** ou me diga o certo '
+              '(ex.: *"não, foi 45"* ou *"esse era lazer"*). Se foi uma pergunta, tente perguntar de outro jeito que eu busco de novo.',
+        );
+      }
+
+      if (RegExp(r'^(?:nao\s+entendi(?:\s+nada)?|entendi\s+nada|como\s+assim|explica\s+melhor|nao\s+faz\s+sentido|oi\s+nao\s+entendi)$')
+          .hasMatch(s)) {
+        return const SmallTalkReply(
+          'confused',
+          'Deixa eu simplificar! Posso **registrar** um gasto/receita (*"gastei 50 no mercado no pix"*), '
+              '**consultar** seus números (*"como estão minhas finanças?"*, *"onde eu gastei mais?"*) ou **corrigir** o último item (*"desfaz"*). O que você quer fazer?',
+        );
+      }
     }
 
     if (RegExp(r'^(?:tchau|xau|ate\s+mais|ate\s+logo|ate\s+amanha|falou|flw|fui|boa\s+noite\s+e\s+ate\s+amanha|ate)$').hasMatch(s)) {

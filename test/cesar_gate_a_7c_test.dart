@@ -686,6 +686,9 @@ void main() {
       'em caso de eu pagar 90 de multa no pix',
       'assim que cair o pagamento de 3000 eu quito o cartão',
       'se rolar um desconto pago 70 no pix',
+      'e se o joão fosse pagar quando recebesse?',
+      'se o joão pagar 200 eu compro um tênis',
+      'se cair 500 eu iria pagar a conta',
     ]) {
       test(p, () {
         expect(HypothesisDetector.detect(p), isNotNull);
@@ -700,6 +703,8 @@ void main() {
       'quero registrar que gastei 30 no mercado no pix',
       'vou te contar: paguei 50 de luz no pix',
       'o joão me deve 200 e paga quando receber',
+      'falei que o joão iria pagar quando recebesse',
+      'ele disse que ia pagar quando recebesse',
     ]) {
       test('controle (não é intenção): $p', () => expect(HypothesisDetector.detect(p), isNull));
     }

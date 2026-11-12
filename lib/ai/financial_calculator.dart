@@ -235,20 +235,43 @@ class FinancialCalculator {
     return CalcAnswer('📈 $t$note', 'calc', spoken: t.replaceAll('**', ''));
   }
 
-  /// "quanto rende 10 mil em 2 anos?"
+  /// "quanto rende 10 mil em 2 anos?" ou "quanto rende 1000 reais no cdi?"
   static CalcAnswer? _lumpGrowth(String s) {
     final m = RegExp('\\b(?:quanto\\s+(?:rende|renderia|vira|viraria|fica|ficaria|vai\\s+render)|rende\\s+quanto)\\s+(?:r\\s*)?$_num\\s*(?:reais\\s+)?'
             '(?:em|por|durante|depois\\s+de|apos)\\s+(\\d{1,3})\\s+(anos?|meses)')
         .firstMatch(s);
-    if (m == null) return null;
-    final p = _value(m.group(1)!, m.group(2));
-    final n = _months(m.group(3)!, m.group(4)!);
-    if (n == null || p <= 0) return null;
-    final rate = _rateIn(s);
-    final fv = p * pow(1 + rate.rate, n);
-    final note = rate.said ? '' : '\n\n_Considerei ${_p(rate.rate)} ao mês, perto do que paga um título atrelado à Selic, antes do Imposto de Renda._';
-    final t = '${_m(p)} rendendo ${_p(rate.rate, decimals: 2)} ao mês por $n meses viram **${_m(fv)}** — ${_m(fv - p)} de rendimento.';
-    return CalcAnswer('📈 $t$note', 'calc', spoken: t.replaceAll('**', ''));
+    if (m != null) {
+      final p = _value(m.group(1)!, m.group(2));
+      final n = _months(m.group(3)!, m.group(4)!);
+      if (n == null || p <= 0) return null;
+      final rate = _rateIn(s);
+      final fv = p * pow(1 + rate.rate, n);
+      final note = rate.said ? '' : '\n\n_Considerei ${_p(rate.rate)} ao mês, perto do que paga um título atrelado à Selic, antes do Imposto de Renda._';
+      final t = '${_m(p)} rendendo ${_p(rate.rate, decimals: 2)} ao mês por $n meses viram **${_m(fv)}** — ${_m(fv - p)} de rendimento.';
+      return CalcAnswer('📈 $t$note', 'calc', spoken: t.replaceAll('**', ''));
+    }
+
+    // Sem prazo explícito: "quanto rende 1000 reais no cdi?" / "na poupança?"
+    final noDuration = RegExp('\\b(?:quanto\\s+(?:rende|renderia|vira|viraria|fica|ficaria|vai\\s+render)|rende\\s+quanto)\\s+(?:r\\s*)?$_num\\s*(?:reais\\s+)?'
+            '(?:no\\s+cdi|na\\s+selic|no\\s+tesouro|na\\s+poupanca|em\\s+cdb|no\\s+cdb)?\\b')
+        .firstMatch(s);
+    if (noDuration == null) return null;
+    final p = _value(noDuration.group(1)!, noDuration.group(2));
+    if (p <= 0) return null;
+    final rateInfo = _rateIn(s);
+    final isPoupanca = !rateInfo.said && RegExp(r'\bpoupanca\b').hasMatch(s);
+    final i = isPoupanca ? 0.005 : rateInfo.rate;
+    final gain1m = p * i;
+    final fv12m = p * pow(1 + i, 12);
+    final ref = isPoupanca
+        ? 'poupança (~${_p(i, decimals: 1)} ao mês)'
+        : (rateInfo.said ? 'taxa de ${_p(i, decimals: 2)} ao mês' : 'CDI/Selic (~${_p(i, decimals: 1)} ao mês, antes do IR)');
+    final t = 'Com ${_m(p)} na referência de $ref:\n'
+        '- **Em 1 mês:** rende uns **${_m(gain1m)}** (total ${_m(p + gain1m)})\n'
+        '- **Em 12 meses:** rende uns **${_m(fv12m - p)}** (total **${_m(fv12m)}**)\n\n'
+        '_Simulação aproximada para referência; para outro prazo, pergunte ex.: "quanto rende ${p.toStringAsFixed(0)} em 2 anos?"._';
+    return CalcAnswer('📈 $t', 'calc',
+        spoken: '${_m(p)} rende perto de ${_m(gain1m)} por mês ou ${_m(fv12m - p)} em um ano na taxa de referência.');
   }
 
   /// "quanto é 1250 dividido por 4?", "37 vezes 12".

@@ -200,7 +200,7 @@ class FinancialQaEngine {
   // ── What the question measures (one family of words per measure) ──
   static final _debtWords = RegExp(r'\b(?:me\s+deve\w*|me\s+devendo|(?:alguem|quem|gente|pessoa)\s+(?:ainda\s+)?(?:ta\s+|esta\s+)?devendo|deve\s+(?:pra|para|a)\s+mim|me\s+pag(?:ou|ar|aram|a)|(?:a|pra)\s+receber|dividas?\s+(?:comigo|a\s+receber))\b');
   static final _comparisonWords = RegExp(r'\b(?:mais\s+ou\s+menos|compar\w*|em\s+relacao|(?:mais|menos)\s+(?:do\s+)?que\s+(?:em\s+|no\s+|o\s+|na\s+)?(?:mes|semana|' +
-      _months.join('|') + r')|gastando\s+(?:demais|muito|mais)|exagerando|exagerei|to\s+gastando|'
+      _months.join('|') + r')|gastando\s+(?:demais|muito|mais|bem\s+ou\s+mal|bem|mal|certo|pouco|normal)|exagerando|exagerei|to\s+gastando|'
           // "gastei mais esse mês ou no passado?"
           r'(?:esse|este|nesse|neste)\s+mes\s+ou\s+(?:no\s+|o\s+|do\s+|n[oa]\s+)?(?:mes\s+)?(?:passado|anterior)|ou\s+(?:no|o|do)\s+(?:mes\s+)?(?:passado|anterior))\b');
   static final _overviewWords = RegExp(r'\b(?:resumo|resumao|balanco|panorama|vida\s+financeira|situacao(?:\s+financeira)?|minhas\s+financas|as\s+financas|minhas\s+contas\s+no\s+geral|'
@@ -299,7 +299,11 @@ class FinancialQaEngine {
       t = t.replaceAll(_emptyWords, ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
     }
     if (cash && t.isEmpty) return 'dinheiro';
-    return _cleanTerm(t);
+    final cleaned = _cleanTerm(t);
+    const nonEntityModifiers = {
+      'bem', 'mal', 'bem ou mal', 'certo', 'errado', 'pouco', 'muito', 'demais', 'normal', 'direito', 'todo', 'toda', 'todos', 'todas',
+    };
+    return nonEntityModifiers.contains(cleaned) ? '' : cleaned;
   }
 
   /// Turns a question into a [QaQuery], or null when [text] isn't a question
@@ -1204,18 +1208,30 @@ class FinancialQaEngine {
   }
 
   QaAnswer _viaRag(QaQuery q, String? originalText) {
+    final ReportIntent forcedIntent;
     final String canonical;
+    DateRangeResult? forcedRange;
+
     switch (q.kind) {
       case QaKind.bills:
+        forcedIntent = ReportIntent.bills;
+        forcedRange = q.period == null ? null : _range(q.period);
         canonical = 'quais contas vencem ${q.period ?? 'esta semana'}';
         break;
       case QaKind.debtors:
+        forcedIntent = ReportIntent.debtors;
         canonical = originalText ?? 'quem me deve';
         break;
       default:
+        forcedIntent = ReportIntent.overview;
+        forcedRange = q.period == null ? null : _range(q.period);
         canonical = originalText ?? 'como estão minhas finanças';
     }
-    final rag = FinancialReportRagEngine(repository: repository).generateReport(canonical);
+    final rag = FinancialReportRagEngine(repository: repository).generateReport(
+      canonical,
+      forcedIntent: forcedIntent,
+      forcedRange: forcedRange,
+    );
     return QaAnswer(text: rag.formattedText, spokenText: rag.spokenText, query: q, chart: rag.chart);
   }
 }
