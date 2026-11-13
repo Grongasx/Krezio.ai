@@ -185,17 +185,26 @@ class CesarWorkingMemory {
       // Matches "ele/ela me pagou...", "ele pagou...", "ele quitou...", "recebi dele/dela..."
       final personRef = RegExp(r'\b(?:ele|ela)\s+(?:j[aá]\s+)?(?:me\s+)?(?:pagou|devolveu|quitou|acertou)\b');
       if (personRef.hasMatch(s)) {
-        return input.replaceFirst(RegExp(r'\b(?:ele|ela)\b', caseSensitive: false), 'o $person');
+        return input.replaceFirstMapped(
+          RegExp(r'\b(ele|ela)\b', caseSensitive: false),
+          (m) => m.group(1)!.toLowerCase() == 'ela' ? 'a $person' : 'o $person',
+        );
       }
 
       final quantoEleDeve = RegExp(r'\b(?:quanto|qual\s+valor)\s+(?:que\s+)?(?:ele|ela)\s+(?:ainda\s+)?(?:me\s+)?(?:deve|falta|tem\s+que\s+pagar)\b');
       if (quantoEleDeve.hasMatch(s)) {
-        return input.replaceFirst(RegExp(r'\b(?:ele|ela)\b', caseSensitive: false), 'o $person');
+        return input.replaceFirstMapped(
+          RegExp(r'\b(ele|ela)\b', caseSensitive: false),
+          (m) => m.group(1)!.toLowerCase() == 'ela' ? 'a $person' : 'o $person',
+        );
       }
 
       final eleQuitou = RegExp(r'\b(?:ele|ela)\s+(?:j[aá]\s+)?(?:quitou|pagou\s+tudo|acertou\s+tudo)\b');
       if (eleQuitou.hasMatch(s)) {
-        return input.replaceFirst(RegExp(r'\b(?:ele|ela)\b', caseSensitive: false), 'o $person');
+        return input.replaceFirstMapped(
+          RegExp(r'\b(ele|ela)\b', caseSensitive: false),
+          (m) => m.group(1)!.toLowerCase() == 'ela' ? 'a $person' : 'o $person',
+        );
       }
     }
 

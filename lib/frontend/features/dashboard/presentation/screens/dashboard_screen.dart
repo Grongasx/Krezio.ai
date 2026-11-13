@@ -35,6 +35,7 @@ class DashboardScreen extends StatelessWidget {
       animation: repository,
       builder: (context, _) {
         final totalBalance = repository.totalBalance;
+        final cofrinhoTotal = repository.goals.fold<double>(0.0, (sum, g) => sum + g.savedAmount);
         final monthIncome = repository.monthIncome;
         final monthExpense = repository.monthExpense;
         final categoryExpenses = repository.categoryExpensesThisMonth;
@@ -113,6 +114,7 @@ class DashboardScreen extends StatelessWidget {
                     MetricSummaryCard(
                       title: 'Saldo Líquido Geral',
                       amount: totalBalance,
+                      subtitle: hideAmounts ? '+ •••• no cofrinho' : '+ ${Money.brl(cofrinhoTotal)} no cofrinho',
                       icon: Icons.account_balance_wallet_outlined,
                       iconColor: totalBalance >= 0 ? KrezioColors.emeraldGreen : KrezioColors.friendlyOrange,
                       isDark: isDark,

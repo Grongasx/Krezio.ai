@@ -120,13 +120,18 @@ class FinancialRepository extends ChangeNotifier {
     PersistenceService? persistence,
     bool seedDemo = true,
     bool persistChanges = true,
+    bool richDemo = false,
   })  : _persistence = persistence ?? const PersistenceService(),
         _persistChanges = persistChanges {
     _initializeDefaultBudgets();
-    if (seedDemo) _seedInitialData();
+    if (richDemo) {
+      _seedPresentationData();
+    } else if (seedDemo) {
+      _seedInitialData();
+    }
   }
 
-  FinancialRepository.demo() : this(persistChanges: false);
+  FinancialRepository.demo() : this(seedDemo: false, persistChanges: false, richDemo: true);
 
   /// Loads persisted data from disk (overwriting the constructor's seed), or —
   /// on a genuine first run — persists the seed so it survives a restart. Must
@@ -480,6 +485,376 @@ class FinancialRepository extends ChangeNotifier {
         targetDate: nextSalary,
         type: ReminderType.loanReceivable,
         notes: 'Prometeu acertar quando cair o salário dele',
+      ),
+    ]);
+
+    _recalculateBudgets();
+  }
+
+  /// Conta de apresentação completa (usada pelo Modo Demo) com 3 meses de
+  /// histórico realista, contas, cartões, cofrinhos, parcelas e lembretes,
+  /// permitindo demonstrar relatórios, projeções, cortes e insights do César.
+  void _seedPresentationData() {
+    final now = DateTime.now();
+
+    _accounts
+      ..clear()
+      ..addAll([
+        const FinancialAccount(id: FinancialAccount.mainId, name: 'Nubank Conta', kind: AccountKind.checking),
+        const FinancialAccount(id: 'acc-savings', name: 'Reserva Inter', kind: AccountKind.savings),
+        const FinancialAccount(id: 'acc-card', name: 'Cartão Nubank', kind: AccountKind.creditCard, closingDay: 5, dueDay: 12),
+      ]);
+
+    DateTime prevMonth(int monthsAgo, int day) => DateTime(now.year, now.month - monthsAgo, day.clamp(1, 28));
+
+    final txs = <FinancialTransaction>[];
+
+    // Histórico dos últimos 2 meses fechados (apenas ocorrências passadas;
+    // `isRecurrent: true` fica só na entrada mais recente de cada conta fixa
+    // para não duplicar em "Contas Fixas & Recorrências" nem nos alertas).
+    for (final m in [2, 1]) {
+      txs.addAll([
+        FinancialTransaction(
+          id: 'demo-sal-$m',
+          title: 'Salário Mensal',
+          amount: 5800.00,
+          type: TransactionType.income,
+          category: 'salary',
+          paymentMethod: 'pix',
+          date: prevMonth(m, 5),
+          bankSource: 'Nubank',
+        ),
+        FinancialTransaction(
+          id: 'demo-alu-$m',
+          title: 'Aluguel Apartamento',
+          amount: 1550.00,
+          type: TransactionType.expense,
+          category: 'housing',
+          paymentMethod: 'bank_slip',
+          date: prevMonth(m, 8),
+        ),
+        FinancialTransaction(
+          id: 'demo-net-$m',
+          title: 'Internet Fibra',
+          amount: 119.90,
+          type: TransactionType.expense,
+          category: 'housing',
+          paymentMethod: 'pix',
+          date: prevMonth(m, 10),
+        ),
+        FinancialTransaction(
+          id: 'demo-luz-$m',
+          title: 'Energia Elétrica',
+          amount: m == 2 ? 178.40 : 192.10,
+          type: TransactionType.expense,
+          category: 'housing',
+          paymentMethod: 'bank_slip',
+          date: prevMonth(m, 14),
+          isRecurrent: m == 1,
+          dueDay: m == 1 ? 14 : null,
+        ),
+        FinancialTransaction(
+          id: 'demo-mkt-$m',
+          title: 'Supermercado Carrefour',
+          amount: m == 2 ? 780.00 : 840.00,
+          type: TransactionType.expense,
+          category: 'supermarket',
+          paymentMethod: 'debit_card',
+          date: prevMonth(m, 11),
+        ),
+        FinancialTransaction(
+          id: 'demo-ifd-$m',
+          title: 'iFood Jantar',
+          amount: m == 2 ? 120.00 : 145.00,
+          type: TransactionType.expense,
+          category: 'leisure',
+          paymentMethod: 'credit_card',
+          accountId: 'acc-card',
+          date: prevMonth(m, 18),
+        ),
+        FinancialTransaction(
+          id: 'demo-ubr-$m',
+          title: 'Uber Viagens',
+          amount: 110.00,
+          type: TransactionType.expense,
+          category: 'transport',
+          paymentMethod: 'credit_card',
+          accountId: 'acc-card',
+          date: prevMonth(m, 20),
+        ),
+        FinancialTransaction(
+          id: 'demo-gym-$m',
+          title: 'Academia SmartFit',
+          amount: 129.90,
+          type: TransactionType.expense,
+          category: 'health',
+          paymentMethod: 'credit_card',
+          accountId: 'acc-card',
+          date: prevMonth(m, 12),
+        ),
+        FinancialTransaction(
+          id: 'demo-strm-$m',
+          title: 'Netflix + Spotify',
+          amount: 74.80,
+          type: TransactionType.expense,
+          category: 'leisure',
+          paymentMethod: 'credit_card',
+          accountId: 'acc-card',
+          date: prevMonth(m, 15),
+          isRecurrent: m == 1,
+          dueDay: m == 1 ? 15 : null,
+        ),
+        FinancialTransaction(
+          id: 'cofrinho-demo-$m',
+          title: m == 2 ? 'Cofrinho: Reserva de Emergência' : 'Cofrinho: Viagem de Férias',
+          amount: m == 2 ? 1500.00 : 1200.00,
+          type: TransactionType.expense,
+          category: 'investment',
+          paymentMethod: 'pix',
+          date: prevMonth(m, 22),
+        ),
+      ]);
+    }
+
+    // Mês atual (com variedade de pagamentos, parcelas, delivery e receita extra)
+    txs.addAll([
+      FinancialTransaction(
+        id: 'demo-sal-0',
+        title: 'Salário Mensal',
+        amount: 5800.00,
+        type: TransactionType.income,
+        category: 'salary',
+        paymentMethod: 'pix',
+        date: _seedCurrentMonthDate(now, 5),
+        bankSource: 'Nubank',
+        isRecurrent: true,
+        dueBusinessDay: 5,
+      ),
+      FinancialTransaction(
+        id: 'demo-freela-0',
+        title: 'Consultoria Freela',
+        amount: 950.00,
+        type: TransactionType.income,
+        category: 'income_other',
+        paymentMethod: 'pix',
+        date: _seedCurrentMonthDate(now, 9),
+      ),
+      FinancialTransaction(
+        id: 'demo-alu-0',
+        title: 'Aluguel Apartamento',
+        amount: 1550.00,
+        type: TransactionType.expense,
+        category: 'housing',
+        paymentMethod: 'bank_slip',
+        date: _seedCurrentMonthDate(now, 8),
+        isRecurrent: true,
+        dueDay: 8,
+      ),
+      FinancialTransaction(
+        id: 'demo-net-0',
+        title: 'Internet Fibra',
+        amount: 119.90,
+        type: TransactionType.expense,
+        category: 'housing',
+        paymentMethod: 'pix',
+        date: _seedCurrentMonthDate(now, 10),
+        isRecurrent: true,
+        dueDay: 10,
+      ),
+      FinancialTransaction(
+        id: 'demo-mkt-0',
+        title: 'Supermercado Assaí',
+        amount: 620.40,
+        type: TransactionType.expense,
+        category: 'supermarket',
+        paymentMethod: 'debit_card',
+        date: _seedCurrentMonthDate(now, 7),
+      ),
+      FinancialTransaction(
+        id: 'demo-pad-0',
+        title: 'Padaria Real',
+        amount: 42.50,
+        type: TransactionType.expense,
+        category: 'supermarket',
+        paymentMethod: 'pix',
+        date: _seedCurrentMonthDate(now, 11),
+      ),
+      FinancialTransaction(
+        id: 'demo-ifd-0a',
+        title: 'iFood Pizza',
+        amount: 94.00,
+        type: TransactionType.expense,
+        category: 'leisure',
+        paymentMethod: 'credit_card',
+        accountId: 'acc-card',
+        date: _seedCurrentMonthDate(now, 6),
+      ),
+      FinancialTransaction(
+        id: 'demo-ifd-0b',
+        title: 'iFood Hambúrguer',
+        amount: 78.50,
+        type: TransactionType.expense,
+        category: 'leisure',
+        paymentMethod: 'credit_card',
+        accountId: 'acc-card',
+        date: _seedCurrentMonthDate(now, 11),
+      ),
+      FinancialTransaction(
+        id: 'demo-ifd-0c',
+        title: 'iFood Japonês',
+        amount: 135.00,
+        type: TransactionType.expense,
+        category: 'leisure',
+        paymentMethod: 'pix',
+        date: _seedCurrentMonthDate(now, 12),
+      ),
+      FinancialTransaction(
+        id: 'demo-uber-0',
+        title: 'Uber Trabalho',
+        amount: 64.90,
+        type: TransactionType.expense,
+        category: 'transport',
+        paymentMethod: 'credit_card',
+        accountId: 'acc-card',
+        date: _seedCurrentMonthDate(now, 9),
+      ),
+      FinancialTransaction(
+        id: 'demo-gas-0',
+        title: 'Posto Shell Gasolina',
+        amount: 210.00,
+        type: TransactionType.expense,
+        category: 'transport',
+        paymentMethod: 'debit_card',
+        date: _seedCurrentMonthDate(now, 10),
+      ),
+      FinancialTransaction(
+        id: 'demo-farm-0',
+        title: 'Drogasil Farmácia',
+        amount: 89.90,
+        type: TransactionType.expense,
+        category: 'health',
+        paymentMethod: 'pix',
+        date: _seedCurrentMonthDate(now, 8),
+      ),
+      FinancialTransaction(
+        id: 'demo-gym-0',
+        title: 'Academia SmartFit',
+        amount: 129.90,
+        type: TransactionType.expense,
+        category: 'health',
+        paymentMethod: 'credit_card',
+        accountId: 'acc-card',
+        date: _seedCurrentMonthDate(now, 12),
+        isRecurrent: true,
+        dueDay: 12,
+      ),
+      FinancialTransaction(
+        id: 'demo-edu-0',
+        title: 'Curso Flutter Alura',
+        amount: 149.00,
+        type: TransactionType.expense,
+        category: 'education',
+        paymentMethod: 'credit_card',
+        accountId: 'acc-card',
+        date: _seedCurrentMonthDate(now, 4),
+      ),
+      FinancialTransaction(
+        id: 'demo-fone-0',
+        title: 'Fone Bluetooth Sony (1/3)',
+        amount: 220.00,
+        type: TransactionType.expense,
+        category: 'expense_other',
+        paymentMethod: 'credit_card',
+        accountId: 'acc-card',
+        date: _seedCurrentMonthDate(now, 7),
+        installments: 3,
+        currentInstallment: 1,
+      ),
+      FinancialTransaction(
+        id: 'demo-inv-0',
+        title: 'Aporte Tesouro Selic',
+        amount: 500.00,
+        type: TransactionType.expense,
+        category: 'investment',
+        paymentMethod: 'pix',
+        accountId: FinancialAccount.mainId,
+        date: _seedCurrentMonthDate(now, 6),
+      ),
+      FinancialTransaction(
+        id: 'cofrinho-demo-0',
+        title: 'Cofrinho: Notebook Novo',
+        amount: 800.00,
+        type: TransactionType.expense,
+        category: 'investment',
+        paymentMethod: 'pix',
+        accountId: FinancialAccount.mainId,
+        date: _seedCurrentMonthDate(now, 10),
+      ),
+    ]);
+
+    _transactions.addAll(txs);
+
+    // Cofrinhos / Metas financeiras (valores 100% conciliados com os lançamentos `cofrinho-demo-*`)
+    _goals.addAll([
+      FinancialGoal(
+        id: 'demo-goal-1',
+        title: 'Reserva de Emergência',
+        targetAmount: 15000.00,
+        savedAmount: 1500.00,
+        targetDate: DateTime(now.year + 1, 6, 1),
+      ),
+      FinancialGoal(
+        id: 'demo-goal-2',
+        title: 'Viagem de Férias',
+        targetAmount: 5000.00,
+        savedAmount: 1200.00,
+        targetDate: DateTime(now.year, 12, 20),
+      ),
+      FinancialGoal(
+        id: 'demo-goal-3',
+        title: 'Notebook Novo',
+        targetAmount: 4200.00,
+        savedAmount: 800.00,
+        targetDate: DateTime(now.year + 1, 2, 1),
+      ),
+    ]);
+
+    // Lembretes e Cobranças
+    final nextSalary = DateTime(now.year, now.month + 1, 5);
+    _reminders.addAll([
+      FinancialReminder(
+        id: 'demo-rem-1',
+        title: 'Receber Dividendos MXRF11',
+        amount: 92.50,
+        targetDate: now.add(const Duration(days: 3)),
+        type: ReminderType.dividend,
+        notes: 'Rendimento mensal de FII',
+      ),
+      FinancialReminder(
+        id: 'demo-rem-2',
+        title: 'Cobrar João (Empréstimo)',
+        personName: 'João',
+        amount: 150.00,
+        targetDate: nextSalary,
+        type: ReminderType.loanReceivable,
+        notes: 'Prometeu acertar quando cair o salário dele',
+      ),
+      FinancialReminder(
+        id: 'demo-rem-3',
+        title: 'Cobrar Maria (Churrasco)',
+        personName: 'Maria',
+        amount: 240.00,
+        targetDate: now.add(const Duration(days: 4)),
+        type: ReminderType.loanReceivable,
+        notes: 'Racha do churrasco de sábado',
+      ),
+      FinancialReminder(
+        id: 'demo-rem-4',
+        title: 'Conta de Água Sabesp',
+        amount: 96.80,
+        targetDate: now.add(const Duration(days: 3)),
+        type: ReminderType.billPayment,
+        notes: 'Vencimento próximo',
       ),
     ]);
 

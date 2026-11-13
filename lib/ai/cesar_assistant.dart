@@ -148,6 +148,12 @@ class CesarAssistant {
       final names = active.map((d) => d.personName).whereType<String>().toSet();
       if (names.length == 1) {
         memory.updateFrame(personName: names.first, topic: WorkingMemoryTopic.debt);
+      } else if (names.length > 1) {
+        final foldedReply = CesarText.fold(r.text);
+        final mentioned = names.where((n) => RegExp('\\b${RegExp.escape(CesarText.fold(n))}\\b').hasMatch(foldedReply)).toList();
+        if (mentioned.length == 1) {
+          memory.updateFrame(personName: mentioned.first, topic: WorkingMemoryTopic.debt);
+        }
       }
     }
     return AssistantReply(r.text, spokenText: r.spokenText, route: r.route);

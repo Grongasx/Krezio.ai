@@ -12,6 +12,7 @@ class MetricSummaryCard extends StatelessWidget {
   final bool isLarge;
   final bool hideAmount;
   final VoidCallback? onTogglePrivacy;
+  final String? subtitle;
 
   const MetricSummaryCard({
     super.key,
@@ -23,6 +24,7 @@ class MetricSummaryCard extends StatelessWidget {
     this.isLarge = false,
     this.hideAmount = false,
     this.onTogglePrivacy,
+    this.subtitle,
   });
 
   @override
@@ -125,6 +127,18 @@ class MetricSummaryCard extends StatelessWidget {
               ),
             ),
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: TextStyle(
+                fontSize: KrezioFont.caption,
+                fontWeight: FontWeight.w500,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: isDark ? KrezioColors.darkSecondaryText : KrezioColors.lightSecondaryText,
+              ),
+            ),
+          ],
         ],
       ),
     );
